@@ -89,7 +89,7 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
               {Object.entries(basicInfo).map(([key, value]) => (
                 <div key={key} className="space-y-1">
                   <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                  <div className="text-sm">{value || "N/A"}</div>
+                  <div className="text-sm">{value as string || "N/A"}</div>
                 </div>
               ))}
             </div>
@@ -108,7 +108,7 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
                   {Object.entries(supplier).map(([key, value]) => (
                     <div key={key} className="space-y-1">
                       <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                      <div className="text-sm">{value || "N/A"}</div>
+                      <div className="text-sm">{value as string || "N/A"}</div>
                     </div>
                   ))}
                 </div>
@@ -126,7 +126,7 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
                   {Object.entries(recipient).map(([key, value]) => (
                     <div key={key} className="space-y-1">
                       <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                      <div className="text-sm">{value || "N/A"}</div>
+                      <div className="text-sm">{value as string || "N/A"}</div>
                     </div>
                   ))}
                 </div>
@@ -183,7 +183,7 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
                 {Object.entries(total_summary).map(([key, value]) => (
                   <div key={key} className="space-y-1">
                     <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                    <div className="text-sm font-medium">{value || "N/A"}</div>
+                    <div className="text-sm font-medium">{value as string || "N/A"}</div>
                   </div>
                 ))}
               </div>
@@ -227,7 +227,7 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
                 {Object.entries(transaction_details).map(([key, value]) => (
                   <div key={key} className="space-y-1">
                     <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                    <div className="text-sm">{value || "N/A"}</div>
+                    <div className="text-sm">{value as string || "N/A"}</div>
                   </div>
                 ))}
               </div>
@@ -247,7 +247,7 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
                   {Object.entries(sender_details).map(([key, value]) => (
                     <div key={key} className="space-y-1">
                       <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                      <div className="text-sm">{value || "N/A"}</div>
+                      <div className="text-sm">{value as string || "N/A"}</div>
                     </div>
                   ))}
                 </div>
@@ -265,7 +265,7 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
                   {Object.entries(recipient_details).map(([key, value]) => (
                     <div key={key} className="space-y-1">
                       <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                      <div className="text-sm">{value || "N/A"}</div>
+                      <div className="text-sm">{value as string || "N/A"}</div>
                     </div>
                   ))}
                 </div>
@@ -285,7 +285,7 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
                 {Object.entries(reference_numbers).map(([key, value]) => (
                   <div key={key} className="space-y-1">
                     <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                    <div className="text-sm">{value || "N/A"}</div>
+                    <div className="text-sm">{value as string || "N/A"}</div>
                   </div>
                 ))}
               </div>
