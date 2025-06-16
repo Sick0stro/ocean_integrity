@@ -100,9 +100,9 @@ export default function Home() {
         try {
           const formData = new FormData()
           formData.append("file", files[i])
-          formData.append("filename", files[i].name)
 
-          const response = await fetch("http://localhost:5000/process-document", {
+          // CHANGE: Use Next.js API route
+          const response = await fetch("/api/process-document", {
             method: "POST",
             body: formData,
           })

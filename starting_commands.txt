@@ -1,2 +1,0 @@
-clint [ npm run dev]
-server [ python flask_backend.py]
