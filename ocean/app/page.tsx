@@ -23,7 +23,7 @@ import DocumentTypeCard from "@/components/document-type-card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { ThemeProvider } from "@/components/theme-provider";
+import Image from "next/image";
 
 // Document types matching your backend
 const documentTypes = {
@@ -35,7 +35,7 @@ const documentTypes = {
 interface ProcessedDocument {
   fileName: string
   documentType: string
-  data: any
+  data: Record<string, unknown> // instead of any
   status: "pending" | "processing" | "completed" | "error"
   error?: string
 }
@@ -175,17 +175,18 @@ export default function Home() {
     if (completedDocs.length === 0) return
 
     // Flatten nested objects for CSV
-    const flattenObject = (obj: any, prefix = ""): any => {
+    const flattenObject = (obj: Record<string, unknown>, prefix = ""): Record<string, unknown> => {
+
       const flattened: any = {}
 
       for (const key in obj) {
         if (obj[key] !== null && typeof obj[key] === "object" && !Array.isArray(obj[key])) {
-          Object.assign(flattened, flattenObject(obj[key], `${prefix}${key}_`))
+          Object.assign(flattened, flattenObject(obj[key] as Record<string, unknown>, `${prefix}${key}_`))
         } else if (Array.isArray(obj[key])) {
           // Handle arrays (like items in invoice)
           obj[key].forEach((item: any, index: number) => {
             if (typeof item === "object") {
-              Object.assign(flattened, flattenObject(item, `${prefix}${key}_${index + 1}_`))
+              Object.assign(flattened, flattenObject(item as Record<string, unknown>, `${prefix}${key}_${index + 1}_`))
             } else {
               flattened[`${prefix}${key}_${index + 1}`] = item
             }
@@ -244,7 +245,7 @@ export default function Home() {
       <div className="container mx-auto py-8 px-4">
         <header className="mb-8 text-center">
           <div className="inline-flex items-center justify-center  rounded-full mb-4">
-            <img src="/logo.png" alt="Ocean Integrity Logo" className="h-20 w-20 ml-2" />
+            <Image src="/logo.png" alt="Ocean Integrity Logo" width={80} height={80} className="ml-2" />
           </div>
           <h1 className="text-3xl font-bold text-slate-800">Ocean Integrity AI Accounting</h1>
           <p className="text-slate-600 mt-2 max-w-2xl mx-auto">
@@ -394,8 +395,8 @@ export default function Home() {
                       <CheckCircle2 className="h-4 w-4 text-green-600" />
                       <AlertTitle>Processing Complete</AlertTitle>
                       <AlertDescription>
-                        {completedCount} document{completedCount > 1 ? "s" : ""} processed successfully. Click the
-                        "Review & Export" tab to see the extracted data.
+                        {completedCount} document{completedCount > 1 ? "s" : ""} processed successfully.
+                       <p>Click the &quot;Review &amp; Export&quot; tab to see the extracted data.</p>
                       </AlertDescription>
                     </Alert>
                   )}
