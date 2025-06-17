@@ -158,7 +158,7 @@ export default function Home() {
 
       setActiveTab("results")
     } catch (error) {
-      console.error("Processing error:", error)
+      console.error("Processing error")
     } finally {
       setIsProcessing(false)
       setCurrentProcessingIndex(-1)
@@ -172,16 +172,14 @@ export default function Home() {
 
     // Flatten nested objects for CSV
     const flattenObject = (obj: Record<string, unknown>, prefix = ""): Record<string, unknown> => {
-
-      const flattened: any = {}
+      const flattened: Record<string, unknown> = {}
 
       for (const key in obj) {
         if (obj[key] !== null && typeof obj[key] === "object" && !Array.isArray(obj[key])) {
           Object.assign(flattened, flattenObject(obj[key] as Record<string, unknown>, `${prefix}${key}_`))
         } else if (Array.isArray(obj[key])) {
-          // Handle arrays (like items in invoice)
-          obj[key].forEach((item: any, index: number) => {
-            if (typeof item === "object") {
+          (obj[key] as unknown[]).forEach((item: unknown, index: number) => {
+            if (typeof item === "object" && item !== null) {
               Object.assign(flattened, flattenObject(item as Record<string, unknown>, `${prefix}${key}_${index + 1}_`))
             } else {
               flattened[`${prefix}${key}_${index + 1}`] = item
