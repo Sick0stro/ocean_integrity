@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
-import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
@@ -27,7 +26,6 @@ export default function RootLayout({
         <div data-wrapper="" className="border-grid flex flex-1 flex-col min-h-screen">
           <SiteHeader />
           <main className="flex flex-1 flex-col">{children}</main>
-          <SiteFooter />
         </div>
         <Analytics />
       </body>
