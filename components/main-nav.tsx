@@ -2,12 +2,9 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { usePathname } from "next/navigation"
 
-import { siteConfig } from "@/config/site"
 
 export function MainNav() {
-  const pathname = usePathname()
 
   return (
     <div className="mr-4 hidden md:flex">

@@ -27,7 +27,6 @@ interface CSVDownloadBtnProps {
 
 // CSVDownloadBtn: A button for exporting processed documents as a CSV file
 export default function CSVDownloadBtn({
-  processedDocuments,
   handleDownloadCSV,
 }: CSVDownloadBtnProps) {
   // Local UI state flags

@@ -1,7 +1,4 @@
-import Link from "next/link"
 
-import { siteConfig } from "../config/site"
-import { Icons } from "../components/icons"
 import { MainNav } from "../components/main-nav"
 import { MobileNav } from "@/components/mobile-nav"
 import { Button } from "./ui/button"

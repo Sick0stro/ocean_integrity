@@ -10,9 +10,6 @@ export const metadata: Metadata = {
 };
 const inter = Inter({ subsets: ["latin"] });
 
-interface AppLayoutProps {
-  children: React.ReactNode;
-}
 
 export default function RootLayout({
   children,

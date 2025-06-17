@@ -6,7 +6,6 @@ import {
   AlertCircle,
   CheckCircle2,
   ArrowRight,
-  Download,
   FileCheck,
   Truck,
   CreditCard,
@@ -23,7 +22,6 @@ import DocumentTypeCard from "@/components/document-type-card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import Image from "next/image";
 import { VideoText } from "@/components/magicui/video-text"
 import CSVDownloadBtn from "@/components/csv-download-btn"
 
@@ -167,10 +165,6 @@ export default function Home() {
     }
   }
 
-  const handlePushToPortal = () => {
-    const completedDocs = processedDocuments.filter((doc) => doc.status === "completed")
-    alert(`Successfully pushed ${completedDocs.length} documents to portal!`)
-  }
 
   const handleDownloadCSV = () => {
     const completedDocs = processedDocuments.filter((doc) => doc.status === "completed")
