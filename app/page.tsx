@@ -137,7 +137,7 @@ export default function Home() {
               ),
             )
           }
-        } catch (error) {
+        } catch {
           // Update with network error
           setProcessedDocuments((prev) =>
             prev.map((doc, index) =>
@@ -157,7 +157,7 @@ export default function Home() {
       }
 
       setActiveTab("results")
-    } catch (error) {
+    } catch {
       console.error("Processing error")
     } finally {
       setIsProcessing(false)
