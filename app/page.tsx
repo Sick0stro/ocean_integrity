@@ -23,7 +23,9 @@ import DocumentTypeCard from "@/components/document-type-card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { ThemeProvider } from "@/components/theme-provider";
+import Image from "next/image";
+import { VideoText } from "@/components/magicui/video-text"
+import CSVDownloadBtn from "@/components/csv-download-btn"
 
 // Document types matching your backend
 const documentTypes = {
@@ -35,7 +37,7 @@ const documentTypes = {
 interface ProcessedDocument {
   fileName: string
   documentType: string
-  data: any
+  data: Record<string, unknown> // instead of any
   status: "pending" | "processing" | "completed" | "error"
   error?: string
 }
@@ -175,17 +177,18 @@ export default function Home() {
     if (completedDocs.length === 0) return
 
     // Flatten nested objects for CSV
-    const flattenObject = (obj: any, prefix = ""): any => {
+    const flattenObject = (obj: Record<string, unknown>, prefix = ""): Record<string, unknown> => {
+
       const flattened: any = {}
 
       for (const key in obj) {
         if (obj[key] !== null && typeof obj[key] === "object" && !Array.isArray(obj[key])) {
-          Object.assign(flattened, flattenObject(obj[key], `${prefix}${key}_`))
+          Object.assign(flattened, flattenObject(obj[key] as Record<string, unknown>, `${prefix}${key}_`))
         } else if (Array.isArray(obj[key])) {
           // Handle arrays (like items in invoice)
           obj[key].forEach((item: any, index: number) => {
             if (typeof item === "object") {
-              Object.assign(flattened, flattenObject(item, `${prefix}${key}_${index + 1}_`))
+              Object.assign(flattened, flattenObject(item as Record<string, unknown>, `${prefix}${key}_${index + 1}_`))
             } else {
               flattened[`${prefix}${key}_${index + 1}`] = item
             }
@@ -243,9 +246,11 @@ export default function Home() {
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="container mx-auto py-8 px-4">
         <header className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center  rounded-full mb-4">
-            <img src="/logo.png" alt="Ocean Integrity Logo" className="h-20 w-20 ml-2" />
-          </div>
+          <div className="relative h-[300px] w-full overflow-hidden">
+      <VideoText src="https://cdn.magicui.design/ocean-small.webm">
+        OCEAN/AI
+      </VideoText>
+    </div>
           <h1 className="text-3xl font-bold text-slate-800">Ocean Integrity AI Accounting</h1>
           <p className="text-slate-600 mt-2 max-w-2xl mx-auto">
             Upload your documents and let our AI identify and extract data from invoices, EFT receipts, and e-way bills
@@ -394,8 +399,8 @@ export default function Home() {
                       <CheckCircle2 className="h-4 w-4 text-green-600" />
                       <AlertTitle>Processing Complete</AlertTitle>
                       <AlertDescription>
-                        {completedCount} document{completedCount > 1 ? "s" : ""} processed successfully. Click the
-                        "Review & Export" tab to see the extracted data.
+                        {completedCount} document{completedCount > 1 ? "s" : ""} processed successfully.
+                       <p>Click the &quot;Review &amp; Export&quot; tab to see the extracted data.</p>
                       </AlertDescription>
                     </Alert>
                   )}
@@ -491,29 +496,19 @@ export default function Home() {
                         </p>
                       </div>
                       <div className="flex gap-3">
+                        <CSVDownloadBtn
+        processedDocuments={processedDocuments}
+        handleDownloadCSV={handleDownloadCSV}
+      />
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button onClick={handleDownloadCSV} variant="outline" className="gap-2">
-                                <Download className="h-4 w-4" />
-                                Download CSV
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Export all successfully processed data to CSV</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button onClick={handlePushToPortal} className="gap-2">
+                              <Button className="gap-2" disabled variant="secondary" title="Coming soon">
                                 Push Data to Portal <ArrowRight className="h-4 w-4" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Send extracted data to accounting portal</p>
+                              <p>Coming soon - Send extracted data to accounting portal</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>

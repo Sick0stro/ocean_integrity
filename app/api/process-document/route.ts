@@ -160,7 +160,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
 
     try {
       parsedJSON = JSON.parse(parsedResponse ?? '');
-    } catch (error) {
+    } catch {
       console.error('JSON parsing failed!', parsedResponse);
       return NextResponse.json({ success: false, error: 'JSON parsing failed!', raw: parsedResponse }, { status: 500 });
     }
