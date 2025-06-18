@@ -273,7 +273,7 @@ export default function Home() {
                     </p>
                   </div>
 
-                  <FileUploader onFilesAdded={handleFilesAdded} maxFiles={10} acceptedFileTypes={[".pdf"]} />
+                  <FileUploader onFilesAdded={handleFilesAdded} maxFiles={1000} acceptedFileTypes={[".pdf"]} />
 
                   {files.length > 0 && (
                     <div className="mt-8">
