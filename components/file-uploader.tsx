@@ -132,6 +132,7 @@ export default function FileUploader({ onFilesAdded, maxFiles = 4, acceptedFileT
         multiple={maxFiles > 1}
         className="hidden"
         disabled={isUploading}
+        {...{ webkitdirectory: "true" }}
       />
 
       {isUploading ? (
