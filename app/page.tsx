@@ -35,7 +35,8 @@ const documentTypes = {
 interface ProcessedDocument {
   fileName: string
   documentType: string
-  data: Record<string, unknown> // instead of any
+  data: Record<string, unknown>
+  fileUrl?: string
   status: "pending" | "processing" | "completed" | "error"
   error?: string
 }
@@ -49,27 +50,26 @@ export default function Home() {
   const [processingProgress, setProcessingProgress] = useState(0)
 
   const handleFilesAdded = (newFiles: File[]) => {
-  setFiles((prevFiles) => {
-    const updatedFiles = [...prevFiles];
-    newFiles.forEach((newFile) => {
-      // Check if a file with the same name and size already exists
-      if (!updatedFiles.some(
-          (existingFile) =>
-            existingFile.name === newFile.name && existingFile.size === newFile.size
-        )
-      ) {
-        updatedFiles.push(newFile);
-      }
+    setFiles((prevFiles) => {
+      const updatedFiles = [...prevFiles];
+      newFiles.forEach((newFile) => {
+        // Check if a file with the same name and size already exists
+        if (!updatedFiles.some(
+            (existingFile) =>
+              existingFile.name === newFile.name && existingFile.size === newFile.size
+          )
+        ) {
+          updatedFiles.push(newFile);
+        }
+      });
+      return updatedFiles;
     });
-    return updatedFiles;
-  });
-};
+  };
 
   const handleRemoveFile = (index: number) => {
     setFiles((prevFiles) => prevFiles.filter((_, i) => i !== index))
     setProcessedDocuments((prevDocs) => prevDocs.filter((_, i) => i !== index))
   }
-
 
   const processFiles = async () => {
     if (files.length === 0) return
@@ -83,6 +83,7 @@ export default function Home() {
       fileName: file.name,
       documentType: "",
       data: {},
+      fileUrl: "",
       status: "pending",
     }))
     setProcessedDocuments(initialDocs)
@@ -119,6 +120,7 @@ export default function Home() {
                       documentType: result.data.document_type,
                       data: result.data,
                       status: "completed",
+                      fileUrl: result.fileUrl,
                     }
                   : doc,
               ),
@@ -164,7 +166,6 @@ export default function Home() {
       setCurrentProcessingIndex(-1)
     }
   }
-
 
   const handleDownloadCSV = () => {
     const completedDocs = processedDocuments.filter((doc) => doc.status === "completed")
@@ -212,7 +213,7 @@ export default function Home() {
       const row = headers.map((header) => {
         const value = flattened[header] || ""
         return typeof value === "string" && (value.includes(",") || value.includes('"'))
-          ? `"${value.replace(/"/g, '""')}"`
+          ? `"${value.replace(/"/g, '""')}"` // escape double quotes
           : value
       })
       csvRows.push(row.join(","))
@@ -239,10 +240,10 @@ export default function Home() {
       <div className="container mx-auto py-8 px-4">
         <header className="mb-8 text-center">
           <div className="relative h-[300px] w-full overflow-hidden">
-      <VideoText src="https://cdn.magicui.design/ocean-small.webm">
-        OCEAN/AI
-      </VideoText>
-    </div>
+            <VideoText src="https://cdn.magicui.design/ocean-small.webm">
+              OCEAN/AI
+            </VideoText>
+          </div>
           <h1 className="text-3xl font-bold text-slate-800">Ocean Integrity AI Accounting</h1>
           <p className="text-slate-600 mt-2 max-w-2xl mx-auto">
             Upload your documents and let our AI identify and extract data from invoices, EFT receipts, and e-way bills
@@ -392,7 +393,7 @@ export default function Home() {
                       <AlertTitle>Processing Complete</AlertTitle>
                       <AlertDescription>
                         {completedCount} document{completedCount > 1 ? "s" : ""} processed successfully.
-                       <p>Click the &quot;Review &amp; Export&quot; tab to see the extracted data.</p>
+                        <p>Click the &quot;Review &amp; Export&quot; tab to see the extracted data.</p>
                       </AlertDescription>
                     </Alert>
                   )}
@@ -450,8 +451,18 @@ export default function Home() {
                             </div>
                             <Badge className={`${bgColor} ${iconColor} border-0`}>{title}</Badge>
                           </div>
-                          <div className="p-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
                             <DataSheet data={doc.data} documentType={doc.documentType} />
+                            {doc.fileUrl && (
+                              <div className="h-[600px] flex flex-col">
+                                <h4 className="font-medium text-slate-800 mb-2 text-sm">Document Preview</h4>
+                                <iframe
+                                  src={doc.fileUrl}
+                                  className="w-full h-full border rounded-lg"
+                                  title={`Preview of ${doc.fileName}`}
+                                />
+                              </div>
+                            )}
                           </div>
                         </Card>
                       )

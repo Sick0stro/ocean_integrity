@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import fetch from 'node-fetch';
+import { getSupabaseClient } from '../../../utils/supabase';
 
 export async function POST(req: Request) {
+  const supabase = getSupabaseClient();
   try {
     // Extract form data
     const formData = await req.formData();
@@ -165,7 +167,28 @@ You are an expert document processing AI. Your task is to analyze the provided d
       return NextResponse.json({ success: false, error: 'JSON parsing failed!', raw: parsedResponse }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data: parsedJSON });
+    // Upload the file to Supabase Storage
+    const filePath = `documents/${file.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from('documents')
+      .upload(filePath, arrayBuffer, {
+        contentType: file.type,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error('Supabase upload error:', uploadError);
+      return NextResponse.json({ success: false, error: 'Failed to upload file to Supabase' }, { status: 500 });
+    }
+
+    // Get the public URL of the uploaded file
+    const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
+
+    return NextResponse.json({ 
+      success: true, 
+      data: parsedJSON,
+      fileUrl: urlData.publicUrl 
+    });
 
   } catch (error) {
     console.error(error);
