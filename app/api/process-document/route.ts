@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import fetch from 'node-fetch';
-import { getSupabaseClient } from '../../../utils/supabase';
+import { getSupabaseClient } from '@/utils/supabase';
 
 export async function POST(req: Request) {
   const supabase = getSupabaseClient();
