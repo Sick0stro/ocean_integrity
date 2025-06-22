@@ -25,7 +25,6 @@ export async function POST(req: Request) {
     // Your Gemini API key
     const API_KEY = process.env.GOOGLE_API_KEY;
 
-    console.log("API KEY:", process.env.GOOGLE_API_KEY);
 
     if (!API_KEY) {
       return NextResponse.json({ success: false, error: 'GOOGLE_API_KEY is not set' }, { status: 500 });

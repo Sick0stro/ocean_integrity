@@ -74,6 +74,17 @@ export default function Home() {
     setProcessedDocuments((prevDocs) => prevDocs.filter((_, i) => i !== index))
   }
 
+  const handleUpdateDocument = (index: number, updatedData: Record<string, unknown>) => {
+    setProcessedDocuments((prev) => {
+      const newDocs = [...prev]
+      newDocs[index] = {
+        ...newDocs[index],
+        data: updatedData,
+      }
+      return newDocs
+    })
+  }
+
   const processFiles = async () => {
     if (files.length === 0) return
 
@@ -463,7 +474,11 @@ export default function Home() {
                       
                         <CardContent>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
-                            <DataSheet data={doc.data} documentType={doc.documentType} />
+                            <DataSheet
+                              data={doc.data}
+                              documentType={doc.documentType}
+                              onUpdate={(updatedData) => handleUpdateDocument(index, updatedData)}
+                            />
                             {doc.fileUrl && (
                               <div className="flex flex-col">
                                 <h4 className="font-medium text-slate-800 mb-2 text-sm">Document Preview</h4>
