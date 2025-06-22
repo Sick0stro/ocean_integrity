@@ -160,12 +160,12 @@ export default function FileUploader({ onFilesAdded, maxFiles = 4, acceptedFileT
             <Upload className="h-8 w-8 text-blue-600" />
           </div>
           <div>
-            <h3 className="text-lg font-medium">Drag & drop your documents here</h3>
-            <p className="text-sm text-slate-500 mt-1">or click to browse from your computer</p>
-            <p className="text-xs text-slate-400 mt-1">Supports PDF documents • Max {maxFiles} files at once</p>
+            <h3 className="text-lg font-medium">Drag & Drop Each PDF Here</h3>
+            <p className="text-sm text-slate-500 mt-1">or click to load the PDF entire folder from your computer</p>
+            <p className="text-xs text-slate-400 mt-1">Supports PDF Documents Only • Max {maxFiles} files at once</p>
           </div>
           <Button onClick={handleButtonClick} variant="outline" size="lg" className="mt-2">
-            Select Documents
+            Select Folder
           </Button>
         </div>
       )}

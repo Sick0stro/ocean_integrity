@@ -13,7 +13,7 @@ import {
   Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import FileUploader from "@/components/file-uploader"
@@ -437,20 +437,28 @@ export default function Home() {
 
                       return (
                         <Card key={index} className="shadow-md border-slate-200 overflow-hidden">
+                        <CardHeader>
                           <div className={`p-4 ${bgColor} border-b flex items-center justify-between`}>
                             <div className="flex items-center gap-3">
                               <div className={`p-1.5 rounded-md ${bgColor}`}>
                                 <DocIcon className={`h-5 w-5 ${iconColor}`} />
                               </div>
                               <div>
-                                <h3 className="font-medium text-slate-800">{doc.fileName}</h3>
-                                <p className="text-xs">
+                                <CardTitle className="font-medium text-slate-800">
+                                  {doc.fileName}
+                                </CardTitle>
+                                <CardDescription className="text-xs">
                                   Identified as: <span className="font-medium">{title}</span>
-                                </p>
+                                </CardDescription>
                               </div>
                             </div>
-                            <Badge className={`${bgColor} ${iconColor} border-0`}>{title}</Badge>
+                            <CardAction>
+                              <Badge className={`${bgColor} ${iconColor} border-0`}>{title}</Badge>
+                            </CardAction>
                           </div>
+                        </CardHeader>
+                      
+                        <CardContent>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
                             <DataSheet data={doc.data} documentType={doc.documentType} />
                             {doc.fileUrl && (
@@ -464,7 +472,13 @@ export default function Home() {
                               </div>
                             )}
                           </div>
-                        </Card>
+                        </CardContent>
+                      
+                        <CardFooter>
+                          <p className="text-xs text-slate-500">Card Footer (optional info)</p>
+                        </CardFooter>
+                      </Card>
+                        
                       )
                     })}
                   </div>
