@@ -17,6 +17,7 @@ import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader,
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import FileUploader from "@/components/file-uploader"
+import dynamic from 'next/dynamic'
 import DataSheet from "@/components/data-sheet"
 import DocumentTypeCard from "@/components/document-type-card"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +25,8 @@ import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { VideoText } from "@/components/magicui/video-text"
 import CSVDownloadBtn from "@/components/csv-download-btn"
+
+const PdfPreview = dynamic(() => import('@/components/pdf-preview'), { ssr: false })
 
 // Document types matching your backend
 const documentTypes = {
@@ -462,13 +465,9 @@ export default function Home() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
                             <DataSheet data={doc.data} documentType={doc.documentType} />
                             {doc.fileUrl && (
-                              <div className="h-[600px] flex flex-col">
+                              <div className="flex flex-col">
                                 <h4 className="font-medium text-slate-800 mb-2 text-sm">Document Preview</h4>
-                                <iframe
-                                  src={doc.fileUrl}
-                                  className="w-full h-full border rounded-lg"
-                                  title={`Preview of ${doc.fileName}`}
-                                />
+                                <PdfPreview fileUrl={doc.fileUrl} />
                               </div>
                             )}
                           </div>
