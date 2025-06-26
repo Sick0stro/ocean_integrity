@@ -7,15 +7,15 @@ import { Edit2, X, Check } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface DataSheetProps {
-  data: Record<string, any>
+  data: Record<string, unknown>
   documentType: string
 }
 
 export default function DataSheet({ data, documentType }: DataSheetProps) {
-  const [editableData, setEditableData] = useState<Record<string, any>>(data)
+  const [editableData, setEditableData] = useState<Record<string, unknown>>(data)
   const [isEditing, setIsEditing] = useState(false)
   const [editingKey, setEditingKey] = useState<string | null>(null)
-  const [originalData, setOriginalData] = useState<Record<string, any>>(data)
+  const [originalData, setOriginalData] = useState<Record<string, unknown>>(data)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
 
   const handleEdit = () => {
@@ -52,7 +52,6 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
     }))
   }
 
-  // Format field names for display
   const formatFieldName = (key: string) => {
     return key
       .replace(/([A-Z])/g, " $1")
@@ -61,17 +60,11 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
       .trim()
   }
 
-  // Render different layouts based on document type
   const renderDocumentData = () => {
-    if (documentType === "invoice") {
-      return renderInvoiceData()
-    } else if (documentType === "eft_receipt") {
-      return renderEftReceiptData()
-    } else if (documentType === "e-way-bill") {
-      return renderEwayBillData()
-    } else {
-      return renderGenericData()
-    }
+    if (documentType === "invoice") return renderInvoiceData()
+    if (documentType === "eft_receipt") return renderEftReceiptData()
+    if (documentType === "e-way-bill") return renderEwayBillData()
+    return renderGenericData()
   }
 
   const renderInvoiceData = () => {
@@ -79,17 +72,14 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
 
     return (
       <div className="space-y-4">
-        {/* Basic Invoice Info */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Invoice Information</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-sm">Invoice Information</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
               {Object.entries(basicInfo).map(([key, value]) => (
                 <div key={key} className="space-y-1">
                   <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                  <div className="text-sm">{value as string || "N/A"}</div>
+                  <div className="text-sm">{String(value) || "N/A"}</div>
                 </div>
               ))}
             </div>
@@ -98,49 +88,29 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
 
         {/* Supplier & Recipient */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {supplier && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Supplier Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {Object.entries(supplier).map(([key, value]) => (
-                    <div key={key} className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                      <div className="text-sm">{value as string || "N/A"}</div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {recipient && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Recipient Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {Object.entries(recipient).map(([key, value]) => (
-                    <div key={key} className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                      <div className="text-sm">{value as string || "N/A"}</div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+          {[{ title: "Supplier", data: supplier }, { title: "Recipient", data: recipient }].map(({ title, data }) =>
+            data && typeof data === "object" && !Array.isArray(data) ? (
+              <Card key={title}>
+                <CardHeader><CardTitle className="text-sm">{title} Details</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {Object.entries(data as Record<string, unknown>).map(([key, value]) => (
+                      <div key={key} className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
+                        <div className="text-sm">{String(value) || "N/A"}</div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null
           )}
         </div>
 
         {/* Items */}
-        {items && Array.isArray(items) && items.length > 0 && (
+        {Array.isArray(items) && items.length > 0 && (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Items ({items.length})</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-sm">Items ({items.length})</CardTitle></CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <Table>
@@ -155,16 +125,19 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {items.map((item: any, index: number) => (
-                      <TableRow key={index}>
-                        <TableCell className="text-xs">{item.sino || index + 1}</TableCell>
-                        <TableCell className="text-xs">{item.product_description || "N/A"}</TableCell>
-                        <TableCell className="text-xs">{item.hsn_code || "N/A"}</TableCell>
-                        <TableCell className="text-xs">{item.quantity || "N/A"}</TableCell>
-                        <TableCell className="text-xs">{item.unit_price || "N/A"}</TableCell>
-                        <TableCell className="text-xs">{item.total || "N/A"}</TableCell>
-                      </TableRow>
-                    ))}
+                    {items.map((item, index) => {
+                      const row = item as Record<string, unknown>
+                      return (
+                        <TableRow key={index}>
+                          <TableCell className="text-xs">{String(row.sino ?? index + 1)}</TableCell>
+                          <TableCell className="text-xs">{String(row.product_description ?? "N/A")}</TableCell>
+                          <TableCell className="text-xs">{String(row.hsn_code ?? "N/A")}</TableCell>
+                          <TableCell className="text-xs">{String(row.quantity ?? "N/A")}</TableCell>
+                          <TableCell className="text-xs">{String(row.unit_price ?? "N/A")}</TableCell>
+                          <TableCell className="text-xs">{String(row.total ?? "N/A")}</TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -173,17 +146,15 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
         )}
 
         {/* Total Summary */}
-        {total_summary && (
+        {total_summary && typeof total_summary === "object" && (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Total Summary</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-sm">Total Summary</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {Object.entries(total_summary).map(([key, value]) => (
+                {Object.entries(total_summary as Record<string, unknown>).map(([key, value]) => (
                   <div key={key} className="space-y-1">
                     <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                    <div className="text-sm font-medium">{value as string || "N/A"}</div>
+                    <div className="text-sm font-medium">{String(value) || "N/A"}</div>
                   </div>
                 ))}
               </div>
@@ -197,101 +168,32 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
   const renderEftReceiptData = () => {
     const { transaction_details, sender_details, recipient_details, reference_numbers, ...basicInfo } = editableData
 
-    return (
-      <div className="space-y-4">
-        {/* Basic Info */}
+    const renderSection = (title: string, data?: unknown) =>
+      data && typeof data === "object" ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Receipt Information</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
-              {Object.entries(basicInfo).map(([key, value]) => (
+              {Object.entries(data as Record<string, unknown>).map(([key, value]) => (
                 <div key={key} className="space-y-1">
                   <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                  <div className="text-sm">{value || "N/A"}</div>
+                  <div className="text-sm">{String(value) || "N/A"}</div>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
+      ) : null
 
-        {/* Transaction Details */}
-        {transaction_details && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Transaction Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                {Object.entries(transaction_details).map(([key, value]) => (
-                  <div key={key} className="space-y-1">
-                    <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                    <div className="text-sm">{value as string || "N/A"}</div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Sender & Recipient */}
+    return (
+      <div className="space-y-4">
+        {renderSection("Receipt Information", basicInfo)}
+        {renderSection("Transaction Details", transaction_details)}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {sender_details && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Sender Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {Object.entries(sender_details).map(([key, value]) => (
-                    <div key={key} className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                      <div className="text-sm">{value as string || "N/A"}</div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {recipient_details && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Recipient Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {Object.entries(recipient_details).map(([key, value]) => (
-                    <div key={key} className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                      <div className="text-sm">{value as string || "N/A"}</div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {renderSection("Sender Details", sender_details)}
+          {renderSection("Recipient Details", recipient_details)}
         </div>
-
-        {/* Reference Numbers */}
-        {reference_numbers && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Reference Numbers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                {Object.entries(reference_numbers).map(([key, value]) => (
-                  <div key={key} className="space-y-1">
-                    <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                    <div className="text-sm">{value as string || "N/A"}</div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {renderSection("Reference Numbers", reference_numbers)}
       </div>
     )
   }
@@ -301,75 +203,67 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
 
     return (
       <div className="space-y-4">
-        {/* Basic Info */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">E-Way Bill Information</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-sm">E-Way Bill Information</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
               {Object.entries(basicInfo).map(([key, value]) => (
                 <div key={key} className="space-y-1">
                   <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                  <div className="text-sm">{value || "N/A"}</div>
+                  <div className="text-sm">{String(value) || "N/A"}</div>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        {/* Address Details */}
-        {address_details && (
+        {address_details && typeof address_details === "object" && (
           <div className="space-y-4">
-            {Object.entries(address_details).map(([section, details]) => (
-              <Card key={section}>
-                <CardHeader>
-                  <CardTitle className="text-sm">{formatFieldName(section)} Address</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {typeof details === "object" &&
-                      details &&
-                      Object.entries(details).map(([key, value]) => (
+            {Object.entries(address_details as Record<string, unknown>).map(([section, details]) =>
+              typeof details === "object" ? (
+                <Card key={section}>
+                  <CardHeader><CardTitle className="text-sm">{formatFieldName(section)} Address</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {Object.entries(details as Record<string, unknown>).map(([key, value]) => (
                         <div key={key} className="space-y-1">
                           <label className="text-xs font-medium text-slate-600">{formatFieldName(key)}</label>
-                          <div className="text-sm">{value || "N/A"}</div>
+                          <div className="text-sm">{String(value) || "N/A"}</div>
                         </div>
                       ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null
+            )}
           </div>
         )}
       </div>
     )
   }
 
-  const renderGenericData = () => {
-    return (
-      <Card>
-        <CardContent className="p-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-1/3">Field</TableHead>
-                <TableHead>Value</TableHead>
+  const renderGenericData = () => (
+    <Card>
+      <CardContent className="p-4">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-1/3">Field</TableHead>
+              <TableHead>Value</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Object.entries(editableData).map(([key, value]) => (
+              <TableRow key={key}>
+                <TableCell className="font-medium">{formatFieldName(key)}</TableCell>
+                <TableCell>{typeof value === "object" ? JSON.stringify(value) : String(value) || "N/A"}</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {Object.entries(editableData).map(([key, value]) => (
-                <TableRow key={key}>
-                  <TableCell className="font-medium">{formatFieldName(key)}</TableCell>
-                  <TableCell>{typeof value === "object" ? JSON.stringify(value) : value || "N/A"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    )
-  }
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
 
   return (
     <div className="space-y-4">
@@ -396,4 +290,4 @@ export default function DataSheet({ data, documentType }: DataSheetProps) {
       {renderDocumentData()}
     </div>
   )
-}
+                           }
