@@ -3,6 +3,7 @@ import { MainNav } from "../components/main-nav"
 import { MobileNav } from "@/components/mobile-nav"
 import { Button } from "./ui/button"
 import { ModeSwitcher } from "./mode-switcher"
+import { Badge } from "./ui/badge"
 
 export function SiteHeader() {
   return (
@@ -14,15 +15,10 @@ export function SiteHeader() {
           <div className="ml-auto flex items-center gap-2 md:flex-1 md:justify-end">
       
             <nav className="flex items-center gap-0.5">
-              <Button
-                asChild
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 px-0"
-              >
+              
+                <Badge variant="secondary">Beta</Badge>
                
-              </Button>
-              <ModeSwitcher />
+              
             </nav>
           </div>
         </div>

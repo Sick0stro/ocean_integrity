@@ -1,16 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo, useCallback } from "react"
+import type { Document as AppDocument } from "@/types/document-types"
+import type { ProcessedDocument } from "@/types/processed-document"
 import {
   FileText,
   AlertCircle,
   CheckCircle2,
   ArrowRight,
-  FileCheck,
-  Truck,
-  CreditCard,
   Loader2,
   Clock,
+  FileCheck,
+  CreditCard,
+  Truck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,7 +21,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import FileUploader from "@/components/file-uploader"
 import dynamic from 'next/dynamic'
 import DataSheet from "@/components/data-sheet"
+// Import documentTemplates for default document structure
+import { documentTemplates } from "@/components/data-sheet";
 import DocumentTypeCard from "@/components/document-type-card"
+import { documentTypes } from "@/constants/document-types"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -28,31 +33,15 @@ import CSVDownloadBtn from "@/components/csv-download-btn"
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), { ssr: false })
 
-// Document types matching your backend
-const documentTypes = {
-  invoice: { icon: FileCheck, color: "text-blue-500", bgColor: "bg-blue-100", title: "Invoice" },
-  eft_receipt: { icon: CreditCard, color: "text-green-500", bgColor: "bg-green-100", title: "EFT Receipt" },
-  "e-way-bill": { icon: Truck, color: "text-amber-500", bgColor: "bg-amber-100", title: "E-Way Bill" },
-}
-
-interface ProcessedDocument {
-  fileName: string
-  documentType: string
-  data: Record<string, unknown>
-  fileUrl?: string
-  status: "pending" | "processing" | "completed" | "error"
-  error?: string
-}
-
 export default function Home() {
   const [files, setFiles] = useState<File[]>([])
   const [processedDocuments, setProcessedDocuments] = useState<ProcessedDocument[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
-  const [activeTab, setActiveTab] = useState("upload")
+  const [activeTab, setActiveTab] = useState<"upload" | "results">("upload")
   const [currentProcessingIndex, setCurrentProcessingIndex] = useState(-1)
   const [processingProgress, setProcessingProgress] = useState(0)
 
-  const handleFilesAdded = (newFiles: File[]) => {
+  const handleFilesAdded = useCallback((newFiles: File[]) => {
     setFiles((prevFiles) => {
       const updatedFiles = [...prevFiles];
       newFiles.forEach((newFile) => {
@@ -67,14 +56,14 @@ export default function Home() {
       });
       return updatedFiles;
     });
-  };
+  }, []);
 
   const handleRemoveFile = (index: number) => {
     setFiles((prevFiles) => prevFiles.filter((_, i) => i !== index))
     setProcessedDocuments((prevDocs) => prevDocs.filter((_, i) => i !== index))
   }
 
-  const handleUpdateDocument = (index: number, updatedData: Record<string, unknown>) => {
+  const handleUpdateDocument = (index: number, updatedData: AppDocument) => {
     setProcessedDocuments((prev) => {
       const newDocs = [...prev]
       newDocs[index] = {
@@ -96,7 +85,19 @@ export default function Home() {
     const initialDocs: ProcessedDocument[] = files.map((file) => ({
       fileName: file.name,
       documentType: "",
-      data: {},
+      data: Object.entries(documentTemplates.invoice).reduce((acc, [key, value]) => {
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          // Recursively set nested fields to null
+          acc[key] = Object.fromEntries(
+            Object.entries(value).map(([k, v]) => [k, v === '' || v === 0 ? null : v])
+          );
+        } else if (Array.isArray(value)) {
+          acc[key] = [];
+        } else {
+          acc[key] = value === '' || value === 0 ? null : value;
+        }
+        return acc;
+      }, {} as any) as AppDocument,
       fileUrl: "",
       status: "pending",
     }))
@@ -246,8 +247,8 @@ export default function Home() {
     document.body.removeChild(link)
   }
 
-  const completedCount = processedDocuments.filter((doc) => doc.status === "completed").length
-  const errorCount = processedDocuments.filter((doc) => doc.status === "error").length
+  const completedCount = useMemo(() => processedDocuments.filter((d) => d.status === "completed").length, [processedDocuments])
+  const errorCount = useMemo(() => processedDocuments.filter((d) => d.status === "error").length, [processedDocuments])
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
@@ -265,7 +266,7 @@ export default function Home() {
         </header>
 
         <div className="max-w-4xl mx-auto">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <Tabs value={activeTab} onValueChange={(v)=>setActiveTab(v as "upload" | "results")} className="space-y-6">
             <div className="flex justify-center">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="upload" className="text-base py-1">

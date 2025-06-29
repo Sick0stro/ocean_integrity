@@ -11,13 +11,7 @@ import {
 import { Download } from 'lucide-react';
 
 // Represents each document that has been processed
-interface ProcessedDocument {
-  fileName: string;
-  documentType: string;
-  data: Record<string, unknown>;
-  status: 'pending' | 'processing' | 'completed' | 'error';
-  error?: string;
-}
+import type { ProcessedDocument } from "@/types/processed-document";
 
 // Props for the CSVDownloadBtn component
 interface CSVDownloadBtnProps {
