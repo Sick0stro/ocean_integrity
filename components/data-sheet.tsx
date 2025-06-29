@@ -5,11 +5,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Edit, Save, XCircle } from "lucide-react"
+import { Document } from "@/types/document-types"
 
-// Helper function to set a value in a nested object
-type NestedObject = Record<string, any>;
+type NestedObject = Record<string, unknown>;
 
-const setNestedValue = <T extends NestedObject>(obj: T, path: string, value: any): T => {
+const setNestedValue = <T extends NestedObject>(
+  obj: T,
+  path: string,
+  value: string | number | null
+): T => {
   const keys = path.split('.');
   const lastKey = keys[keys.length - 1];
   
@@ -23,14 +27,14 @@ const setNestedValue = <T extends NestedObject>(obj: T, path: string, value: any
 }
 
 interface DataRendererProps {
-  data: Record<string, unknown>;
+  data: NestedObject;
   pathPrefix?: string;
   isEditing: boolean;
-  handleChange: (path: string, value: unknown) => void;
+  handleChange: (path: string, value: string) => void;
 }
 
 const DataRenderer: React.FC<DataRendererProps> = ({ data, pathPrefix = '', isEditing, handleChange }) => {
-  if (data === null || typeof data !== 'object') {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
     return null;
   }
 
@@ -43,7 +47,7 @@ const DataRenderer: React.FC<DataRendererProps> = ({ data, pathPrefix = '', isEd
           return (
             <div key={currentPath} className="ml-4 pl-4 border-l">
               <h5 className="font-semibold text-sm capitalize text-slate-600 mb-2">{key.replace(/_/g, " ")}</h5>
-              <DataRenderer data={value as Record<string, unknown>} pathPrefix={currentPath} isEditing={isEditing} handleChange={handleChange} />
+              <DataRenderer data={value as NestedObject} pathPrefix={currentPath} isEditing={isEditing} handleChange={handleChange} />
             </div>
           )
         }
@@ -76,12 +80,12 @@ const DataRenderer: React.FC<DataRendererProps> = ({ data, pathPrefix = '', isEd
 }
 
 interface DataSheetProps {
-  data: Record<string, unknown>;
-  onUpdate: (updatedData: Record<string, unknown>) => void;
+  data: Document;
+  onUpdate: (updatedData: Document) => void;
 }
 
 export default function DataSheet({ data, onUpdate }: DataSheetProps) {
-  const [editableData, setEditableData] = useState<Record<string, unknown>>(data)
+  const [editableData, setEditableData] = useState<Document>(data)
   const [isEditing, setIsEditing] = useState(false)
 
   // Update internal state if the initial data prop changes
@@ -103,8 +107,12 @@ export default function DataSheet({ data, onUpdate }: DataSheetProps) {
     setIsEditing(false)
   }
 
-  const handleChange = (path: string, value: unknown) => {
-    setEditableData((prev) => setNestedValue(prev, path, value))
+  const handleChange = (path: string, value: string) => {
+    setEditableData((prev) => {
+      // Create a deep copy to avoid direct state mutation
+      const newData = JSON.parse(JSON.stringify(prev));
+      return setNestedValue(newData, path, value);
+    });
   }
 
   return (
