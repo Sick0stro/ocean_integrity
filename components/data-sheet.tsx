@@ -8,6 +8,7 @@ import { Edit, Save, XCircle} from "lucide-react"
 import type { Document as AppDocument } from "@/types/document-types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
+// test change
 type NestedObject = { [key: string]: string | number | boolean | NestedObject | NestedObject[] };
 
 const setNestedValue = <T extends NestedObject>(
