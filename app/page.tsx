@@ -23,6 +23,7 @@ import dynamic from 'next/dynamic'
 import DataSheet from "@/components/data-sheet"
 // Import documentTemplates for default document structure
 import { documentTemplates } from "@/components/data-sheet";
+import { setDocumentField, documentEntries } from "@/types/document-types-util";
 import DocumentTypeCard from "@/components/document-type-card"
 import { documentTypes } from "@/constants/document-types"
 import { Badge } from "@/components/ui/badge"
@@ -82,22 +83,11 @@ export default function Home() {
     setProcessingProgress(0)
 
     // Initialize processed documents array
+    // Use a deep clone of the invoice template to ensure type safety
     const initialDocs: ProcessedDocument[] = files.map((file) => ({
       fileName: file.name,
       documentType: "",
-      data: Object.entries(documentTemplates.invoice).reduce((acc, [key, value]) => {
-        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-          // Recursively set nested fields to null
-          acc[key] = Object.fromEntries(
-            Object.entries(value).map(([k, v]) => [k, v === '' || v === 0 ? null : v])
-          );
-        } else if (Array.isArray(value)) {
-          acc[key] = [];
-        } else {
-          acc[key] = value === '' || value === 0 ? null : value;
-        }
-        return acc;
-      }, {} as any) as AppDocument,
+      data: JSON.parse(JSON.stringify(documentTemplates.invoice)) as AppDocument,
       fileUrl: "",
       status: "pending",
     }))

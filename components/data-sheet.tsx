@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Edit, Save, XCircle, Plus, Trash2 } from "lucide-react"
+import { Edit, Save, XCircle} from "lucide-react"
 import type { Document as AppDocument } from "@/types/document-types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -309,14 +309,14 @@ const mergeWithTemplate = (template: NestedObject, data: NestedObject): NestedOb
 
   // Merge keys from template first
   Object.keys(template).forEach((key) => {
-    result[key] = mergeWithTemplate(template[key] as NestedObject, data ? (data as any)[key] : undefined);
+    result[key] = mergeWithTemplate(template[key] as NestedObject, data ? (data as NestedObject)[key] : undefined);
   });
 
   // Add any additional keys that exist in data but not in template
   if (data) {
     Object.keys(data).forEach((key) => {
       if (!(key in result)) {
-        result[key] = (data as any)[key];
+        result[key] = (data as NestedObject)[key];
       }
     });
   }
@@ -326,7 +326,7 @@ const mergeWithTemplate = (template: NestedObject, data: NestedObject): NestedOb
 
 export default function DataSheet({ data, documentType, onUpdate }: DataSheetProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const template = documentTemplates[(data as any).document_type] ?? {};
+  const template = documentTemplates[documentType] ?? {};
   const [editableData, setEditableData] = useState<NestedObject>(mergeWithTemplate(template, data as unknown as NestedObject));
 
   // Update internal state if the initial data prop changes

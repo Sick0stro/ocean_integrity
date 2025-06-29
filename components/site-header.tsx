@@ -1,8 +1,6 @@
 
 import { MainNav } from "../components/main-nav"
 import { MobileNav } from "@/components/mobile-nav"
-import { Button } from "./ui/button"
-import { ModeSwitcher } from "./mode-switcher"
 import { Badge } from "./ui/badge"
 
 export function SiteHeader() {
