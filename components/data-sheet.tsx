@@ -338,7 +338,7 @@ export default function DataSheet({ data, documentType, onUpdate }: DataSheetPro
   useEffect(() => {
     const freshTemplate = documentTemplates[documentType] ?? {};
     setEditableData(mergeWithTemplate(freshTemplate, data as unknown as NestedObject));
-  }, [data])
+  }, [data, documentType]) // Added documentType to dependency array
 
   const handleEdit = () => {
     setIsEditing(true)

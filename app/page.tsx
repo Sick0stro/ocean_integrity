@@ -23,7 +23,7 @@ import dynamic from 'next/dynamic'
 import DataSheet from "@/components/data-sheet"
 // Import documentTemplates for default document structure
 import { documentTemplates } from "@/components/data-sheet";
-import { setDocumentField, documentEntries } from "@/types/document-types-util";
+// import { setDocumentField, documentEntries } from "@/types/document-types-util"; // Removed unused imports
 import DocumentTypeCard from "@/components/document-type-card"
 import { documentTypes } from "@/constants/document-types"
 import { Badge } from "@/components/ui/badge"
