@@ -22,7 +22,7 @@ import FileUploader from "@/components/file-uploader"
 import dynamic from 'next/dynamic'
 import DataSheet from "@/components/data-sheet"
 // Import documentTemplates for default document structure
-import { documentTemplates } from "@/components/data-sheet";
+import { documentTemplates } from "@/constants/document-templates";
 // import { setDocumentField, documentEntries } from "@/types/document-types-util"; // Removed unused imports
 import DocumentTypeCard from "@/components/document-type-card"
 import { documentTypes } from "@/constants/document-types"
@@ -466,10 +466,11 @@ export default function Home() {
                         <CardContent>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
                             <DataSheet
-                              data={doc.data}
-                              documentType={doc.documentType}
-                              onUpdate={(updatedData) => handleUpdateDocument(index, updatedData)}
-                            />
+  key={doc.fileName + '-' + doc.documentType + '-' + (typeof doc.data === 'object' ? JSON.stringify(doc.data) : String(doc.data))}
+  data={doc.data}
+  documentType={doc.documentType}
+  onUpdate={(updatedData: any) => handleUpdateDocument(index, updatedData)}
+/>
                             {doc.fileUrl && (
                               <div className="flex flex-col">
                                 <h4 className="font-medium text-slate-800 mb-2 text-sm">Document Preview</h4>

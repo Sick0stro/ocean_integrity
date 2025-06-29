@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Edit, Save, XCircle} from "lucide-react"
 import type { Document as AppDocument } from "@/types/document-types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { documentTemplates } from "@/constants/document-templates"
 
 // test change
 type NestedObject = { [key: string]: string | number | boolean | NestedObject | NestedObject[] };
@@ -41,7 +42,9 @@ const renderValue = (value: unknown): React.ReactNode => {
   return String(value);
 };
 
-const DataRenderer: React.FC<DataRendererProps> = ({ data, pathPrefix = '', isEditing, handleChange }) => {
+import React from "react"
+
+const DataRenderer: React.FC<DataRendererProps> = React.memo(({ data, pathPrefix = '', isEditing, handleChange }) => {
   if (data === null || typeof data !== 'object') {
     return <p className="text-sm text-slate-500">No data available</p>;
   }
@@ -124,175 +127,51 @@ const DataRenderer: React.FC<DataRendererProps> = ({ data, pathPrefix = '', isEd
   return (
     <div className="space-y-4">
       {Object.entries(data).map(([key, value]) => {
-        const currentPath = pathPrefix ? `${pathPrefix}.${key}` : key
-
-        // Handle arrays (e.g., items list)
-        if (Array.isArray(value)) {
+        const currentPath = pathPrefix ? `${pathPrefix}.${key}` : key;
+        
+        if (value === null || typeof value !== 'object') {
           return (
-            <div key={currentPath} className="ml-4 pl-4 border-l">
-              <DataRenderer
-                data={value as unknown as NestedObject}
+            <div key={key} className="grid grid-cols-4 gap-4 items-center">
+              <Label className="text-sm font-medium text-slate-700">
+                {key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              </Label>
+              {isEditing ? (
+                <div className="col-span-3">
+                  <Input
+                    type="text"
+                    value={value as string | number}
+                    onChange={(e) => handleChange(currentPath, e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+              ) : (
+                <div className="col-span-3 text-slate-900">
+                  {renderValue(value)}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <div key={key} className="space-y-2">
+            <h3 className="text-sm font-medium text-slate-700">
+              {key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+            </h3>
+            <div className="ml-4 border-l-2 border-slate-200 pl-4">
+              <DataRenderer 
+                data={value as NestedObject} 
                 pathPrefix={currentPath}
                 isEditing={isEditing}
                 handleChange={handleChange}
               />
             </div>
-          );
-        }
-
-        // Nested object (non-array)
-        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-          return (
-            <div key={currentPath} className="ml-4 pl-4 border-l">
-              <h5 className="font-semibold text-sm capitalize text-slate-600 mb-2">{key.replace(/_/g, " ")}</h5>
-              <DataRenderer data={value as NestedObject} pathPrefix={currentPath} isEditing={isEditing} handleChange={handleChange} />
-            </div>
-          )
-        }
-
-        // Skip rendering certain fields that are not useful to edit
-        // Skip fields not useful for display/editing but keep document_type visible
-        if (['confidence', 'content', 'fileUrl', 'success'].includes(key)) {
-          return null;
-        }
-        
-        // Skip null or undefined values
-        if (value === null || value === undefined) {
-          return null;
-        }
-        
-        // Skip empty objects and arrays as they'll be handled by their parent
-        if (typeof value === 'object' && Object.keys(value).length === 0) {
-          return null;
-        }
-
-        return (
-          <div key={currentPath} className="grid grid-cols-2 items-center gap-2">
-            <Label htmlFor={currentPath} className="text-sm font-medium text-slate-700 truncate">
-              {key.replace(/_/g, " ")}
-            </Label>
-            {isEditing ? (
-              <Input
-                id={currentPath}
-                value={String(value ?? '')}
-                onChange={(e) => handleChange(currentPath, e.target.value)}
-                className="text-sm"
-              />
-            ) : (
-              <div className="text-sm text-slate-900 break-words">
-                {renderValue(value)}
-                {typeof value === 'object' && value !== null && !Array.isArray(value) && (
-                  <div className="ml-4 pl-4 border-l border-slate-200 mt-1">
-                    <DataRenderer 
-                      data={value} 
-                      pathPrefix={`${pathPrefix}.${key}`} 
-                      isEditing={isEditing} 
-                      handleChange={handleChange} 
-                    />
-                  </div>
-                )}
-              </div>
-            )}
           </div>
-        )
+        );
       })}
     </div>
   )
-}
-
-interface DataSheetProps {
-  data: AppDocument;
-  documentType: string;
-  onUpdate: (updatedData: AppDocument) => void;
-}
-
-// Templates containing ALL expected fields for every document type as defined in types/document-types.ts
-export const documentTemplates: Record<string, NestedObject> = {
-  eft_receipt: {
-    document_type: 'eft_receipt',
-    document_title: '',
-    bank_name: '',
-    transaction_details: {
-      transaction_date_time: '',
-      value_date: '',
-      amount: 0,
-      currency: '',
-      payment_type: '',
-      description: ''
-    },
-    sender_details: {
-      name: '',
-      bank: '',
-      branch: ''
-    },
-    recipient_details: {
-      name: '',
-      customer_no: '',
-      account_no: '',
-      iban: ''
-    },
-    reference_numbers: {
-      inquiry_no: '',
-      transaction_ref: '',
-      document_no: '',
-      ettn: ''
-    }
-  },
-  invoice: {
-    document_type: 'invoice',
-    invoice_title: '',
-    irn: '',
-    ack_no: '',
-    ack_date: '',
-    document_no: '',
-    document_date: '',
-    supplier: {
-      name: '',
-      gstin: '',
-      address: '',
-      phone: ''
-    },
-    recipient: {
-      name: '',
-      gstin: '',
-      address: ''
-    },
-    items: [],
-    total_summary: {
-      taxable_amount: 0,
-      cgst_amount: 0,
-      sgst_amount: 0,
-      igst_amount: 0,
-      total_invoice_amount: 0
-    }
-  },
-  'e-way-bill': {
-    document_type: 'e-way-bill',
-    eway_bill_no: '',
-    generated_date: '',
-    generated_by: '',
-    valid_upto: '',
-    mode: '',
-    approx_distance: '',
-    address_details: {
-      from: {
-        gstin: '',
-        name: '',
-        address: ''
-      },
-      to: {
-        gstin: '',
-        name: '',
-        address: ''
-      },
-      ship_to: {
-        gstin: '',
-        name: '',
-        address: ''
-      }
-    }
-  }
-};
+})
 
 // Deep merge helper to ensure every expected field is present
 const mergeWithTemplate = (template: NestedObject, data: NestedObject): NestedObject => {
@@ -301,45 +180,58 @@ const mergeWithTemplate = (template: NestedObject, data: NestedObject): NestedOb
     return data ?? template;
   }
 
-  // Handle arrays – we simply return the data if it's an array, otherwise the template
+  // Handle arrays (shallow copy for now, could be made recursive if needed)
   if (Array.isArray(template)) {
-    return Array.isArray(data) ? data : template;
+    return (Array.isArray(data) ? [...data] : [...template]) as unknown as NestedObject;
   }
 
+  // Create a new object that will hold the merged result
   const result: NestedObject = {};
 
-  // Merge keys from template first
-  Object.keys(template).forEach((key) => {
-    const value = data ? (data as NestedObject)[key] : undefined;
-    result[key] = mergeWithTemplate(
-      template[key] as NestedObject,
-      typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as NestedObject) : {}
-    );
-  });
-
-  // Add any additional keys that exist in data but not in template
-  if (data) {
-    Object.keys(data).forEach((key) => {
-      if (!(key in result)) {
-        const value = (data as NestedObject)[key];
-        result[key] = value;
+  // For each key in the template
+  for (const key in template) {
+    if (Object.prototype.hasOwnProperty.call(template, key)) {
+      // If data has the key and it's not null/undefined
+      if (data && data[key] !== undefined && data[key] !== null) {
+        // If both values are objects, merge them recursively
+        if (typeof template[key] === 'object' && template[key] !== null && 
+            typeof data[key] === 'object' && data[key] !== null) {
+          result[key] = mergeWithTemplate(
+            template[key] as NestedObject, 
+            data[key] as NestedObject
+          );
+        } else {
+          // Otherwise, use the data value
+          result[key] = data[key];
+        }
+      } else {
+        // Otherwise, use the template value
+        result[key] = template[key];
       }
-    });
+    }
   }
+
 
   return result;
 };
 
-export default function DataSheet({ data, documentType, onUpdate }: DataSheetProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const template = documentTemplates[documentType] ?? {};
+interface DataSheetProps {
+  data: unknown;
+  documentType: string;
+  onUpdate: (updated: AppDocument) => void;
+}
+// DataSheetProps interface is now defined above. DataSheet uses this interface.
+const DataSheet: React.FC<DataSheetProps> = ({ data, documentType, onUpdate }) => {
+  const [isEditing, setIsEditing] = useState(false); 
+  const template = documentTemplates[documentType as keyof typeof documentTemplates] || {};
   const [editableData, setEditableData] = useState<NestedObject>(mergeWithTemplate(template, data as unknown as NestedObject));
 
-  // Update internal state if the initial data prop changes
+  // Ensure state resets if data deeply changes (force remount via key in parent for full reset)
   useEffect(() => {
-    const freshTemplate = documentTemplates[documentType] ?? {};
+    const freshTemplate = documentTemplates[documentType as keyof typeof documentTemplates] || {};
     setEditableData(mergeWithTemplate(freshTemplate, data as unknown as NestedObject));
-  }, [data, documentType]) // Added documentType to dependency array
+    setIsEditing(false);
+  }, [data, documentType]);
 
   const handleEdit = () => {
     setIsEditing(true)
@@ -390,3 +282,4 @@ export default function DataSheet({ data, documentType, onUpdate }: DataSheetPro
     </div>
   )
 }
+export default DataSheet;
