@@ -469,7 +469,7 @@ export default function Home() {
   key={doc.fileName + '-' + doc.documentType + '-' + (typeof doc.data === 'object' ? JSON.stringify(doc.data) : String(doc.data))}
   data={doc.data}
   documentType={doc.documentType}
-  onUpdate={(updatedData: any) => handleUpdateDocument(index, updatedData)}
+  onUpdate={(updatedData: AppDocument) => handleUpdateDocument(index, updatedData)}
 />
                             {doc.fileUrl && (
                               <div className="flex flex-col">

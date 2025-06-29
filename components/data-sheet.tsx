@@ -44,7 +44,7 @@ const renderValue = (value: unknown): React.ReactNode => {
 
 import React from "react"
 
-const DataRenderer: React.FC<DataRendererProps> = React.memo(({ data, pathPrefix = '', isEditing, handleChange }) => {
+const DataRendererComponent: React.FC<DataRendererProps> = ({ data, pathPrefix = '', isEditing, handleChange }) => {
   if (data === null || typeof data !== 'object') {
     return <p className="text-sm text-slate-500">No data available</p>;
   }
@@ -171,7 +171,11 @@ const DataRenderer: React.FC<DataRendererProps> = React.memo(({ data, pathPrefix
       })}
     </div>
   )
-})
+}
+
+DataRendererComponent.displayName = 'DataRenderer';
+
+const DataRenderer = React.memo(DataRendererComponent);
 
 // Deep merge helper to ensure every expected field is present
 const mergeWithTemplate = (template: NestedObject, data: NestedObject): NestedObject => {
