@@ -320,7 +320,8 @@ const mergeWithTemplate = (template: NestedObject, data: NestedObject): NestedOb
   if (data) {
     Object.keys(data).forEach((key) => {
       if (!(key in result)) {
-        result[key] = (data as NestedObject)[key];
+        const value = (data as NestedObject)[key];
+        result[key] = value;
       }
     });
   }
@@ -335,7 +336,7 @@ export default function DataSheet({ data, documentType, onUpdate }: DataSheetPro
 
   // Update internal state if the initial data prop changes
   useEffect(() => {
-    const freshTemplate = documentTemplates[(data as any).document_type] ?? {};
+    const freshTemplate = documentTemplates[documentType] ?? {};
     setEditableData(mergeWithTemplate(freshTemplate, data as unknown as NestedObject));
   }, [data])
 
