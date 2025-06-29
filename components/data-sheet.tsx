@@ -8,7 +8,7 @@ import { Edit, Save, XCircle} from "lucide-react"
 import type { Document as AppDocument } from "@/types/document-types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-type NestedObject = { [key: string]: string | number | boolean | NestedObject | NestedObject[] | any };
+type NestedObject = { [key: string]: string | number | boolean | NestedObject | NestedObject[] };
 
 const setNestedValue = <T extends NestedObject>(
   obj: T,
@@ -33,7 +33,7 @@ interface DataRendererProps {
   handleChange: (path: string, value: string) => void;
 }
 
-const renderValue = (value: any): React.ReactNode => {
+const renderValue = (value: unknown): React.ReactNode => {
   if (value === null || value === undefined) return 'N/A';
   if (Array.isArray(value)) return null; // Will be handled by parent
   if (typeof value === 'object') return null; // Will be handled by parent
@@ -309,7 +309,11 @@ const mergeWithTemplate = (template: NestedObject, data: NestedObject): NestedOb
 
   // Merge keys from template first
   Object.keys(template).forEach((key) => {
-    result[key] = mergeWithTemplate(template[key] as NestedObject, data ? (data as NestedObject)[key] : undefined);
+    const value = data ? (data as NestedObject)[key] : undefined;
+    result[key] = mergeWithTemplate(
+      template[key] as NestedObject,
+      typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as NestedObject) : {}
+    );
   });
 
   // Add any additional keys that exist in data but not in template
