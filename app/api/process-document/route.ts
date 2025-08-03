@@ -59,7 +59,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
     "payment_type": "string",
     "description": "string"
   },
-  "sender_details": { "name": "string", "bank": "string", "branch": "string" },
+  "sender_details": { "name": "string", "agst_ref": "string",},
   "recipient_details": { "name": "string", "customer_no": "string", "account_no": "string", "iban": "string" },
   "reference_numbers": { "inquiry_no": "string", "transaction_ref": "string", "document_no": "string", "ettn": "string" }
 }
@@ -100,6 +100,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
 **Template for \`e-way-bill\`**
 {
   "document_type": "e-way-bill",
+  "document_details": "string",
   "eway_bill_no": "string",
   "generated_date": "string (dd/mm/yyyy hh:mm pm/am)",
   "generated_by": "string",

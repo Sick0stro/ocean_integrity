@@ -20,8 +20,7 @@ export const documentTemplates: DocumentTemplates = {
     },
     sender_details: {
       name: '',
-      bank: '',
-      branch: ''
+      agst_ref: '',
     },
     recipient_details: {
       name: '',
@@ -66,6 +65,7 @@ export const documentTemplates: DocumentTemplates = {
   },
   'e-way-bill': {
     document_title: '',
+    document_details: '',
     eway_bill_no: '',
     generated_date: '',
     generated_by: '',

@@ -18,8 +18,7 @@ interface EFTReceipt extends BaseDocument {
   };
   sender_details: {
     name: string;
-    bank: string;
-    branch: string;
+    agst_ref: string;
   };
   recipient_details: {
     name: string;
@@ -78,6 +77,7 @@ interface Invoice extends BaseDocument {
 // E-Way Bill
 interface EWayBill extends BaseDocument {
   document_type: 'e-way-bill';
+  document_details: string;
   eway_bill_no: string;
   generated_date: string; // dd/mm/yyyy hh:mm pm/am
   generated_by: string;
