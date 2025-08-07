@@ -105,10 +105,4 @@ interface EWayBill extends BaseDocument {
 
 type Document = EFTReceipt | Invoice | EWayBill;
 
-export type {
-  BaseDocument,
-  EFTReceipt,
-  Invoice,
-  EWayBill,
-  Document
-};
+export type { BaseDocument, EFTReceipt, Invoice, EWayBill, Document };
