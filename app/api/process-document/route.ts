@@ -616,6 +616,18 @@ You are an expert document processing AI. Your task is to analyze the provided d
         storageType: 'none',
         databaseId: null,
       };
+
+      // Enhanced error detection for better user feedback
+      if (uploadError && typeof uploadError === 'object') {
+        const errorObj = uploadError as {
+          originalError?: { cause?: { code?: string } };
+        };
+        if (errorObj.originalError?.cause?.code === 'UND_ERR_SOCKET') {
+          console.error(
+            `🔌 [${requestId}] Socket error detected - network connection dropped`
+          );
+        }
+      }
     }
 
     const uploadTime = Date.now() - uploadStart;
@@ -638,13 +650,20 @@ You are an expert document processing AI. Your task is to analyze the provided d
     );
 
     // Ensure we're returning the correct response structure
+    // Success should only be true if BOTH AI processing AND storage succeeded
     const response = {
-      success: true,
+      success: storageResult.success, // Changed from hardcoded 'true' to actual storage result
       data: parsedJSON,
       fileUrl: storageResult.publicUrl,
       storageType: storageResult.storageType,
       databaseId: storageResult.databaseId,
       uploadSuccess: storageResult.success,
+      error: !storageResult.success
+        ? `Storage failed: All upload attempts failed. ${
+            (uploadError as { message?: string })?.message ||
+            'Network connectivity issue'
+          }`
+        : undefined,
       meta: {
         requestId,
         processingTime: totalTime,
@@ -660,7 +679,18 @@ You are an expert document processing AI. Your task is to analyze the provided d
       fileUrl: response.fileUrl,
       databaseId: response.databaseId,
       storageType: response.storageType,
+      error: response.error,
     });
+
+    // Log warning if storage failed
+    if (!storageResult.success) {
+      console.warn(
+        `⚠️ [${requestId}] WARNING: Returning failure response due to storage error`
+      );
+      console.warn(
+        `⚠️ [${requestId}] AI processing succeeded but file storage failed`
+      );
+    }
 
     return NextResponse.json(response);
   } catch (error) {
