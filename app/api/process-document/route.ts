@@ -1,6 +1,181 @@
+// route.ts - Enhanced version with comprehensive diagnostics and logging
 import { NextResponse } from 'next/server';
 import fetch from 'node-fetch';
-import { getSupabaseClient } from '@/utils/supabase';
+import { getSupabaseAdmin, getSupabaseClient } from '@/utils/supabase';
+
+// ======== DIAGNOSTIC FUNCTIONS ========
+async function runSupabaseDiagnostics(requestId: string) {
+  console.log(`🔍 [${requestId}] === STARTING SUPABASE DIAGNOSTICS ===`);
+
+  // 1. Environment Variables Check
+  console.log(`🔐 [${requestId}] Checking environment variables...`);
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  console.log(
+    `   📍 SUPABASE_URL: ${supabaseUrl ? '✅ Present' : '❌ Missing'}`
+  );
+  console.log(
+    `   🔑 SUPABASE_ANON_KEY: ${
+      supabaseAnonKey ? '✅ Present' : '❌ Missing'
+    } (${supabaseAnonKey?.substring(0, 20)}...)`
+  );
+  console.log(
+    `   🔑 SUPABASE_SERVICE_ROLE_KEY: ${
+      supabaseServiceKey ? '✅ Present' : '❌ Missing'
+    } (${supabaseServiceKey?.substring(0, 20)}...)`
+  );
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error(
+      `❌ [${requestId}] CRITICAL: Missing required Supabase environment variables`
+    );
+    return { success: false, error: 'Missing Supabase configuration' };
+  }
+
+  // 2. Client Connection Test
+  console.log(`🔌 [${requestId}] Testing Supabase client connection...`);
+  try {
+    const supabase = getSupabaseClient();
+    const adminClient = getSupabaseAdmin();
+
+    // Test basic connection
+    const { error: connectionError } = await adminClient
+      .from('document_storage')
+      .select('count', { count: 'exact', head: true });
+
+    if (connectionError) {
+      console.error(
+        `❌ [${requestId}] Connection test failed:`,
+        connectionError
+      );
+      return {
+        success: false,
+        error: 'Supabase connection failed',
+        details: connectionError,
+      };
+    }
+
+    console.log(`✅ [${requestId}] Basic connection successful`);
+
+    // 3. Storage Bucket Tests
+    console.log(`🪣 [${requestId}] Testing storage bucket access...`);
+
+    // List buckets to verify access
+    const { data: buckets, error: bucketsError } =
+      await supabase.storage.listBuckets();
+
+    if (bucketsError) {
+      console.error(`❌ [${requestId}] Failed to list buckets:`, bucketsError);
+      return {
+        success: false,
+        error: 'Cannot access storage buckets',
+        details: bucketsError,
+      };
+    }
+
+    console.log(
+      `📦 [${requestId}] Available buckets:`,
+      buckets?.map((b) => b.name) || []
+    );
+
+    // Check if 'documents' bucket exists
+    const documentsBucket = buckets?.find((b) => b.name === 'documents');
+    if (!documentsBucket) {
+      console.error(`❌ [${requestId}] 'documents' bucket not found!`);
+      console.log(
+        `🔧 [${requestId}] Available buckets: ${
+          buckets?.map((b) => b.name).join(', ') || 'none'
+        }`
+      );
+      return { success: false, error: 'Documents bucket does not exist' };
+    }
+
+    console.log(`✅ [${requestId}] 'documents' bucket found:`, documentsBucket);
+
+    // 4. Test File Operations with Admin Client
+    console.log(`🔧 [${requestId}] Testing admin client capabilities...`);
+
+    // Try to list files in the documents bucket
+    const { data: files, error: listError } = await adminClient.storage
+      .from('documents')
+      .list('', { limit: 1 });
+
+    if (listError) {
+      console.error(
+        `❌ [${requestId}] Failed to list files with admin client:`,
+        listError
+      );
+    } else {
+      console.log(
+        `✅ [${requestId}] Admin client can list files. Found ${
+          files?.length || 0
+        } files`
+      );
+    }
+
+    // 5. Test Small File Upload with Multiple Methods
+    console.log(`🧪 [${requestId}] Testing small file upload capabilities...`);
+    const testContent = 'Test file for diagnostic purposes';
+    const testFileName = `diagnostic-test-${requestId}-${Date.now()}.txt`;
+
+    // Test with different clients and methods
+    const uploadTests = [
+      { name: 'Anon Client + String', client: supabase, content: testContent },
+      {
+        name: 'Anon Client + Buffer',
+        client: supabase,
+        content: Buffer.from(testContent),
+      },
+      {
+        name: 'Admin Client + String',
+        client: adminClient,
+        content: testContent,
+      },
+      {
+        name: 'Admin Client + Buffer',
+        client: adminClient,
+        content: Buffer.from(testContent),
+      },
+    ];
+
+    for (const test of uploadTests) {
+      console.log(`   🔬 [${requestId}] Testing ${test.name}...`);
+      try {
+        const { error: uploadError } = await test.client.storage
+          .from('documents')
+          .upload(`test/${testFileName}`, test.content, {
+            contentType: 'text/plain',
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error(
+            `   ❌ [${requestId}] ${test.name} failed:`,
+            uploadError
+          );
+        } else {
+          console.log(`   ✅ [${requestId}] ${test.name} succeeded`);
+
+          // Clean up test file
+          await test.client.storage
+            .from('documents')
+            .remove([`test/${testFileName}`]);
+        }
+      } catch (error) {
+        console.error(`   💥 [${requestId}] ${test.name} exception:`, error);
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error(`💥 [${requestId}] Diagnostic exception:`, error);
+    return { success: false, error: 'Diagnostic test failed', details: error };
+  }
+}
+
+// Note: Database storage function removed - we're only using Supabase Storage now
 
 export async function POST(req: Request) {
   const supabase = getSupabaseClient();
@@ -9,6 +184,29 @@ export async function POST(req: Request) {
 
   console.log(`🚀 [${requestId}] === DOCUMENT PROCESSING STARTED ===`);
   console.log(`⏰ [${requestId}] Timestamp: ${new Date().toISOString()}`);
+
+  // ========== STEP 0: RUN DIAGNOSTICS ==========
+  console.log(`🔍 [${requestId}] Step 0: Running Supabase diagnostics...`);
+  const diagnostics = await runSupabaseDiagnostics(requestId);
+
+  if (!diagnostics.success) {
+    console.error(
+      `❌ [${requestId}] DIAGNOSTICS FAILED - Cannot proceed with upload`
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Supabase configuration issue',
+        details: diagnostics.error,
+        diagnostics: diagnostics,
+      },
+      { status: 500 }
+    );
+  }
+
+  console.log(
+    `✅ [${requestId}] Diagnostics passed - proceeding with file processing`
+  );
 
   try {
     // ========== STEP 1: EXTRACT & VALIDATE FILE ==========
@@ -24,9 +222,10 @@ export async function POST(req: Request) {
       );
     }
 
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
     console.log(`📄 [${requestId}] File received:`);
     console.log(`   📝 Name: ${file.name}`);
-    console.log(`   📊 Size: ${(file.size / 1024).toFixed(2)} KB`);
+    console.log(`   📊 Size: ${fileSizeMB} MB`);
     console.log(`   🔖 Type: ${file.type}`);
 
     if (file.type !== 'application/pdf') {
@@ -39,14 +238,18 @@ export async function POST(req: Request) {
       );
     }
 
+    // Check file size and warn if large
+    if (file.size > 10 * 1024 * 1024) {
+      // 10MB
+      console.warn(`⚠️ [${requestId}] Large file detected: ${fileSizeMB} MB`);
+    }
+
     // ========== STEP 2: CONVERT TO BASE64 ==========
     console.log(`🔄 [${requestId}] Step 2: Converting PDF to base64...`);
     const conversionStart = Date.now();
 
     const arrayBuffer = await file.arrayBuffer();
-    const base64 = (globalThis.Buffer || Buffer)
-      .from(arrayBuffer)
-      .toString('base64');
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
 
     const conversionTime = Date.now() - conversionStart;
     console.log(
@@ -67,10 +270,6 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
-
-    console.log(
-      `✅ [${requestId}] API key validated (length: ${API_KEY.length})`
-    );
 
     // ========== STEP 4: PREPARE GEMINI REQUEST ==========
     console.log(`🤖 [${requestId}] Step 4: Preparing Gemini AI request...`);
@@ -169,17 +368,12 @@ You are an expert document processing AI. Your task is to analyze the provided d
       ],
     };
 
-    console.log(`📦 [${requestId}] Gemini request payload prepared:`);
-    console.log(`   🎯 Model: gemini-2.5-flash`);
-    console.log(`   📄 Document: ${file.name}`);
-    console.log(`   💬 Prompt length: ${PROMPT.length} characters`);
-
     // ========== STEP 5: CALL GEMINI API ==========
     console.log(`🌐 [${requestId}] Step 5: Calling Gemini API...`);
     const geminiStart = Date.now();
 
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,15 +385,10 @@ You are an expert document processing AI. Your task is to analyze the provided d
     console.log(
       `⏱️ [${requestId}] Gemini API call completed in ${geminiTime}ms`
     );
-    console.log(
-      `📊 [${requestId}] Response status: ${geminiResponse.status} ${geminiResponse.statusText}`
-    );
 
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
-      console.error(`❌ [${requestId}] Gemini API Error:`);
-      console.error(`   Status: ${geminiResponse.status}`);
-      console.error(`   Response: ${errorText}`);
+      console.error(`❌ [${requestId}] Gemini API Error:`, errorText);
       return NextResponse.json(
         { success: false, error: 'Gemini API Error', details: errorText },
         { status: 500 }
@@ -209,38 +398,17 @@ You are an expert document processing AI. Your task is to analyze the provided d
     // ========== STEP 6: PARSE GEMINI RESPONSE ==========
     console.log(`🔍 [${requestId}] Step 6: Parsing Gemini response...`);
     const geminiData = (await geminiResponse.json()) as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{
-            text?: string;
-          }>;
+      candidates: {
+        content: {
+          parts: { text: string }[];
         };
-      }>;
+      }[];
     };
-
-    console.log(`📋 [${requestId}] Raw Gemini response structure:`);
-    console.log(`   Candidates count: ${geminiData.candidates?.length || 0}`);
 
     let parsedResponse =
       geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-
     if (parsedResponse) {
-      console.log(
-        `📝 [${requestId}] Raw AI response (first 200 chars): ${parsedResponse.substring(
-          0,
-          200
-        )}...`
-      );
-
-      // Remove code block markers if present
-      const originalLength = parsedResponse.length;
       parsedResponse = parsedResponse.replace(/^```json|^```|```$/g, '').trim();
-
-      if (parsedResponse.length !== originalLength) {
-        console.log(
-          `🧹 [${requestId}] Cleaned code block markers from response`
-        );
-      }
     }
 
     // ========== STEP 7: PARSE JSON ==========
@@ -250,128 +418,207 @@ You are an expert document processing AI. Your task is to analyze the provided d
     try {
       parsedJSON = JSON.parse(parsedResponse ?? '');
       console.log(`✅ [${requestId}] JSON parsing successful!`);
-      console.log(`📊 [${requestId}] Extracted document details:`);
-      console.log(`   📋 Document type: ${parsedJSON.document_type}`);
       console.log(
-        `   📄 Title/Name: ${
-          parsedJSON.document_title ||
-          parsedJSON.invoice_title ||
-          parsedJSON.document_details ||
-          'N/A'
-        }`
+        `📊 [${requestId}] Document type: ${parsedJSON.document_type}`
       );
-
-      // Log key extracted fields based on document type
-      if (parsedJSON.document_type === 'invoice' && parsedJSON.total_summary) {
-        console.log(
-          `   💰 Total amount: ${parsedJSON.total_summary.total_invoice_amount}`
-        );
-        console.log(`   🏢 Supplier: ${parsedJSON.supplier?.name || 'N/A'}`);
-      } else if (
-        parsedJSON.document_type === 'eft_receipt' &&
-        parsedJSON.transaction_details
-      ) {
-        console.log(`   💰 Amount: ${parsedJSON.transaction_details.amount}`);
-        console.log(`   🏦 Bank: ${parsedJSON.bank_name || 'N/A'}`);
-      } else if (parsedJSON.document_type === 'e-way-bill') {
-        console.log(`   🚛 E-way Bill No: ${parsedJSON.eway_bill_no || 'N/A'}`);
-        console.log(
-          `   📍 From: ${parsedJSON.address_details?.from?.name || 'N/A'}`
-        );
-      }
     } catch (parseError) {
-      console.error(`❌ [${requestId}] JSON parsing failed!`);
-      console.error(`   Error: ${parseError}`);
-      console.error(`   Raw response: ${parsedResponse}`);
+      console.error(`❌ [${requestId}] JSON parsing failed!`, parseError);
       return NextResponse.json(
         { success: false, error: 'JSON parsing failed!', raw: parsedResponse },
         { status: 500 }
       );
     }
 
-    // ========== STEP 8: UPLOAD TO SUPABASE WITH RETRY ==========
-    console.log(`☁️ [${requestId}] Step 8: Uploading file to Supabase...`);
+    // ========== STEP 8: STORAGE STRATEGY BASED ON FILE SIZE ==========
+    console.log(`☁️ [${requestId}] Step 8: Determining storage strategy...`);
     const uploadStart = Date.now();
 
-    const filePath = `documents/${file.name}`;
-    console.log(`📁 [${requestId}] Upload path: ${filePath}`);
+    let storageResult = {
+      success: false,
+      publicUrl: null as string | null,
+      storageType: 'none' as 'storage' | 'database' | 'hybrid' | 'none',
+      databaseId: null as string | null,
+    };
 
-    // Retry logic for uploads
-    let uploadSuccess = false;
-    const maxRetries = 3;
+    // Add timestamp to prevent duplicate file conflicts
+    const timestamp = Date.now();
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      console.log(`🔄 [${requestId}] Upload attempt ${attempt}/${maxRetries}`);
+    // ENHANCED STORAGE WITH MULTIPLE UPLOAD METHODS AND COMPREHENSIVE LOGGING
+    console.log(
+      `📤 [${requestId}] Testing multiple upload methods for Supabase Storage (${fileSizeMB} MB)`
+    );
 
-      try {
-        const { error } = await supabase.storage
-          .from('documents')
-          .upload(filePath, arrayBuffer, {
-            contentType: file.type,
-            upsert: true,
-          });
+    // Prepare different data formats to test (ordered by reliability based on logs)
+    const uploadFormats = [
+      {
+        name: 'ArrayBuffer (Reliable)',
+        data: arrayBuffer,
+        options: { contentType: 'application/pdf', upsert: true },
+      },
+      {
+        name: 'File Object',
+        data: file,
+        options: { contentType: 'application/pdf', upsert: true },
+      },
+      {
+        name: 'Buffer',
+        data: Buffer.from(arrayBuffer),
+        options: { contentType: 'application/pdf', upsert: true },
+      },
+      {
+        name: 'Blob',
+        data: new Blob([arrayBuffer], { type: 'application/pdf' }),
+        options: { contentType: 'application/pdf', upsert: true },
+      },
+      {
+        name: 'ArrayBuffer (With Duplex)',
+        data: arrayBuffer,
+        options: {
+          contentType: 'application/pdf',
+          upsert: true,
+          duplex: 'half' as const,
+        },
+      },
+    ];
 
-        if (error) {
-          console.log(
-            `❌ [${requestId}] Attempt ${attempt} failed:`,
-            error.message
-          );
+    // Try with admin client as well
+    const adminClient = getSupabaseAdmin();
+    const clients = [
+      { name: 'Anon Client', client: supabase },
+      { name: 'Admin Client', client: adminClient },
+    ];
 
-          if (attempt === maxRetries) {
-            console.error(`💥 [${requestId}] All upload attempts failed`);
-            console.error(`   Final error: ${error.message}`);
-            console.error(`   Error details:`, error);
+    let uploadError = null;
+    let successfulMethod = null;
 
-            // Continue without file URL instead of failing completely
-            console.log(`⚠️ [${requestId}] Proceeding without file upload`);
-            uploadSuccess = false;
-            break;
-          }
+    // Test each client with each upload format
+    for (const clientTest of clients) {
+      if (storageResult.success) break; // Exit if we already succeeded
 
-          // Wait before retry
-          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-        } else {
-          uploadSuccess = true;
-          console.log(
-            `✅ [${requestId}] Upload successful on attempt ${attempt}`
-          );
-          break;
-        }
-      } catch (networkError) {
+      console.log(`🔄 [${requestId}] Testing ${clientTest.name}...`);
+
+      for (
+        let formatIndex = 0;
+        formatIndex < uploadFormats.length;
+        formatIndex++
+      ) {
+        if (storageResult.success) break; // Exit if we already succeeded
+
+        const format = uploadFormats[formatIndex];
+        const currentFilePath = `documents/${timestamp}-${formatIndex}-${file.name}`;
+
         console.log(
-          `🌐 [${requestId}] Network error on attempt ${attempt}:`,
-          networkError
+          `   🧪 [${requestId}] Method ${formatIndex + 1}/${
+            uploadFormats.length
+          }: ${format.name}`
+        );
+        console.log(`   📋 [${requestId}] Options:`, format.options);
+        console.log(`   📊 [${requestId}] Data type:`, typeof format.data);
+        console.log(
+          `   📏 [${requestId}] Data size:`,
+          format.data instanceof File
+            ? format.data.size
+            : format.data instanceof ArrayBuffer
+            ? format.data.byteLength
+            : format.data instanceof Buffer
+            ? format.data.length
+            : format.data instanceof Blob
+            ? format.data.size
+            : 'unknown'
         );
 
-        if (attempt === maxRetries) {
-          console.log(
-            `⚠️ [${requestId}] Proceeding without file upload due to network issues`
-          );
-          uploadSuccess = false;
-          break;
-        }
+        try {
+          const uploadStart = Date.now();
 
-        // Wait before retry
-        await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+          const { error, data: uploadData } = await clientTest.client.storage
+            .from('documents')
+            .upload(currentFilePath, format.data, format.options);
+
+          const uploadDuration = Date.now() - uploadStart;
+          console.log(`   ⏱️ [${requestId}] Upload took ${uploadDuration}ms`);
+
+          if (!error) {
+            console.log(
+              `   ✅ [${requestId}] SUCCESS with ${clientTest.name} + ${format.name}!`
+            );
+            console.log(`   📄 [${requestId}] Upload result:`, uploadData);
+
+            // Get the public URL
+            const { data: urlData } = clientTest.client.storage
+              .from('documents')
+              .getPublicUrl(currentFilePath);
+
+            console.log(
+              `   🔗 [${requestId}] Public URL generated:`,
+              urlData.publicUrl
+            );
+
+            storageResult = {
+              success: true,
+              publicUrl: urlData.publicUrl,
+              storageType: 'storage',
+              databaseId: null,
+            };
+
+            successfulMethod = `${clientTest.name} + ${format.name}`;
+            break; // Success, exit format loop
+          } else {
+            uploadError = error;
+            console.error(
+              `   ❌ [${requestId}] ${clientTest.name} + ${format.name} failed:`
+            );
+            console.error(`      📝 Error message: ${error.message}`);
+            console.error(
+              `      🔢 Error statusCode: ${
+                (error as { statusCode?: string }).statusCode || 'N/A'
+              }`
+            );
+            console.error(
+              `      📋 Error name:`,
+              (error as { name?: string }).name || 'N/A'
+            );
+            console.error(
+              `      💾 Full error object:`,
+              JSON.stringify(error, null, 2)
+            );
+          }
+        } catch (error) {
+          uploadError = error;
+          console.error(
+            `   💥 [${requestId}] ${clientTest.name} + ${format.name} exception:`
+          );
+          console.error(
+            `      📝 Exception message: ${(error as Error).message}`
+          );
+          console.error(`      📋 Exception stack:`, (error as Error).stack);
+          console.error(`      💾 Full exception:`, error);
+        }
       }
     }
 
-    const uploadTime = Date.now() - uploadStart;
-
-    // ========== STEP 9: GET PUBLIC URL (ONLY IF UPLOAD SUCCEEDED) ==========
-    let publicUrl = null;
-    if (uploadSuccess) {
-      console.log(`🔗 [${requestId}] Step 9: Generating public URL...`);
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(filePath);
-      publicUrl = urlData.publicUrl;
-      console.log(`🌐 [${requestId}] Public URL generated: ${publicUrl}`);
-    } else {
+    if (storageResult.success) {
       console.log(
-        `⚠️ [${requestId}] Skipping URL generation due to upload failure`
+        `🎉 [${requestId}] Upload successful using: ${successfulMethod}`
       );
     }
+
+    // If all storage attempts failed, we return with storageType: 'none'
+    if (!storageResult.success) {
+      console.error(
+        `❌ [${requestId}] ALL STORAGE ATTEMPTS FAILED! File will not have URL`
+      );
+      console.error(`📝 [${requestId}] Final error:`, uploadError);
+
+      // Return with storageType: 'none' so frontend knows it failed
+      storageResult = {
+        success: false,
+        publicUrl: null,
+        storageType: 'none',
+        databaseId: null,
+      };
+    }
+
+    const uploadTime = Date.now() - uploadStart;
 
     // ========== SUCCESS RESPONSE ==========
     const totalTime = Date.now() - startTime;
@@ -380,32 +627,46 @@ You are an expert document processing AI. Your task is to analyze the provided d
     console.log(`📊 [${requestId}] Performance breakdown:`);
     console.log(`   🔄 Base64 conversion: ${conversionTime}ms`);
     console.log(`   🤖 Gemini API call: ${geminiTime}ms`);
-    console.log(`   ☁️ Supabase upload: ${uploadTime}ms`);
+    console.log(`   ☁️ Storage operation: ${uploadTime}ms`);
+    console.log(`   📦 Storage type: ${storageResult.storageType}`);
+    console.log(`   ✅ Storage success: ${storageResult.success}`);
     console.log(
-      `   ⚡ Other operations: ${
-        totalTime - conversionTime - geminiTime - uploadTime
-      }ms`
+      `   🔗 File URL: ${storageResult.publicUrl || 'None (using database)'}`
+    );
+    console.log(
+      `   🆔 Database ID: ${storageResult.databaseId || 'None (using storage)'}`
     );
 
-    return NextResponse.json({
+    // Ensure we're returning the correct response structure
+    const response = {
       success: true,
       data: parsedJSON,
-      fileUrl: publicUrl, // Will be null if upload failed, but processing still succeeds
-      uploadSuccess: uploadSuccess,
+      fileUrl: storageResult.publicUrl,
+      storageType: storageResult.storageType,
+      databaseId: storageResult.databaseId,
+      uploadSuccess: storageResult.success,
       meta: {
         requestId,
         processingTime: totalTime,
         fileSize: file.size,
+        fileSizeMB: parseFloat(fileSizeMB),
         fileName: file.name,
-        uploadAttempts: uploadSuccess ? 1 : maxRetries,
+        storageStrategy: storageResult.storageType,
       },
+    };
+
+    console.log(`📤 [${requestId}] Sending response:`, {
+      success: response.success,
+      fileUrl: response.fileUrl,
+      databaseId: response.databaseId,
+      storageType: response.storageType,
     });
+
+    return NextResponse.json(response);
   } catch (error) {
     const totalTime = Date.now() - startTime;
     console.error(`💥 [${requestId}] === PROCESSING FAILED ===`);
-    console.error(`⏰ [${requestId}] Failed after: ${totalTime}ms`);
     console.error(`❌ [${requestId}] Error:`, error);
-    console.error(`📍 [${requestId}] Stack trace:`, (error as Error).stack);
 
     return NextResponse.json(
       {
@@ -415,9 +676,51 @@ You are an expert document processing AI. Your task is to analyze the provided d
         meta: {
           requestId,
           processingTime: totalTime,
-          failedAt: new Date().toISOString(),
         },
       },
+      { status: 500 }
+    );
+  }
+}
+
+// ============ SEPARATE ENDPOINT TO RETRIEVE FILES FROM DATABASE ============
+export async function GET(req: Request) {
+  const supabase = getSupabaseClient();
+  const { searchParams } = new URL(req.url);
+  const databaseId = searchParams.get('id');
+
+  if (!databaseId) {
+    return NextResponse.json(
+      { error: 'Database ID required' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('document_storage')
+      .select('file_base64, file_name, extracted_data')
+      .eq('id', databaseId)
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json(
+        { error: 'Document not found' },
+        { status: 404 }
+      );
+    }
+
+    // Return base64 data for frontend to display
+    return NextResponse.json({
+      success: true,
+      fileName: data.file_name,
+      fileData: data.file_base64,
+      extractedData: data.extracted_data,
+    });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { error: 'Failed to retrieve document' },
       { status: 500 }
     );
   }

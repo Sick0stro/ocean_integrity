@@ -21,7 +21,7 @@ export default function FileUploader({
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>(
     {}
   );
-  const [mode, setMode] = useState<'files' | 'folder'>('files');
+  const [, setMode] = useState<'files' | 'folder'>('files');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
