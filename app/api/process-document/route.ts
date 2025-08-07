@@ -289,46 +289,93 @@ You are an expert document processing AI. Your task is to analyze the provided d
       );
     }
 
-    // ========== STEP 8: UPLOAD TO SUPABASE ==========
+    // ========== STEP 8: UPLOAD TO SUPABASE WITH RETRY ==========
     console.log(`☁️ [${requestId}] Step 8: Uploading file to Supabase...`);
     const uploadStart = Date.now();
 
     const filePath = `documents/${file.name}`;
     console.log(`📁 [${requestId}] Upload path: ${filePath}`);
 
-    const { error: uploadError } = await supabase.storage
-      .from('documents')
-      .upload(filePath, arrayBuffer, {
-        contentType: file.type,
-        upsert: true,
-      });
+    // Retry logic for uploads
+    let uploadSuccess = false;
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(`🔄 [${requestId}] Upload attempt ${attempt}/${maxRetries}`);
+
+      try {
+        const { error } = await supabase.storage
+          .from('documents')
+          .upload(filePath, arrayBuffer, {
+            contentType: file.type,
+            upsert: true,
+          });
+
+        if (error) {
+          console.log(
+            `❌ [${requestId}] Attempt ${attempt} failed:`,
+            error.message
+          );
+
+          if (attempt === maxRetries) {
+            console.error(`💥 [${requestId}] All upload attempts failed`);
+            console.error(`   Final error: ${error.message}`);
+            console.error(`   Error details:`, error);
+
+            // Continue without file URL instead of failing completely
+            console.log(`⚠️ [${requestId}] Proceeding without file upload`);
+            uploadSuccess = false;
+            break;
+          }
+
+          // Wait before retry
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+        } else {
+          uploadSuccess = true;
+          console.log(
+            `✅ [${requestId}] Upload successful on attempt ${attempt}`
+          );
+          break;
+        }
+      } catch (networkError) {
+        console.log(
+          `🌐 [${requestId}] Network error on attempt ${attempt}:`,
+          networkError
+        );
+
+        if (attempt === maxRetries) {
+          console.log(
+            `⚠️ [${requestId}] Proceeding without file upload due to network issues`
+          );
+          uploadSuccess = false;
+          break;
+        }
+
+        // Wait before retry
+        await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+      }
+    }
 
     const uploadTime = Date.now() - uploadStart;
 
-    if (uploadError) {
-      console.error(`❌ [${requestId}] Supabase upload failed:`);
-      console.error(`   Error: ${uploadError.message}`);
-      console.error(`   Details:`, uploadError);
-      return NextResponse.json(
-        { success: false, error: 'Failed to upload file to Supabase' },
-        { status: 500 }
+    // ========== STEP 9: GET PUBLIC URL (ONLY IF UPLOAD SUCCEEDED) ==========
+    let publicUrl = null;
+    if (uploadSuccess) {
+      console.log(`🔗 [${requestId}] Step 9: Generating public URL...`);
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath);
+      publicUrl = urlData.publicUrl;
+      console.log(`🌐 [${requestId}] Public URL generated: ${publicUrl}`);
+    } else {
+      console.log(
+        `⚠️ [${requestId}] Skipping URL generation due to upload failure`
       );
     }
 
-    console.log(
-      `✅ [${requestId}] File uploaded successfully in ${uploadTime}ms`
-    );
-
-    // ========== STEP 9: GET PUBLIC URL ==========
-    console.log(`🔗 [${requestId}] Step 9: Generating public URL...`);
-    const { data: urlData } = supabase.storage
-      .from('documents')
-      .getPublicUrl(filePath);
-    console.log(`🌐 [${requestId}] Public URL generated: ${urlData.publicUrl}`);
-
     // ========== SUCCESS RESPONSE ==========
     const totalTime = Date.now() - startTime;
-    console.log(`🎉 [${requestId}] === PROCESSING COMPLETED SUCCESSFULLY ===`);
+    console.log(`🎉 [${requestId}] === PROCESSING COMPLETED ===`);
     console.log(`⏰ [${requestId}] Total processing time: ${totalTime}ms`);
     console.log(`📊 [${requestId}] Performance breakdown:`);
     console.log(`   🔄 Base64 conversion: ${conversionTime}ms`);
@@ -343,12 +390,14 @@ You are an expert document processing AI. Your task is to analyze the provided d
     return NextResponse.json({
       success: true,
       data: parsedJSON,
-      fileUrl: urlData.publicUrl,
+      fileUrl: publicUrl, // Will be null if upload failed, but processing still succeeds
+      uploadSuccess: uploadSuccess,
       meta: {
         requestId,
         processingTime: totalTime,
         fileSize: file.size,
         fileName: file.name,
+        uploadAttempts: uploadSuccess ? 1 : maxRetries,
       },
     });
   } catch (error) {
