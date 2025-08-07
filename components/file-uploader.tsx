@@ -293,7 +293,7 @@ export default function FileUploader({
               className='mt-2'
             >
               <File className='mr-2 h-4 w-4' />
-              Select PDF Files
+              Select PDF File
             </Button>
 
             <Button
@@ -305,21 +305,6 @@ export default function FileUploader({
               <Folder className='mr-2 h-4 w-4' />
               Select Folder
             </Button>
-          </div>
-
-          <div className='text-xs text-slate-500 mt-2 max-w-md'>
-            <p className='font-semibold mb-1'>Tips for folder selection:</p>
-            <ul className='text-left space-y-1'>
-              <li>
-                &quot;Select Folder&quot;: Navigate to parent directory, click
-                once on Downloads folder to select it, then click &quot;Select
-                Folder&quot;
-              </li>
-              <li>
-                &quot;Select PDF Files&quot;: Navigate into the folder and
-                select specific PDF files with Ctrl/Cmd+Click
-              </li>
-            </ul>
           </div>
         </div>
       )}
