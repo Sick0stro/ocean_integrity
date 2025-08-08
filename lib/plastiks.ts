@@ -10,6 +10,8 @@ export type RecyclingDocRow = {
   plastic_type: string; // e.g., PET1
   tonnage_kg: number; // normalized to kg
   origin: string; // country or empty
+  country?: string;
+  city?: string;
   currency: string; // ISO currency, informational only
   upload_date?: string | null;
   uploaded_by?: string | null;
@@ -34,13 +36,16 @@ export type PlastiksCollection = {
 };
 
 export function getPlastiksConfig(): PlastiksConfig {
-  const baseUrl = process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io';
+  const baseUrl =
+    process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io';
   const apiToken = process.env.API_TOKEN_CALL || '';
   const userAddress = process.env.USER_ADDRESS || '';
   const privateKey = process.env.PRIVATE_KEY || '';
 
   if (!apiToken || !userAddress || !privateKey) {
-    throw new Error('Missing Plastiks credentials: API_TOKEN_CALL, USER_ADDRESS, PRIVATE_KEY');
+    throw new Error(
+      'Missing Plastiks credentials: API_TOKEN_CALL, USER_ADDRESS, PRIVATE_KEY'
+    );
   }
 
   const checksummed = ethers.getAddress(userAddress);
@@ -65,7 +70,18 @@ export function createPlastiksClient(config: PlastiksConfig) {
   });
 }
 
-export async function getBlockchainConfig(client: ReturnType<typeof createPlastiksClient>) {
+function axiosErrorToString(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status;
+    const data = err.response?.data;
+    return `HTTP ${status} - ${typeof data === 'string' ? data : JSON.stringify(data)}`;
+  }
+  return String(err);
+}
+
+export async function getBlockchainConfig(
+  client: ReturnType<typeof createPlastiksClient>
+) {
   const resp = await client.get('/api/collections/plastic_types');
   if (!resp.data) throw new Error('plastiks: empty response');
   const cfg = resp.data;
@@ -85,16 +101,20 @@ export async function getBlockchainConfig(client: ReturnType<typeof createPlasti
   } as const;
 }
 
-export async function createPrgCollection(client: ReturnType<typeof createPlastiksClient>, params: {
-  name: string;
-  description: string;
-  plastik_type: string; // e.g., PET1
-  weightKg: number;
-  city?: string;
-  country?: string;
-}) {
+export async function createPrgCollection(
+  client: ReturnType<typeof createPlastiksClient>,
+  params: {
+    name: string;
+    description: string;
+    plastik_type: string; // e.g., PET1
+    weightKg: number;
+    city?: string;
+    country?: string;
+  }
+) {
   const pricePerKg = 1.0; // 1 token per kg (staging default)
-  const totalPrice = params.weightKg * pricePerKg;
+  // Plastiks expects price as string; use minimal non-zero to avoid pricing errors
+  const totalPrice = Math.max(1, Math.round(params.weightKg * pricePerKg));
   const noOfCopies = Math.max(1, Math.round(params.weightKg));
 
   const body = {
@@ -107,35 +127,51 @@ export async function createPrgCollection(client: ReturnType<typeof createPlasti
     guarantee_connected: params.weightKg,
     city: params.city || '',
     country: params.country || '',
-    use_autogen_image: 'true',
+    // Disable auto-image generation to avoid staging dependency failures
+    use_autogen_image: 'false',
   };
 
-  const resp = await client.post('/api/collections/prg', body);
-  if (!resp.data?.success) throw new Error('plastiks: PRG creation failed');
-  return resp.data.collection as PlastiksCollection;
+  try {
+    const resp = await client.post('/api/collections/prg', body);
+    if (!resp.data?.success) throw new Error('plastiks: PRG creation failed');
+    return resp.data.collection as PlastiksCollection;
+  } catch (e) {
+    throw new Error(`plastiks: PRG creation error: ${axiosErrorToString(e)}`);
+  }
 }
 
 export async function signMetadataHash(
   client: ReturnType<typeof createPlastiksClient>,
   cfg: any,
   wallet: ethers.Wallet,
-  collectionAddress: string,
+  collectionAddress: string
 ) {
-  const resp = await client.get(`/api/collections/${collectionAddress}/sign_metadata_hash`, {
-    params: { contract_address: cfg.plastikCrypto },
-  });
-  const hashToSign: string | undefined = resp.data?.hash_to_sign;
-  if (!hashToSign) throw new Error('plastiks: hash_to_sign missing');
-  const signature = await wallet.signMessage(ethers.getBytes(hashToSign));
-  const saveResp = await client.post(`/api/collections/${collectionAddress}/save_metadata_signature`, { signature });
-  if (!saveResp.data?.success) throw new Error('plastiks: save_metadata_signature failed');
+  try {
+    const resp = await client.get(
+      `/api/collections/${collectionAddress}/sign_metadata_hash`,
+      {
+        params: { contract_address: cfg.plastikCrypto },
+      }
+    );
+    const hashToSign: string | undefined = resp.data?.hash_to_sign;
+    if (!hashToSign) throw new Error('plastiks: hash_to_sign missing');
+    const signature = await wallet.signMessage(ethers.getBytes(hashToSign));
+    const saveResp = await client.post(
+      `/api/collections/${collectionAddress}/save_metadata_signature`,
+      { signature }
+    );
+    if (!saveResp.data?.success)
+      throw new Error('plastiks: save_metadata_signature failed');
+  } catch (e) {
+    throw new Error(`plastiks: sign_metadata_hash error: ${axiosErrorToString(e)}`);
+  }
 }
 
 export async function signFixedPrice(
   client: ReturnType<typeof createPlastiksClient>,
   cfg: Record<string, any>,
   wallet: ethers.Wallet,
-  prg: PlastiksCollection,
+  prg: PlastiksCollection
 ) {
   const domain = {
     name: 'PLASTIK',
@@ -167,19 +203,30 @@ export async function signFixedPrice(
     sellerAddress: wallet.address,
   } as const;
 
-  const signature = await wallet.signTypedData(domain as unknown as ethers.TypedDataDomain, types as unknown as Record<string, Array<{ name: string; type: string }>>, value as Record<string, unknown>);
-  const resp = await client.post(`/api/collections/${prg.address}/sign_fixed_price`, {
-    sign: signature,
-    price: String(priceWei),
-  });
-  if (!resp.data?.success) throw new Error('plastiks: sign_fixed_price failed');
+  try {
+    const signature = await wallet.signTypedData(
+      domain as unknown as ethers.TypedDataDomain,
+      types as unknown as Record<string, Array<{ name: string; type: string }>>,
+      value as Record<string, unknown>
+    );
+    const resp = await client.post(
+      `/api/collections/${prg.address}/sign_fixed_price`,
+      {
+        sign: signature,
+        price: String(priceWei),
+      }
+    );
+    if (!resp.data?.success) throw new Error('plastiks: sign_fixed_price failed');
+  } catch (e) {
+    throw new Error(`plastiks: sign_fixed_price error: ${axiosErrorToString(e)}`);
+  }
 }
 
 export async function signVoucher(
   client: ReturnType<typeof createPlastiksClient>,
   cfg: Record<string, any>,
   wallet: ethers.Wallet,
-  prg: PlastiksCollection,
+  prg: PlastiksCollection
 ) {
   const domain = {
     name: 'PLASTIK',
@@ -206,16 +253,27 @@ export async function signVoucher(
     creatorAddress: wallet.address,
   } as const;
 
-  const signature = await wallet.signTypedData(domain as unknown as ethers.TypedDataDomain, types as unknown as Record<string, Array<{ name: string; type: string }>>, value as Record<string, unknown>);
-  const resp = await client.post(`/api/collections/${prg.address}/sign_voucher`, {
-    sign: signature,
-    amount: value.amount,
-    tokenId: value.tokenId,
-    tokenURI: value.tokenURI,
-    tokenAddress: value.tokenAddress,
-    creatorAddress: value.creatorAddress,
-  });
-  if (!resp.data?.success) throw new Error('plastiks: sign_voucher failed');
+  try {
+    const signature = await wallet.signTypedData(
+      domain as unknown as ethers.TypedDataDomain,
+      types as unknown as Record<string, Array<{ name: string; type: string }>>,
+      value as Record<string, unknown>
+    );
+    const resp = await client.post(
+      `/api/collections/${prg.address}/sign_voucher`,
+      {
+        sign: signature,
+        amount: value.amount,
+        tokenId: value.tokenId,
+        tokenURI: value.tokenURI,
+        tokenAddress: value.tokenAddress,
+        creatorAddress: value.creatorAddress,
+      }
+    );
+    if (!resp.data?.success) throw new Error('plastiks: sign_voucher failed');
+  } catch (e) {
+    throw new Error(`plastiks: sign_voucher error: ${axiosErrorToString(e)}`);
+  }
 }
 
 export async function submitToPlastiks(row: RecyclingDocRow) {
@@ -226,15 +284,20 @@ export async function submitToPlastiks(row: RecyclingDocRow) {
 
   // Build name/description from business data
   const name = `${row.recycler_company} – ${row.invoice_number}`;
-  const description = `Recycling proof for ${row.plastic_type} – ${row.tonnage_kg}kg – invoice ${row.invoice_number}`;
+  const description = `Recycling proof ${row.plastic_type} ${row.tonnage_kg}kg, ${row.city || ''} ${row.country || row.origin || ''}`.trim();
+
+  // Map to Plastiks expected labels when possible
+  const typeMap: Record<string, string> = { PET: 'PET 1', PP: 'PP 5', PVC: 'PVC 3', LDPE: 'LDPE 4' };
+  const normalizedType = row.plastic_type?.toUpperCase?.() || '';
+  const plastiksType = typeMap[normalizedType] || row.plastic_type;
 
   const prg = await createPrgCollection(client, {
     name,
     description,
-    plastik_type: row.plastic_type,
+    plastik_type: plastiksType,
     weightKg: row.tonnage_kg,
-    city: '',
-    country: row.origin || '',
+    city: row.city || '',
+    country: row.country || row.origin || '',
   });
 
   await signMetadataHash(client, chain, wallet, prg.address);

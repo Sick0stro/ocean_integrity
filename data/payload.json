@@ -1,0 +1,17 @@
+[
+  {
+    "invoice_number": "INV-2025-0007",
+    "invoice_url": "https://example.com/inv-0007.pdf",
+    "eft_url": "https://example.com/inv-0007-eft.pdf",
+    "ewaybill_url": "https://example.com/inv-0007-ewb.pdf",
+    "recycler_company": "Green Recyclers Ltd",
+    "plastic_type": "PET",
+    "tonnage_value": 12.75,
+    "tonnage_unit": "t",
+    "country": "IN",
+    "city": "Mumbai",
+    "currency": "INR",
+    "upload_date": "2025-08-06",
+    "uploaded_by": "partner-system"
+  }
+]

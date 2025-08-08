@@ -55,16 +55,21 @@ async function markFailed(invoice_number: string, errorMsg: string) {
 }
 
 export async function POST(req: Request) {
-  const secret =
+  const url = new URL(req.url);
+  const headerSecret =
     req.headers.get('x-cron-secret') || req.headers.get('x-submit-secret');
+  const querySecret = url.searchParams.get('secret');
+  const secret = headerSecret || querySecret || '';
   const expected =
     process.env.CRON_SUBMIT_SECRET || process.env.CRON_INGEST_SECRET;
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const allowDevBypass = process.env.NODE_ENV !== 'production' && !expected;
+  if (!allowDevBypass) {
+    if (!expected || secret !== expected) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
   }
 
   // Optional: process a single invoice_number via query param
-  const url = new URL(req.url);
   const single = url.searchParams.get('invoice');
 
   const results: any[] = [];
@@ -77,7 +82,11 @@ export async function POST(req: Request) {
 
   for (const row of toProcess) {
     try {
-      const prg = await submitToPlastiks(row);
+      // Normalize tons -> kg for submission layer
+      const prg = await submitToPlastiks({
+        ...row,
+        tonnage_kg: row.tonnage_kg ?? (row.tonnage_tons ? Number(row.tonnage_tons) * 1000 : undefined),
+      } as any);
       await markSubmitted(row.invoice_number, {
         plastiks_collection_id: prg.id,
         plastiks_collection_address: prg.address,
