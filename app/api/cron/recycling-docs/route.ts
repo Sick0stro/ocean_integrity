@@ -79,6 +79,7 @@ export async function POST(req: Request) {
 
     const errors: { index: number; message: string }[] = [];
     const rows: UpsertRow[] = json.map((item, idx) => {
+      const rec = item as unknown as Record<string, unknown>;
       const missing = [
         'invoice_number',
         'invoice_url',
@@ -92,10 +93,9 @@ export async function POST(req: Request) {
         'currency',
       ].filter(
         (k) =>
-          (item as Record<string, unknown>)[k] === undefined ||
-          (item as Record<string, unknown>)[k] === null ||
-          (typeof (item as Record<string, unknown>)[k] === 'string' &&
-            ((item as Record<string, unknown>)[k] as string).trim() === '')
+          rec[k] === undefined ||
+          rec[k] === null ||
+          (typeof rec[k] === 'string' && (rec[k] as string).trim() === '')
       );
       if (missing.length > 0) {
         errors.push({
@@ -104,7 +104,10 @@ export async function POST(req: Request) {
         });
       }
 
-      const tonnage_tons = toTonnes(Number(item.tonnage_value), item.tonnage_unit);
+      const tonnage_tons = toTonnes(
+        Number(item.tonnage_value),
+        item.tonnage_unit
+      );
       const tonnage_kg = tonnage_tons * 1000;
       // Normalize plastic type to allowed set
       const allowed = ['LDPE', 'PET', 'PP', 'PVC'];
@@ -140,8 +143,7 @@ export async function POST(req: Request) {
     const res = await upsertRecyclingDocs(rows);
     return NextResponse.json({ success: true, upserted: res.count });
   } catch (e) {
-    const details =
-      typeof e === 'object' ? JSON.stringify(e) : String(e);
+    const details = typeof e === 'object' ? JSON.stringify(e) : String(e);
     return NextResponse.json(
       { error: 'Ingestion failed', details },
       { status: 400 }
