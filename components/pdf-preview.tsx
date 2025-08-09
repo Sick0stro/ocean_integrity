@@ -9,18 +9,20 @@ import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 
 interface PdfPreviewProps {
   fileUrl: string;
+  heightClass?: string; // optional to allow compact viewers in grids
 }
 
-const PdfPreview: React.FC<PdfPreviewProps> = ({ fileUrl }) => {
+const PdfPreview: React.FC<PdfPreviewProps> = ({ fileUrl, heightClass }) => {
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
 
   return (
-    <div className="h-[600px] border rounded-lg overflow-hidden">
-      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-        <Viewer
-          fileUrl={fileUrl}
-          plugins={[defaultLayoutPluginInstance]}
-        />
+    <div
+      className={`${
+        heightClass || 'h-[600px]'
+      } border rounded-lg overflow-hidden`}
+    >
+      <Worker workerUrl='https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js'>
+        <Viewer fileUrl={fileUrl} plugins={[defaultLayoutPluginInstance]} />
       </Worker>
     </div>
   );

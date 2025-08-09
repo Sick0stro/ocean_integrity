@@ -267,8 +267,11 @@ You are an expert document processing AI. Your task is to analyze the provided d
       { name: 'Admin Client', client: adminClient },
     ];
 
-    let uploadError = null;
+    let uploadError = null as unknown;
     let successfulMethod = null;
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const maxRetriesPerAttempt = 3;
 
     // Test each client with each upload format
     for (const clientTest of clients) {
@@ -307,70 +310,63 @@ You are an expert document processing AI. Your task is to analyze the provided d
         );
 
         try {
-          const uploadStart = Date.now();
+          let attempt = 0;
+          while (attempt < maxRetriesPerAttempt && !storageResult.success) {
+            try {
+              const uploadStart = Date.now();
+              const { error, data: uploadData } =
+                await clientTest.client.storage
+                  .from('documents')
+                  .upload(currentFilePath, format.data, format.options);
+              const uploadDuration = Date.now() - uploadStart;
+              console.log(
+                `   ⏱️ [${requestId}] Upload attempt ${
+                  attempt + 1
+                } took ${uploadDuration}ms`
+              );
 
-          const { error, data: uploadData } = await clientTest.client.storage
-            .from('documents')
-            .upload(currentFilePath, format.data, format.options);
+              if (!error) {
+                console.log(
+                  `   ✅ [${requestId}] SUCCESS with ${clientTest.name} + ${format.name}!`
+                );
+                console.log(`   📄 [${requestId}] Upload result:`, uploadData);
+                const { data: urlData } = clientTest.client.storage
+                  .from('documents')
+                  .getPublicUrl(currentFilePath);
+                console.log(
+                  `   🔗 [${requestId}] Public URL generated:`,
+                  urlData.publicUrl
+                );
+                storageResult = {
+                  success: true,
+                  publicUrl: urlData.publicUrl,
+                  storageType: 'storage',
+                  databaseId: null,
+                };
+                successfulMethod = `${clientTest.name} + ${format.name}`;
+                break;
+              }
 
-          const uploadDuration = Date.now() - uploadStart;
-          console.log(`   ⏱️ [${requestId}] Upload took ${uploadDuration}ms`);
+              uploadError = error;
+              console.error(
+                `   ❌ [${requestId}] ${clientTest.name} + ${format.name} failed: ${error?.message}`
+              );
+            } catch (e) {
+              uploadError = e;
+              console.error(
+                `   💥 [${requestId}] ${clientTest.name} + ${format.name} exception:`,
+                (e as Error).message
+              );
+            }
 
-          if (!error) {
-            console.log(
-              `   ✅ [${requestId}] SUCCESS with ${clientTest.name} + ${format.name}!`
-            );
-            console.log(`   📄 [${requestId}] Upload result:`, uploadData);
-
-            // Get the public URL
-            const { data: urlData } = clientTest.client.storage
-              .from('documents')
-              .getPublicUrl(currentFilePath);
-
-            console.log(
-              `   🔗 [${requestId}] Public URL generated:`,
-              urlData.publicUrl
-            );
-
-            storageResult = {
-              success: true,
-              publicUrl: urlData.publicUrl,
-              storageType: 'storage',
-              databaseId: null,
-            };
-
-            successfulMethod = `${clientTest.name} + ${format.name}`;
-            break; // Success, exit format loop
-          } else {
-            uploadError = error;
-            console.error(
-              `   ❌ [${requestId}] ${clientTest.name} + ${format.name} failed:`
-            );
-            console.error(`      📝 Error message: ${error.message}`);
-            console.error(
-              `      🔢 Error statusCode: ${
-                (error as { statusCode?: string }).statusCode || 'N/A'
-              }`
-            );
-            console.error(
-              `      📋 Error name:`,
-              (error as { name?: string }).name || 'N/A'
-            );
-            console.error(
-              `      💾 Full error object:`,
-              JSON.stringify(error, null, 2)
-            );
+            attempt += 1;
+            const backoff =
+              Math.min(1500, 300 * attempt) + Math.floor(Math.random() * 200);
+            console.log(`   🔁 [${requestId}] Retrying in ${backoff}ms...`);
+            await sleep(backoff);
           }
-        } catch (error) {
-          uploadError = error;
-          console.error(
-            `   💥 [${requestId}] ${clientTest.name} + ${format.name} exception:`
-          );
-          console.error(
-            `      📝 Exception message: ${(error as Error).message}`
-          );
-          console.error(`      📋 Exception stack:`, (error as Error).stack);
-          console.error(`      💾 Full exception:`, error);
+        } catch (loopErr) {
+          uploadError = loopErr;
         }
       }
     }
@@ -381,30 +377,77 @@ You are an expert document processing AI. Your task is to analyze the provided d
       );
     }
 
-    // If all storage attempts failed, we return with storageType: 'none'
+    // If all storage attempts failed, try a final signed-url fallback
     if (!storageResult.success) {
-      console.error(
-        `❌ [${requestId}] ALL STORAGE ATTEMPTS FAILED! File will not have URL`
-      );
-      console.error(`📝 [${requestId}] Final error:`, uploadError);
+      console.warn(`🟠 [${requestId}] Falling back to signed upload url...`);
+      try {
+        const admin = getSupabaseAdmin();
+        const signedPath = `documents/${timestamp}-signed-${file.name}`;
+        let signedAttempt = 0;
+        while (!storageResult.success && signedAttempt < maxRetriesPerAttempt) {
+          const { data: signed, error: signErr } = await admin.storage
+            .from('documents')
+            .createSignedUploadUrl(signedPath);
+          if (signErr || !signed?.signedUrl) {
+            uploadError = signErr || new Error('createSignedUploadUrl failed');
+            signedAttempt += 1;
+            await sleep(300 * (signedAttempt + 1));
+            continue;
+          }
+          const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+          const { error: uploadSignedErr } = await admin.storage
+            .from('documents')
+            .uploadToSignedUrl(signedPath, signed.signedUrl, blob, {
+              contentType: 'application/pdf',
+              upsert: true,
+            } as any);
+          if (!uploadSignedErr) {
+            const { data: urlData } = admin.storage
+              .from('documents')
+              .getPublicUrl(signedPath);
+            storageResult = {
+              success: true,
+              publicUrl: urlData.publicUrl,
+              storageType: 'storage',
+              databaseId: null,
+            };
+            successfulMethod = `Admin + SignedUrl`;
+            console.log(`🟢 [${requestId}] Signed upload succeeded`);
+          } else {
+            uploadError = uploadSignedErr;
+            signedAttempt += 1;
+            const backoff = 400 * signedAttempt;
+            console.log(
+              `   🔁 [${requestId}] Signed upload retry in ${backoff}ms...`
+            );
+            await sleep(backoff);
+          }
+        }
+      } catch (signedEx) {
+        uploadError = signedEx;
+      }
 
-      // Return with storageType: 'none' so frontend knows it failed
-      storageResult = {
-        success: false,
-        publicUrl: null,
-        storageType: 'none',
-        databaseId: null,
-      };
-
-      // Enhanced error detection for better user feedback
-      if (uploadError && typeof uploadError === 'object') {
-        const errorObj = uploadError as {
-          originalError?: { cause?: { code?: string } };
+      // If still failed after fallback, mark as none
+      if (!storageResult.success) {
+        console.error(
+          `❌ [${requestId}] ALL STORAGE ATTEMPTS FAILED! File will not have URL`
+        );
+        console.error(`📝 [${requestId}] Final error:`, uploadError);
+        storageResult = {
+          success: false,
+          publicUrl: null,
+          storageType: 'none',
+          databaseId: null,
         };
-        if (errorObj.originalError?.cause?.code === 'UND_ERR_SOCKET') {
-          console.error(
-            `🔌 [${requestId}] Socket error detected - network connection dropped`
-          );
+        if (uploadError && typeof uploadError === 'object') {
+          const errorObj = uploadError as {
+            originalError?: { cause?: { code?: string } };
+          };
+          if (errorObj.originalError?.cause?.code === 'UND_ERR_SOCKET') {
+            console.error(
+              `🔌 [${requestId}] Socket error detected - network connection dropped`
+            );
+          }
         }
       }
     }
@@ -419,29 +462,37 @@ You are an expert document processing AI. Your task is to analyze the provided d
     try {
       const db = getSupabaseAdmin();
       // Align with existing schema: anchor_key, document_type, raw_json, file_url
-      const anchorKey = (parsedJSON?.anchor_key || parsedJSON?.invoice || '')
-        .toString()
-        .trim() || null;
-      const insertPayload = {
-        anchor_key: anchorKey,
-        document_type: parsedJSON?.document_type ?? null,
-        raw_json: parsedJSON ?? null,
-        file_url: storageResult.publicUrl ?? null,
-      } as const;
-
-      const { error: insertError } = await db
-        .from('parsed_documents')
-        .insert(insertPayload);
-
-      if (insertError) {
+      const anchorKey =
+        (parsedJSON?.anchor_key || parsedJSON?.invoice || '')
+          .toString()
+          .trim() || null;
+      // Only insert when storage succeeded to keep strict consistency
+      if (!storageResult.success || !storageResult.publicUrl) {
         console.warn(
-          `⚠️ [${requestId}] Failed to insert into parsed_documents:`,
-          insertError
+          `⚠️ [${requestId}] Skipping DB insert due to storage failure`
         );
       } else {
-        console.log(
-          `✅ [${requestId}] Saved parsed document to parsed_documents`
-        );
+        const insertPayload = {
+          anchor_key: anchorKey,
+          document_type: parsedJSON?.document_type ?? null,
+          raw_json: parsedJSON ?? null,
+          file_url: storageResult.publicUrl,
+        } as const;
+
+        const { error: insertError } = await db
+          .from('parsed_documents')
+          .insert(insertPayload);
+
+        if (insertError) {
+          console.warn(
+            `⚠️ [${requestId}] Failed to insert into parsed_documents:`,
+            insertError
+          );
+        } else {
+          console.log(
+            `✅ [${requestId}] Saved parsed document to parsed_documents`
+          );
+        }
       }
     } catch (e) {
       console.warn(
@@ -510,7 +561,10 @@ You are an expert document processing AI. Your task is to analyze the provided d
       );
     }
 
-    return NextResponse.json(response);
+    // Return 500 if storage failed to signal the UI to retry
+    return NextResponse.json(response, {
+      status: storageResult.success ? 200 : 500,
+    });
   } catch (error) {
     const totalTime = Date.now() - startTime;
     console.error(`💥 [${requestId}] === PROCESSING FAILED ===`);

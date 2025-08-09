@@ -333,9 +333,9 @@ export default function Home() {
       }
       if (cancelled) return;
       const map: Record<string, InvoiceGroup> = {};
-      (data as unknown as GroupDoc[] | null)?.forEach((row) =>
-        mergeRowIntoGroups(row, map)
-      );
+      (data as unknown as GroupDoc[] | null)?.forEach((row) => {
+        mergeRowIntoGroups(row, map);
+      });
       setGroups(map);
       setIsGroupsLoading(false);
     };
@@ -353,6 +353,7 @@ export default function Home() {
             const row = (payload.new || payload.old) as unknown as GroupDoc & {
               raw_json: Record<string, unknown>;
             };
+            // Accept all realtime rows; show immediately
             if (payload.eventType === 'DELETE' && row) {
               // Rebuild affected groups conservatively: remove this id from all types in its groups
               const rj = (row.raw_json || {}) as Record<string, unknown>;
@@ -420,13 +421,14 @@ export default function Home() {
     }));
     try {
       console.log(`[UI] Promote starting for invoice='${invoice}'`);
+      const devSecret = process.env.NEXT_PUBLIC_LOCAL_CRON_SECRET;
+      const promoteUrl = devSecret
+        ? `/api/recycling-docs/promote?secret=${encodeURIComponent(
+            devSecret
+          )}&invoice=${encodeURIComponent(invoice)}`
+        : `/api/recycling-docs/promote?invoice=${encodeURIComponent(invoice)}`;
       // Step 1: Promote latest parsed_documents rows into recycling_docs
-      const promoteResp = await fetch(
-        `/api/recycling-docs/promote?invoice=${encodeURIComponent(invoice)}`,
-        {
-          method: 'POST',
-        }
-      );
+      const promoteResp = await fetch(promoteUrl, { method: 'POST' });
       const promoteJson = await promoteResp.json().catch(() => ({}));
       console.log(`[UI] Promote response ok=${promoteResp.ok}`, promoteJson);
       if (!promoteResp.ok) {
@@ -445,12 +447,12 @@ export default function Home() {
 
       // Step 2: Submit to Plastiks
       console.log(`[UI] Submit starting for invoice='${invoice}'`);
-      const resp = await fetch(
-        `/api/plastiks/submit?invoice=${encodeURIComponent(invoice)}`,
-        {
-          method: 'POST',
-        }
-      );
+      const submitUrl = devSecret
+        ? `/api/plastiks/submit?secret=${encodeURIComponent(
+            devSecret
+          )}&invoice=${encodeURIComponent(invoice)}`
+        : `/api/plastiks/submit?invoice=${encodeURIComponent(invoice)}`;
+      const resp = await fetch(submitUrl, { method: 'POST' });
       const json = await resp.json().catch(() => ({}));
       console.log(`[UI] Submit response ok=${resp.ok}`, json);
       if (resp.ok) {
@@ -1425,6 +1427,14 @@ export default function Home() {
                           processedDocuments={processedDocuments}
                           handleDownloadCSV={handleDownloadCSV}
                         />
+                        <Button
+                          variant='secondary'
+                          className='gap-2'
+                          onClick={() => setActiveTab('groups')}
+                        >
+                          Go to Group & Verify{' '}
+                          <ArrowRight className='h-4 w-4' />
+                        </Button>
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -1516,7 +1526,9 @@ export default function Home() {
                                     Complete
                                   </Badge>
                                 ) : (
-                                  <Badge variant='outline'>Incomplete</Badge>
+                                  <Badge className='bg-red-100 text-red-700 border-0'>
+                                    Incomplete
+                                  </Badge>
                                 )}
                               </div>
                             </div>
@@ -1538,20 +1550,30 @@ export default function Home() {
                                 ] as const
                               ).map((t) => {
                                 const latest = groups[g.invoice].docs[t]?.[0];
+                                const tTitle = documentTypes[t]?.title || t;
                                 return (
                                   <div key={t} className='border rounded p-3'>
-                                    <div className='text-xs uppercase text-slate-500 mb-1'>
-                                      {t}
+                                    <div className='text-xs text-slate-700 font-medium mb-2'>
+                                      {latest?.file_url ? (
+                                        <a
+                                          href={latest.file_url}
+                                          target='_blank'
+                                          rel='noreferrer'
+                                          className='text-blue-600 hover:underline'
+                                        >
+                                          {tTitle}
+                                        </a>
+                                      ) : (
+                                        tTitle
+                                      )}
                                     </div>
                                     {latest?.file_url ? (
-                                      <a
-                                        className='text-blue-600 text-sm break-all'
-                                        href={latest.file_url}
-                                        target='_blank'
-                                        rel='noreferrer'
-                                      >
-                                        {latest.file_url}
-                                      </a>
+                                      <div className='rounded overflow-hidden border'>
+                                        <PdfPreview
+                                          fileUrl={latest.file_url}
+                                          heightClass='h-[360px]'
+                                        />
+                                      </div>
                                     ) : (
                                       <div className='text-slate-400 text-sm'>
                                         No file yet
