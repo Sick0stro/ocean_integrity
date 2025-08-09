@@ -1,6 +1,17 @@
 import axios from 'axios';
 import { ethers } from 'ethers';
 
+interface BlockchainConfig {
+  celoChainId: number;
+  usingTestnet: boolean;
+  plastikCrypto: string;
+  recyclingNft: string;
+  erc20Token: string;
+  plastikTokenDecimals: number;
+  storefront: string;
+  plastikRole: string;
+}
+
 export type RecyclingDocRow = {
   invoice_number: string;
   invoice_url: string;
@@ -142,7 +153,7 @@ export async function createPrgCollection(
 
 export async function signMetadataHash(
   client: ReturnType<typeof createPlastiksClient>,
-  cfg: any,
+  cfg: BlockchainConfig,
   wallet: ethers.Wallet,
   collectionAddress: string
 ) {
@@ -169,7 +180,7 @@ export async function signMetadataHash(
 
 export async function signFixedPrice(
   client: ReturnType<typeof createPlastiksClient>,
-  cfg: Record<string, any>,
+  cfg: BlockchainConfig,
   wallet: ethers.Wallet,
   prg: PlastiksCollection
 ) {
@@ -224,7 +235,7 @@ export async function signFixedPrice(
 
 export async function signVoucher(
   client: ReturnType<typeof createPlastiksClient>,
-  cfg: Record<string, any>,
+  cfg: BlockchainConfig,
   wallet: ethers.Wallet,
   prg: PlastiksCollection
 ) {

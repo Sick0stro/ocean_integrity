@@ -2,7 +2,74 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient, getSupabaseAdmin } from '@/utils/supabase';
 
-export async function GET(req: Request) {
+interface ConnectionTestResult {
+  success: boolean;
+  error?: string;
+  data?: unknown;
+  operation?: string;
+}
+
+interface BucketTestResult {
+  success: boolean;
+  error?: string;
+  buckets?: string[];
+  operation?: string;
+  hasDocumentsBucket?: boolean;
+  documentsBucketFound?: boolean;
+  listFiles?: {
+    success: boolean;
+    error?: string;
+    fileCount?: number;
+  };
+}
+
+interface SupabaseStorageError extends Error {
+  status?: number;
+  statusCode?: number;
+  error?: string;
+  message: string;
+}
+
+interface UploadTestResult {
+  success: boolean;
+  error?: string;
+  fileUrl?: string;
+  filePath?: string;
+  tests?: Record<string, {
+    name: string;
+    success: boolean;
+    error?: string;
+    filePath?: string;
+    fileUrl?: string;
+    errorDetails?: any;
+    mimeType?: string;
+    uploadData?: any;
+    cleanup?: 'success' | 'failed';
+    exception?: boolean;
+  }>;
+  summary?: {
+    successful: number;
+    total: number;
+    successRate: string;
+    hasAnySuccess: boolean;
+    pdfWorking: boolean;
+  };
+}
+
+interface DiagnosticsResults {
+  envCheck: {
+    SUPABASE_URL: string;
+    SUPABASE_ANON_KEY: string;
+    SUPABASE_SERVICE_ROLE_KEY: string;
+  };
+  connectionTests: Record<string, ConnectionTestResult>;
+  bucketTests: Record<string, BucketTestResult>;
+  uploadTests: Record<string, UploadTestResult>;
+  requestId: string;
+  timestamp: string;
+}
+
+export async function GET() {
   const requestId = Math.random().toString(36).substring(2, 15);
 
   console.log(`🔍 [${requestId}] === STANDALONE DIAGNOSTICS STARTED ===`);
@@ -42,9 +109,9 @@ export async function GET(req: Request) {
 
     const results = {
       envCheck,
-      connectionTests: {} as any,
-      bucketTests: {} as any,
-      uploadTests: {} as any,
+      connectionTests: {} as Record<string, ConnectionTestResult>,
+      bucketTests: {} as Record<string, BucketTestResult>,
+      uploadTests: {} as Record<string, UploadTestResult>,
       requestId,
       timestamp: new Date().toISOString(),
     };
@@ -201,7 +268,10 @@ export async function GET(req: Request) {
 
     for (const clientTest of clients) {
       console.log(`   🔬 [${requestId}] Testing ${clientTest.name} uploads...`);
-      results.uploadTests[clientTest.name] = { tests: {} };
+      results.uploadTests[clientTest.name] = { 
+        success: false, // Initialize with default success value
+        tests: {} 
+      };
 
       for (const testCase of uploadTestCases) {
         console.log(
@@ -218,18 +288,43 @@ export async function GET(req: Request) {
               });
 
           if (uploadError) {
-            results.uploadTests[clientTest.name].tests[testCase.name] = {
+            // Initialize the test result object if it doesn't exist
+            if (!results.uploadTests[clientTest.name]) {
+              results.uploadTests[clientTest.name] = { 
+                success: false,
+                tests: {} 
+              };
+            }
+            
+            // Get a reference to the test result object
+            const testResult = results.uploadTests[clientTest.name];
+            
+            // Initialize tests object if it doesn't exist
+            if (!testResult.tests) {
+              testResult.tests = {};
+            }
+            
+            // Now it's safe to assign
+            const uploadErrorTyped = uploadError as unknown as SupabaseStorageError;
+            
+            // Ensure tests object exists
+            if (!testResult.tests) {
+              testResult.tests = {};
+            }
+            
+            testResult.tests[testCase.name] = {
+              name: testCase.name,
               success: false,
-              error: uploadError.message,
+              error: uploadErrorTyped?.message || 'Unknown error',
               errorDetails: {
-                message: uploadError.message,
-                status: (uploadError as any).status,
-                statusCode: (uploadError as any).statusCode,
+                message: uploadErrorTyped?.message || 'Unknown error',
+                status: uploadErrorTyped?.status,
+                statusCode: uploadErrorTyped?.statusCode,
               },
               mimeType: testCase.contentType,
             };
             console.log(
-              `      ❌ [${requestId}] ${testCase.name} upload failed: ${uploadError.message}`
+              `      ❌ [${requestId}] ${testCase.name} upload failed: ${uploadErrorTyped.message}`
             );
           } else {
             // Test getting public URL
@@ -237,10 +332,51 @@ export async function GET(req: Request) {
               .from('documents')
               .getPublicUrl(testCase.fileName);
 
-            results.uploadTests[clientTest.name].tests[testCase.name] = {
+            if (!urlData?.publicUrl) {
+              // Create test result object
+              const testResult = {
+                name: testCase.name,
+                success: false,
+                error: 'Failed to generate public URL',
+                mimeType: testCase.contentType,
+              };
+              
+              // Safely initialize the test result structure if it doesn't exist
+              const testEntry = results.uploadTests[clientTest.name] || {
+                success: false,
+                tests: {}
+              };
+              
+              // Ensure tests object exists
+              testEntry.tests = testEntry.tests || {};
+              // Update the test result
+              testEntry.tests[testCase.name] = testResult;
+              // Update the entry in the results
+              results.uploadTests[clientTest.name] = testEntry;
+              
+              console.error(`      ❌ [${requestId}] ${testCase.name} failed to generate public URL`);
+              continue;
+            }
+
+            // Ensure the client test entry exists and is properly typed
+            if (!results.uploadTests[clientTest.name]) {
+              results.uploadTests[clientTest.name] = { 
+                success: true,
+                tests: {}
+              };
+            } 
+            
+            // Ensure tests object exists and is properly typed
+            const testEntry = results.uploadTests[clientTest.name] || {};
+            if (!testEntry.tests) {
+              testEntry.tests = {};
+            }
+            
+            testEntry.tests[testCase.name] = {
+              name: testCase.name,
               success: true,
               uploadData,
-              publicUrl: urlData.publicUrl,
+              fileUrl: urlData.publicUrl,
               mimeType: testCase.contentType,
             };
 
@@ -253,13 +389,18 @@ export async function GET(req: Request) {
               await clientTest.client.storage
                 .from('documents')
                 .remove([testCase.fileName]);
-              results.uploadTests[clientTest.name].tests[
-                testCase.name
-              ].cleanup = 'success';
+              
+              // Safe cleanup status update
+              const testResult = results.uploadTests[clientTest.name]?.tests?.[testCase.name];
+              if (testResult) {
+                testResult.cleanup = 'success';
+              }
             } catch (cleanupError) {
-              results.uploadTests[clientTest.name].tests[
-                testCase.name
-              ].cleanup = 'failed';
+              // Safe error handling for cleanup
+              const testResult = results.uploadTests[clientTest.name]?.tests?.[testCase.name];
+              if (testResult) {
+                testResult.cleanup = 'failed';
+              }
               console.warn(
                 `      ⚠️ [${requestId}] Failed to cleanup ${testCase.name} test file:`,
                 cleanupError
@@ -267,12 +408,34 @@ export async function GET(req: Request) {
             }
           }
         } catch (error) {
-          results.uploadTests[clientTest.name].tests[testCase.name] = {
-            success: false,
+          // Initialize the test result object if it doesn't exist with all required properties
+          if (!results.uploadTests[clientTest.name]) {
+            results.uploadTests[clientTest.name] = { 
+              success: false, // Required by UploadTestResult
+              tests: {} 
+            };
+          }
+          
+          // Safe access to the test result object
+          const testResult = {
+            name: testCase.name,
+            success: false,  // Explicitly set success to false for error case
             error: (error as Error).message,
             exception: true,
             mimeType: testCase.contentType,
+            // Initialize other optional properties that might be expected
+            filePath: undefined,
+            fileUrl: undefined,
+            errorDetails: error,
+            uploadData: undefined,
+            cleanup: undefined
           };
+
+          // Safely update the tests object
+          if (!results.uploadTests[clientTest.name].tests) {
+            results.uploadTests[clientTest.name].tests = {};
+          }
+          results.uploadTests[clientTest.name].tests![testCase.name] = testResult;
           console.error(
             `      💥 [${requestId}] ${testCase.name} upload exception:`,
             error
@@ -281,17 +444,21 @@ export async function GET(req: Request) {
       }
 
       // Summary for this client
-      const successfulTests = Object.values(
-        results.uploadTests[clientTest.name].tests
-      ).filter((t: any) => t.success).length;
+      // Safe access to upload tests with proper initialization
+      const uploadTests = results.uploadTests[clientTest.name];
+      if (!uploadTests) continue;
+      
+      const tests = uploadTests.tests || {};
+      const successfulTests = Object.values(tests).filter(t => t?.success).length;
       const totalTests = uploadTestCases.length;
-      results.uploadTests[clientTest.name].summary = {
+      
+      // Safe summary creation
+      uploadTests.summary = {
         successful: successfulTests,
         total: totalTests,
         successRate: `${successfulTests}/${totalTests}`,
         hasAnySuccess: successfulTests > 0,
-        pdfWorking:
-          results.uploadTests[clientTest.name].tests['PDF']?.success || false,
+        pdfWorking: tests['PDF']?.success === true,
       };
 
       console.log(
@@ -301,10 +468,10 @@ export async function GET(req: Request) {
     }
 
     // 6. Overall Assessment
-    const pdfUploadWorking =
+    const pdfUploadWorking = Boolean(
       results.uploadTests.anonClient?.summary?.pdfWorking ||
-      results.uploadTests.adminClient?.summary?.pdfWorking ||
-      false;
+      results.uploadTests.adminClient?.summary?.pdfWorking
+    );
 
     const overallSuccess =
       results.connectionTests.anonClient?.success &&

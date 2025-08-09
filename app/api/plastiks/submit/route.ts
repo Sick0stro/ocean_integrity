@@ -1,6 +1,22 @@
 import { NextResponse } from 'next/server';
-import { submitToPlastiks } from '@/lib/plastiks';
+import { submitToPlastiks, RecyclingDocRow as PlastiksRecyclingDocRow } from '@/lib/plastiks';
 import { getSupabaseAdmin } from '@/utils/supabase';
+
+// Extend the RecyclingDocRow from plastiks with our local fields
+interface RecyclingDocRow extends Omit<PlastiksRecyclingDocRow, 'tonnage_kg' | 'tonnage_tons'> {
+  invoice_number: string;
+  status: string;
+  tonnage_kg?: number | null;
+  tonnage_tons?: string | number | null;
+  [key: string]: unknown; // For other potential fields from the database
+}
+
+interface ProcessResult {
+  invoice_number: string;
+  status: string;
+  id?: number;
+  error?: string;
+}
 
 async function getPendingRows() {
   const supabase = getSupabaseAdmin();
@@ -72,7 +88,7 @@ export async function POST(req: Request) {
   // Optional: process a single invoice_number via query param
   const single = url.searchParams.get('invoice');
 
-  const results: any[] = [];
+  const results: ProcessResult[] = [];
 
   // Load pending rows
   const rows = await getPendingRows();
@@ -86,7 +102,7 @@ export async function POST(req: Request) {
       const prg = await submitToPlastiks({
         ...row,
         tonnage_kg: row.tonnage_kg ?? (row.tonnage_tons ? Number(row.tonnage_tons) * 1000 : undefined),
-      } as any);
+      });
       await markSubmitted(row.invoice_number, {
         plastiks_collection_id: prg.id,
         plastiks_collection_address: prg.address,

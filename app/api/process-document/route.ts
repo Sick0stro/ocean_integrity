@@ -98,69 +98,41 @@ You are an expert document processing AI. Your task is to analyze the provided d
 **Template for \`eft_receipt\`**
 {
   "document_type": "eft_receipt",
+  "invoice": "string",// generate invoice from Agst Ref, exsample MAT/UP/12-30/054
+  "second_invoice": "string",// generate second_invoice from Agst Ref, exsample MAT/UP/12-30/054, generate "second_invoice" only if its avelible.
+  "third_invoice": "string",// generate third_invoice from Agst Ref, exsample MAT/UP/12-30/054, generate "third_invoice" only if its avelible.    
   "bank_name": "string",
-  "document_title": "string",
-  "transaction_details": {
-    "transaction_date_time": "string (dd/mm/yyyy hh:mm:ss)",
-    "value_date": "string (dd/mm/yyyy)",
-    "amount": "number",
-    "currency": "string",
-    "payment_type": "string",
-    "description": "string"
-  },
-  "sender_details": { "name": "string", "agst_ref": "string",},
-  "recipient_details": { "name": "string", "customer_no": "string", "account_no": "string", "iban": "string" },
-  "reference_numbers": { "inquiry_no": "string", "transaction_ref": "string", "document_no": "string", "ettn": "string" }
+  "etf_date": "string (dd/mm/yyyy)",
+  "sender_name": "string",
 }
 
 **Template for \`invoice\`**
 {
   "document_type": "invoice",
-  "invoice_title": "string",
-  "irn": "string",
-  "ack_no": "string",
-  "ack_date": "string (dd-mm-yyyy)",
-  "document_no": "string",
-  "document_date": "string (dd/mm/yyyy)",
-  "supplier": { "name": "string", "gstin": "string", "address": "string", "phone": "string" },
-  "recipient": { "name": "string", "gstin": "string", "address": "string" },
-  "items": [
-    {
-      "sino": "number",
-      "product_description": "string",
-      "hsn_code": "string",
-      "quantity": "number",
-      "uqc": "string",
-      "unit_price": "number",
-      "discount": "number",
-      "taxable_amount": "number",
-      "total": "number"
-    }
-  ],
-  "total_summary": {
-    "taxable_amount": "number",
-    "cgst_amount": "number",
-    "sgst_amount": "number",
-    "igst_amount": "number",
-    "total_invoice_amount": "number"
-  }
+  "invoice": "string",// generate invoice from invoice #, like exsample MAT/UP/12-30/054 not like this exsample MAT-UP-12-30-054
+  "invoice_date": "string (dd-mm-yyyy)",
+  "bill_to_address": "string", 
+  "bill_to_company_name": "string",
+  "vehicle_number": "string",
+  "weight": "number",// generate weight from Qty
+  "weight_unit_of_mesurement": "string", // exsample KG
+  "plastic_type": "string",// generate plastic type from items, exsample  PET, HDPE , PVC , LDPE , PP , PS , OTHER , MIXED , ALU , PAP , GLASS , PAPER , TP , TEX , TEXN , TEX 
 }
 
 **Template for \`e-way-bill\`**
 {
   "document_type": "e-way-bill",
-  "document_details": "string",
   "eway_bill_no": "string",
+  "invoice": "string",// exsample MAT/UP/12-30/054 and do not add date (dd-mm-yyyy) and do not add Tax Invoice in the begining  
   "generated_date": "string (dd/mm/yyyy hh:mm pm/am)",
-  "generated_by": "string",
-  "valid_upto": "string (dd/mm/yyyy)",
+  "plastic_type": "string",// generate plastic type from product name and discription, exsample  PET, HDPE , PVC , LDPE , PP , PS , OTHER , MIXED , ALU , PAP , GLASS , PAPER , TP , TEX , TEXN , TEX 
+  "weight": "number",
+  "weight_unit_of_mesurement": "string", // exsample KG
   "mode": "string",
-  "approx_distance": "string",
-  "address_details": {
-    "from": { "gstin": "string", "name": "string", "address": "string" },
-    "to": { "gstin": "string", "name": "string", "address": "string" },
-    "ship_to": { "gstin": "string", "name": "string", "address": "string" }
-  }
+  "ship_to_address": "string", 
+  "ship_to_company_name": "string",
+  "ship_to_country_code": "string",// generate country code from ship to address, exsample IN,BR,US,CA,GB
+  "vehicle_number": "string",
 }
 ---`;
 
