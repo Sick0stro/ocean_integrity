@@ -51,10 +51,46 @@ export async function POST(req: Request) {
   const secret = headerSecret || querySecret || '';
   const expected =
     process.env.CRON_INGEST_SECRET || process.env.CRON_SUBMIT_SECRET;
+  const whichExpected = process.env.CRON_INGEST_SECRET
+    ? 'CRON_INGEST_SECRET'
+    : process.env.CRON_SUBMIT_SECRET
+    ? 'CRON_SUBMIT_SECRET'
+    : 'NONE';
   const allowDevBypass = process.env.NODE_ENV !== 'production' && !expected;
+
+  // Detailed auth diagnostics
+  const mask = (v?: string | null) =>
+    v
+      ? `${String(v).slice(0, 3)}***${String(v).slice(-2)} (len:${
+          String(v).length
+        })`
+      : 'null';
+  console.log(
+    `🔐 [promote:${requestId}] Auth check | expectedFrom=${whichExpected} | allowDevBypass=${allowDevBypass} | headerSecret=${Boolean(
+      headerSecret
+    )} | querySecret=${Boolean(querySecret)} | provided=${mask(
+      secret
+    )} | expected=${mask(expected)}`
+  );
+
   if (!allowDevBypass) {
     if (!expected || secret !== expected) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      console.warn(
+        `🟡 [promote:${requestId}] Unauthorized: mismatch (provided != expected). Ensure ?secret matches ${whichExpected}`
+      );
+      return NextResponse.json(
+        {
+          error: 'Unauthorized',
+          details: {
+            reason: 'secret_mismatch',
+            expectedFrom: whichExpected,
+            hasExpected: Boolean(expected),
+            hasHeaderSecret: Boolean(headerSecret),
+            hasQuerySecret: Boolean(querySecret),
+          },
+        },
+        { status: 401 }
+      );
     }
   }
 
