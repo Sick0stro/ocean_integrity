@@ -244,17 +244,17 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
 };
 
 type GroupDoc = {
-  id: string
-  document_type: 'invoice' | 'eft_receipt' | 'e-way-bill'
-  file_url: string | null
-  created_at: string
-  raw_json: any
-}
+  id: string;
+  document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
+  file_url: string | null;
+  created_at: string;
+  raw_json: Record<string, unknown>;
+};
 
 type InvoiceGroup = {
-  invoice: string
-  docs: Partial<Record<'invoice' | 'eft_receipt' | 'e-way-bill', GroupDoc[]>>
-}
+  invoice: string;
+  docs: Partial<Record<'invoice' | 'eft_receipt' | 'e-way-bill', GroupDoc[]>>;
+};
 
 export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
@@ -262,131 +262,223 @@ export default function Home() {
     ProcessedDocument[]
   >([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'upload' | 'results' | 'groups' | 'submit'>('upload');
+  const [activeTab, setActiveTab] = useState<
+    'upload' | 'results' | 'groups' | 'submit'
+  >('upload');
   // ===== Group & Verify state =====
-  const [groups, setGroups] = useState<Record<string, InvoiceGroup>>({})
-  const [isGroupsLoading, setIsGroupsLoading] = useState(false)
-  const [submitting, setSubmitting] = useState<Record<string, boolean>>({})
-  const [submitResult, setSubmitResult] = useState<Record<string, { ok: boolean; message: string }>>({})
+  const [groups, setGroups] = useState<Record<string, InvoiceGroup>>({});
+  const [isGroupsLoading, setIsGroupsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
+  const [submitResult, setSubmitResult] = useState<
+    Record<string, { ok: boolean; message: string }>
+  >({});
 
   // Build/merge a single parsed_documents row into groups map
-  const mergeRowIntoGroups = useCallback((row: GroupDoc, map: Record<string, InvoiceGroup>) => {
-    const ensureGroup = (invoiceKey: string) => {
-      if (!invoiceKey) return
-      if (!map[invoiceKey]) {
-        map[invoiceKey] = { invoice: invoiceKey, docs: {} }
-      }
-      const list = map[invoiceKey].docs[row.document_type] || []
-      // de-dup by id and keep newest first
-      const filtered = [row, ...list.filter(d => d.id !== (row as any).id)].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )
-      map[invoiceKey].docs[row.document_type] = filtered
-    }
+  const mergeRowIntoGroups = useCallback(
+    (row: GroupDoc, map: Record<string, InvoiceGroup>) => {
+      const ensureGroup = (invoiceKey: string) => {
+        if (!invoiceKey) return;
+        if (!map[invoiceKey]) {
+          map[invoiceKey] = { invoice: invoiceKey, docs: {} };
+        }
+        const list = map[invoiceKey].docs[row.document_type] || [];
+        // de-dup by id and keep newest first
+        const filtered = [row, ...list.filter((d) => d.id !== row.id)].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        map[invoiceKey].docs[row.document_type] = filtered;
+      };
 
-    // Canonical grouping key is anchor_key if present in raw_json, else raw_json.invoice
-    const rj = row.raw_json || {}
-    const primary = (rj.anchor_key || rj.invoice || '').toString().trim()
-    if (primary) ensureGroup(primary)
-    if (row.document_type === 'eft_receipt') {
-      const s = (rj.second_invoice || '').toString().trim()
-      const t = (rj.third_invoice || '').toString().trim()
-      if (s) ensureGroup(s)
-      if (t) ensureGroup(t)
-    }
-  }, [])
+      // Canonical grouping key is anchor_key if present in raw_json, else raw_json.invoice
+      const rj = (row.raw_json || {}) as Record<string, unknown>;
+      const primary = (
+        (rj as Record<string, unknown>)['anchor_key'] ||
+        (rj as Record<string, unknown>)['invoice'] ||
+        ''
+      )
+        .toString()
+        .trim();
+      if (primary) ensureGroup(primary);
+      if (row.document_type === 'eft_receipt') {
+        const s = ((rj as Record<string, unknown>)['second_invoice'] || '')
+          .toString()
+          .trim();
+        const t = ((rj as Record<string, unknown>)['third_invoice'] || '')
+          .toString()
+          .trim();
+        if (s) ensureGroup(s);
+        if (t) ensureGroup(t);
+      }
+    },
+    []
+  );
 
   // Realtime subscription to parsed_documents
   useEffect(() => {
-    const supa = getSupabaseBrowser()
-    let cancelled = false
+    const supa = getSupabaseBrowser();
+    let cancelled = false;
 
     const loadInitial = async () => {
-      setIsGroupsLoading(true)
+      setIsGroupsLoading(true);
       const { data, error } = await supa
         .from('parsed_documents')
         .select('id, document_type, file_url, created_at, raw_json')
         .order('created_at', { ascending: false })
-        .limit(1000)
+        .limit(1000);
       if (error) {
-        console.error('Failed to load parsed_documents', error)
-        setIsGroupsLoading(false)
-        return
+        console.error('Failed to load parsed_documents', error);
+        setIsGroupsLoading(false);
+        return;
       }
-      if (cancelled) return
-      const map: Record<string, InvoiceGroup> = {}
-      data?.forEach((row: any) => mergeRowIntoGroups(row as GroupDoc, map))
-      setGroups(map)
-      setIsGroupsLoading(false)
-    }
+      if (cancelled) return;
+      const map: Record<string, InvoiceGroup> = {};
+      (data as unknown as GroupDoc[] | null)?.forEach((row) =>
+        mergeRowIntoGroups(row, map)
+      );
+      setGroups(map);
+      setIsGroupsLoading(false);
+    };
 
-    loadInitial()
+    loadInitial();
 
     const channel = supa
       .channel('parsed_documents_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'parsed_documents' }, (payload) => {
-        setGroups((prev) => {
-          const map = { ...prev }
-          const row = (payload.new || payload.old) as any
-          if (payload.eventType === 'DELETE' && row) {
-            // Rebuild affected groups conservatively: remove this id from all types in its groups
-            const rj = row.raw_json || {}
-            const keys = [rj.anchor_key || rj.invoice, rj.second_invoice, rj.third_invoice]
-              .filter(Boolean)
-              .map((s: any) => s.toString().trim())
-            keys.forEach((k: string) => {
-              const g = map[k]
-              if (!g) return
-              const types: Array<'invoice'|'eft_receipt'|'e-way-bill'> = ['invoice','eft_receipt','e-way-bill']
-              types.forEach((t) => {
-                const list = g.docs[t]
-                if (list) g.docs[t] = list.filter((d) => (d as any).id !== row.id)
-              })
-            })
-            return { ...map }
-          }
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            mergeRowIntoGroups(row as GroupDoc, map)
-          }
-          return { ...map }
-        })
-      })
-      .subscribe()
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'parsed_documents' },
+        (payload) => {
+          setGroups((prev) => {
+            const map = { ...prev };
+            const row = (payload.new || payload.old) as unknown as GroupDoc & {
+              raw_json: Record<string, unknown>;
+            };
+            if (payload.eventType === 'DELETE' && row) {
+              // Rebuild affected groups conservatively: remove this id from all types in its groups
+              const rj = (row.raw_json || {}) as Record<string, unknown>;
+              const keys = [
+                (rj as Record<string, unknown>)['anchor_key'] ||
+                  (rj as Record<string, unknown>)['invoice'],
+                (rj as Record<string, unknown>)['second_invoice'],
+                (rj as Record<string, unknown>)['third_invoice'],
+              ]
+                .filter(Boolean)
+                .map((s) => String(s).trim());
+              keys.forEach((k: string) => {
+                const g = map[k];
+                if (!g) return;
+                const types: Array<'invoice' | 'eft_receipt' | 'e-way-bill'> = [
+                  'invoice',
+                  'eft_receipt',
+                  'e-way-bill',
+                ];
+                types.forEach((t) => {
+                  const list = g.docs[t];
+                  if (list) g.docs[t] = list.filter((d) => d.id !== row.id);
+                });
+              });
+              return { ...map };
+            }
+            if (
+              payload.eventType === 'INSERT' ||
+              payload.eventType === 'UPDATE'
+            ) {
+              mergeRowIntoGroups(row, map);
+            }
+            return { ...map };
+          });
+        }
+      )
+      .subscribe();
 
     return () => {
-      cancelled = true
-      supa.removeChannel(channel)
-    }
-  }, [mergeRowIntoGroups])
+      cancelled = true;
+      supa.removeChannel(channel);
+    };
+  }, [mergeRowIntoGroups]);
 
   const computeGroupStatus = useCallback((g: InvoiceGroup) => {
-    const required: Array<'invoice'|'eft_receipt'|'e-way-bill'> = ['invoice','eft_receipt','e-way-bill']
-    const haveUrls = required.map((t) => Boolean((g.docs[t]?.[0]?.file_url) || null))
-    const count = haveUrls.filter(Boolean).length
-    const missing = required.filter((t, i) => !haveUrls[i])
-    const complete = count === required.length
-    return { count, missing, complete }
-  }, [])
+    const required: Array<'invoice' | 'eft_receipt' | 'e-way-bill'> = [
+      'invoice',
+      'eft_receipt',
+      'e-way-bill',
+    ];
+    const haveUrls = required.map((t) =>
+      Boolean(g.docs[t]?.[0]?.file_url || null)
+    );
+    const count = haveUrls.filter(Boolean).length;
+    const missing = required.filter((t, i) => !haveUrls[i]);
+    const complete = count === required.length;
+    return { count, missing, complete };
+  }, []);
 
   const handleSubmitGroup = useCallback(async (invoice: string) => {
-    setSubmitting((prev) => ({ ...prev, [invoice]: true }))
-    setSubmitResult((prev) => ({ ...prev, [invoice]: { ok: false, message: '' } }))
+    setSubmitting((prev) => ({ ...prev, [invoice]: true }));
+    setSubmitResult((prev) => ({
+      ...prev,
+      [invoice]: { ok: false, message: '' },
+    }));
     try {
-      const resp = await fetch(`/api/plastiks/submit?invoice=${encodeURIComponent(invoice)}`, {
-        method: 'POST',
-      })
-      const json = await resp.json().catch(() => ({}))
-      if (resp.ok) {
-        setSubmitResult((prev) => ({ ...prev, [invoice]: { ok: true, message: 'Submitted' } }))
-      } else {
-        setSubmitResult((prev) => ({ ...prev, [invoice]: { ok: false, message: json?.error || 'Submission failed' } }))
+      console.log(`[UI] Promote starting for invoice='${invoice}'`);
+      // Step 1: Promote latest parsed_documents rows into recycling_docs
+      const promoteResp = await fetch(
+        `/api/recycling-docs/promote?invoice=${encodeURIComponent(invoice)}`,
+        {
+          method: 'POST',
+        }
+      );
+      const promoteJson = await promoteResp.json().catch(() => ({}));
+      console.log(`[UI] Promote response ok=${promoteResp.ok}`, promoteJson);
+      if (!promoteResp.ok) {
+        setSubmitResult((prev) => ({
+          ...prev,
+          [invoice]: {
+            ok: false,
+            message: promoteJson?.error
+              ? `Promote failed: ${promoteJson.error}`
+              : 'Promote failed',
+          },
+        }));
+        console.warn(`[UI] Promote failed for invoice='${invoice}'`);
+        return;
       }
-    } catch (e: any) {
-      setSubmitResult((prev) => ({ ...prev, [invoice]: { ok: false, message: e?.message || 'Network error' } }))
+
+      // Step 2: Submit to Plastiks
+      console.log(`[UI] Submit starting for invoice='${invoice}'`);
+      const resp = await fetch(
+        `/api/plastiks/submit?invoice=${encodeURIComponent(invoice)}`,
+        {
+          method: 'POST',
+        }
+      );
+      const json = await resp.json().catch(() => ({}));
+      console.log(`[UI] Submit response ok=${resp.ok}`, json);
+      if (resp.ok) {
+        setSubmitResult((prev) => ({
+          ...prev,
+          [invoice]: { ok: true, message: 'Submitted' },
+        }));
+        console.log(`[UI] Submit succeeded for invoice='${invoice}'`);
+      } else {
+        setSubmitResult((prev) => ({
+          ...prev,
+          [invoice]: { ok: false, message: json?.error || 'Submission failed' },
+        }));
+        console.warn(`[UI] Submit failed for invoice='${invoice}'`);
+      }
+    } catch (e) {
+      setSubmitResult((prev) => ({
+        ...prev,
+        [invoice]: {
+          ok: false,
+          message: (e as Error)?.message || 'Network error',
+        },
+      }));
+      console.error(`[UI] Submit error for invoice='${invoice}'`, e);
     } finally {
-      setSubmitting((prev) => ({ ...prev, [invoice]: false }))
+      setSubmitting((prev) => ({ ...prev, [invoice]: false }));
     }
-  }, [])
+  }, []);
   const [currentProcessingIndex, setCurrentProcessingIndex] = useState(-1);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [blobUrls, setBlobUrls] = useState<Map<string, string>>(new Map()); // Track blob URLs for database files
@@ -989,7 +1081,9 @@ export default function Home() {
         <div className='max-w-4xl mx-auto'>
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as any)}
+            onValueChange={(v: string) =>
+              setActiveTab(v as 'upload' | 'results' | 'groups' | 'submit')
+            }
             className='space-y-6'
           >
             <div className='flex justify-center'>
@@ -1383,30 +1477,44 @@ export default function Home() {
                 <CardHeader>
                   <CardTitle>Group & Verify</CardTitle>
                   <CardDescription>
-                    Groups are built in real time from parsed documents. Complete all three files to enable submission.
+                    Groups are built in real time from parsed documents.
+                    Complete all three files to enable submission.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className='p-6'>
                   {isGroupsLoading ? (
                     <div className='flex items-center gap-2 text-slate-600'>
-                      <Loader2 className='h-4 w-4 animate-spin' /> Loading groups...
+                      <Loader2 className='h-4 w-4 animate-spin' /> Loading
+                      groups...
                     </div>
                   ) : Object.keys(groups).length === 0 ? (
-                    <div className='text-slate-600 text-sm'>No groups yet. Upload and process documents to see groups here.</div>
+                    <div className='text-slate-600 text-sm'>
+                      No groups yet. Upload and process documents to see groups
+                      here.
+                    </div>
                   ) : (
                     <div className='space-y-4'>
                       {Object.values(groups).map((g) => {
-                        const status = computeGroupStatus(g)
+                        const status = computeGroupStatus(g);
                         return (
-                          <div key={g.invoice} className='border rounded-lg p-4 bg-white'>
+                          <div
+                            key={g.invoice}
+                            className='border rounded-lg p-4 bg-white'
+                          >
                             <div className='flex items-center justify-between'>
                               <div>
-                                <div className='font-medium text-slate-800'>Invoice: {g.invoice}</div>
-                                <div className='text-xs text-slate-600'>Status: {status.count} of 3 files uploaded</div>
+                                <div className='font-medium text-slate-800'>
+                                  Invoice: {g.invoice}
+                                </div>
+                                <div className='text-xs text-slate-600'>
+                                  Status: {status.count} of 3 files uploaded
+                                </div>
                               </div>
                               <div className='flex items-center gap-2'>
                                 {status.complete ? (
-                                  <Badge className='bg-green-100 text-green-700 border-0'>Complete</Badge>
+                                  <Badge className='bg-green-100 text-green-700 border-0'>
+                                    Complete
+                                  </Badge>
                                 ) : (
                                   <Badge variant='outline'>Incomplete</Badge>
                                 )}
@@ -1415,29 +1523,46 @@ export default function Home() {
 
                             {!status.complete && status.missing.length > 0 && (
                               <div className='text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded mt-3 p-2'>
-                                Missing: {status.missing.join(', ')}. Use "Upload & Process" to add the missing files.
+                                Missing: {status.missing.join(', ')}. Use
+                                &quot;Upload & Process&quot; to add the missing
+                                files.
                               </div>
                             )}
 
                             <div className='grid grid-cols-1 md:grid-cols-3 gap-3 mt-4'>
-                              {(['invoice','eft_receipt','e-way-bill'] as const).map((t) => {
-                                const latest = groups[g.invoice].docs[t]?.[0]
+                              {(
+                                [
+                                  'invoice',
+                                  'eft_receipt',
+                                  'e-way-bill',
+                                ] as const
+                              ).map((t) => {
+                                const latest = groups[g.invoice].docs[t]?.[0];
                                 return (
                                   <div key={t} className='border rounded p-3'>
-                                    <div className='text-xs uppercase text-slate-500 mb-1'>{t}</div>
+                                    <div className='text-xs uppercase text-slate-500 mb-1'>
+                                      {t}
+                                    </div>
                                     {latest?.file_url ? (
-                                      <a className='text-blue-600 text-sm break-all' href={latest.file_url} target='_blank' rel='noreferrer'>
+                                      <a
+                                        className='text-blue-600 text-sm break-all'
+                                        href={latest.file_url}
+                                        target='_blank'
+                                        rel='noreferrer'
+                                      >
                                         {latest.file_url}
                                       </a>
                                     ) : (
-                                      <div className='text-slate-400 text-sm'>No file yet</div>
+                                      <div className='text-slate-400 text-sm'>
+                                        No file yet
+                                      </div>
                                     )}
                                   </div>
-                                )
+                                );
                               })}
                             </div>
                           </div>
-                        )
+                        );
                       })}
                     </div>
                   )}
@@ -1451,45 +1576,67 @@ export default function Home() {
                 <CardHeader>
                   <CardTitle>Push to Plastiks</CardTitle>
                   <CardDescription>
-                    Only complete groups can be submitted. Each submission is manually triggered.
+                    Only complete groups can be submitted. Each submission is
+                    manually triggered.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className='p-6 space-y-4'>
                   {Object.values(groups).length === 0 ? (
-                    <div className='text-slate-600 text-sm'>No groups available.</div>
+                    <div className='text-slate-600 text-sm'>
+                      No groups available.
+                    </div>
                   ) : (
                     Object.values(groups).map((g) => {
-                      const status = computeGroupStatus(g)
+                      const status = computeGroupStatus(g);
                       return (
-                        <div key={g.invoice} className='border rounded-lg p-4 bg-white flex items-center justify-between'>
+                        <div
+                          key={g.invoice}
+                          className='border rounded-lg p-4 bg-white flex items-center justify-between'
+                        >
                           <div>
-                            <div className='font-medium text-slate-800'>Invoice: {g.invoice}</div>
-                            <div className='text-xs text-slate-600'>Status: {status.count} of 3 files uploaded</div>
+                            <div className='font-medium text-slate-800'>
+                              Invoice: {g.invoice}
+                            </div>
+                            <div className='text-xs text-slate-600'>
+                              Status: {status.count} of 3 files uploaded
+                            </div>
                           </div>
                           <div>
                             <Button
-                              disabled={!status.complete || submitting[g.invoice]}
+                              disabled={
+                                !status.complete || submitting[g.invoice]
+                              }
                               className='gap-2'
                               onClick={() => handleSubmitGroup(g.invoice)}
                             >
                               {submitting[g.invoice] ? (
                                 <>
-                                  <Loader2 className='h-4 w-4 animate-spin' /> Submitting...
+                                  <Loader2 className='h-4 w-4 animate-spin' />{' '}
+                                  Submitting...
                                 </>
                               ) : (
                                 <>
-                                  Push to Plastiks {!status.complete ? null : <ArrowRight className='h-4 w-4' />}
+                                  Push to Plastiks{' '}
+                                  {!status.complete ? null : (
+                                    <ArrowRight className='h-4 w-4' />
+                                  )}
                                 </>
                               )}
                             </Button>
                             {submitResult[g.invoice]?.message && (
-                              <div className={`text-xs mt-2 ${submitResult[g.invoice].ok ? 'text-green-600' : 'text-red-600'}`}>
+                              <div
+                                className={`text-xs mt-2 ${
+                                  submitResult[g.invoice].ok
+                                    ? 'text-green-600'
+                                    : 'text-red-600'
+                                }`}
+                              >
                                 {submitResult[g.invoice].message}
                               </div>
                             )}
                           </div>
                         </div>
-                      )
+                      );
                     })
                   )}
                 </CardContent>

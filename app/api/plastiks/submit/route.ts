@@ -1,19 +1,6 @@
 import { NextResponse } from 'next/server';
-import {
-  submitToPlastiks,
-  RecyclingDocRow as PlastiksRecyclingDocRow,
-} from '@/lib/plastiks';
+import { submitToPlastiks } from '@/lib/plastiks';
 import { getSupabaseAdmin } from '@/utils/supabase';
-
-// Extend the RecyclingDocRow from plastiks with our local fields
-interface RecyclingDocRow
-  extends Omit<PlastiksRecyclingDocRow, 'tonnage_kg' | 'tonnage_tons'> {
-  invoice_number: string;
-  status: string;
-  tonnage_kg?: number | null;
-  tonnage_tons?: string | number | null;
-  [key: string]: unknown; // For other potential fields from the database
-}
 
 interface ProcessResult {
   invoice_number: string;
@@ -75,6 +62,8 @@ async function markFailed(invoice_number: string, errorMsg: string) {
 }
 
 export async function POST(req: Request) {
+  const requestId = Math.random().toString(36).slice(2);
+  console.log(`🔵 [submit:${requestId}] Submit request received`);
   const url = new URL(req.url);
   const headerSecret =
     req.headers.get('x-cron-secret') || req.headers.get('x-submit-secret');
@@ -91,17 +80,25 @@ export async function POST(req: Request) {
 
   // Optional: process a single invoice_number via query param
   const single = url.searchParams.get('invoice');
+  console.log(`🔵 [submit:${requestId}] Filter invoice='${single || ''}'`);
 
   const results: ProcessResult[] = [];
 
   // Load pending rows
   const rows = await getPendingRows();
+  console.log(`🔵 [submit:${requestId}] Pending rows: ${rows.length}`);
   const toProcess = single
     ? rows.filter((r) => r.invoice_number === single)
     : rows;
+  console.log(`🔵 [submit:${requestId}] To process: ${toProcess.length}`);
 
   for (const row of toProcess) {
     try {
+      console.log(
+        `🟡 [submit:${requestId}] Processing invoice='${
+          row.invoice_number
+        }' | type='${row.plastic_type}' | tons='${row.tonnage_tons ?? 'n/a'}'`
+      );
       // Normalize tons -> kg for submission layer
       const prg = await submitToPlastiks({
         ...row,
@@ -109,18 +106,28 @@ export async function POST(req: Request) {
           row.tonnage_kg ??
           (row.tonnage_tons ? Number(row.tonnage_tons) * 1000 : undefined),
       });
+      console.log(
+        `🟢 [submit:${requestId}] Plastiks PRG created id=${prg.id} address=${prg.address}`
+      );
       await markSubmitted(row.invoice_number, {
         plastiks_collection_id: prg.id,
         plastiks_collection_address: prg.address,
         plastiks_metadata_hash: prg.metadata_hash || null,
         plastiks_submitted_at: new Date().toISOString(),
       });
+      console.log(
+        `🟢 [submit:${requestId}] Marked submitted invoice='${row.invoice_number}'`
+      );
       results.push({
         invoice_number: row.invoice_number,
         status: 'submitted',
         id: prg.id,
       });
     } catch (e) {
+      console.error(
+        `🔴 [submit:${requestId}] Failed invoice='${row.invoice_number}'`,
+        e
+      );
       await markFailed(row.invoice_number, String(e));
       results.push({
         invoice_number: row.invoice_number,
@@ -130,9 +137,11 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({
+  const response = {
     success: true,
     processed: results.length,
     results,
-  });
+  };
+  console.log(`📦 [submit:${requestId}] Summary`, response);
+  return NextResponse.json(response);
 }

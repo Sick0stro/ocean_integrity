@@ -43,9 +43,9 @@ interface UploadTestResult {
       error?: string;
       filePath?: string;
       fileUrl?: string;
-      errorDetails?: any;
+      errorDetails?: unknown;
       mimeType?: string;
-      uploadData?: any;
+      uploadData?: unknown;
       cleanup?: 'success' | 'failed';
       exception?: boolean;
     }
@@ -57,19 +57,6 @@ interface UploadTestResult {
     hasAnySuccess: boolean;
     pdfWorking: boolean;
   };
-}
-
-interface DiagnosticsResults {
-  envCheck: {
-    SUPABASE_URL: string;
-    SUPABASE_ANON_KEY: string;
-    SUPABASE_SERVICE_ROLE_KEY: string;
-  };
-  connectionTests: Record<string, ConnectionTestResult>;
-  bucketTests: Record<string, BucketTestResult>;
-  uploadTests: Record<string, UploadTestResult>;
-  requestId: string;
-  timestamp: string;
 }
 
 export async function GET() {

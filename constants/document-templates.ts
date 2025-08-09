@@ -1,4 +1,4 @@
-import type { EFTReceipt, Invoice, EWayBill } from "@/types/document-types";
+import type { EFTReceipt, Invoice, EWayBill } from '@/types/document-types';
 
 type DocumentTemplates = {
   eft_receipt: Omit<EFTReceipt, 'document_type'>;
@@ -8,6 +8,12 @@ type DocumentTemplates = {
 
 export const documentTemplates: DocumentTemplates = {
   eft_receipt: {
+    // Flat fields extracted by new AI schema
+    invoice: '',
+    second_invoice: '',
+    third_invoice: '',
+    etf_date: '',
+    sender_name: '',
     document_title: '',
     bank_name: '',
     transaction_details: {
@@ -16,7 +22,7 @@ export const documentTemplates: DocumentTemplates = {
       amount: 0,
       currency: '',
       payment_type: '',
-      description: ''
+      description: '',
     },
     sender_details: {
       name: '',
@@ -26,16 +32,25 @@ export const documentTemplates: DocumentTemplates = {
       name: '',
       customer_no: '',
       account_no: '',
-      iban: ''
+      iban: '',
     },
     reference_numbers: {
       inquiry_no: '',
       transaction_ref: '',
       document_no: '',
-      ettn: ''
-    }
+      ettn: '',
+    },
   },
   invoice: {
+    // Flat fields extracted by new AI schema
+    invoice: '',
+    invoice_date: '',
+    bill_to_address: '',
+    bill_to_company_name: '',
+    vehicle_number: '',
+    weight: 0,
+    weight_unit_of_mesurement: '',
+    plastic_type: '',
     document_title: '',
     invoice_title: '',
     irn: '',
@@ -47,12 +62,12 @@ export const documentTemplates: DocumentTemplates = {
       name: '',
       gstin: '',
       address: '',
-      phone: ''
+      phone: '',
     },
     recipient: {
       name: '',
       gstin: '',
-      address: ''
+      address: '',
     },
     items: [],
     total_summary: {
@@ -60,10 +75,19 @@ export const documentTemplates: DocumentTemplates = {
       cgst_amount: 0,
       sgst_amount: 0,
       igst_amount: 0,
-      total_invoice_amount: 0
-    }
+      total_invoice_amount: 0,
+    },
   },
   'e-way-bill': {
+    // Flat fields extracted by new AI schema
+    invoice: '',
+    plastic_type: '',
+    weight: 0,
+    weight_unit_of_mesurement: '',
+    ship_to_address: '',
+    ship_to_company_name: '',
+    ship_to_country_code: '',
+    vehicle_number: '',
     document_title: '',
     document_details: '',
     eway_bill_no: '',
@@ -76,18 +100,18 @@ export const documentTemplates: DocumentTemplates = {
       from: {
         gstin: '',
         name: '',
-        address: ''
+        address: '',
       },
       to: {
         gstin: '',
         name: '',
-        address: ''
+        address: '',
       },
       ship_to: {
         gstin: '',
         name: '',
-        address: ''
-      }
-    }
-  }
+        address: '',
+      },
+    },
+  },
 };
