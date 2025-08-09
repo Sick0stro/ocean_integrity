@@ -1,39 +1,135 @@
-### Ocean Integrity — Ingestion and Plastiks Integration
+# Ocean Integrity
 
-This app ingests accounting document metadata, stores it in Supabase, and optionally submits a summarized record to the Plastiks staging API for blockchain-backed PRG (Plastic Recovery Guarantee) registration.
+A comprehensive document processing and management system for handling invoices, EFT receipts, and e-way bills with Plastiks integration.
 
-### What the app does
+## Overview
 
-- Uploads PDFs (via UI) to Supabase Storage for your internal workflows (legacy flow; optional here).
-- Accepts a JSON payload via API containing:
-  - `invoice_number` (anchor key across PDFs)
-  - Public PDF URLs for invoice/EFT/e‑way bill
-  - Business metadata (recycler company, plastic type, tonnage, location, currency)
-- Upserts rows into `recycling_docs` by `invoice_number`.
-- Submits pending rows to Plastiks staging, performs Web3 signing, and stores returned identifiers/hashes.
+Ocean Integrity is a modern web application that streamlines the processing and management of financial documents. It provides:
 
-### Environments
+- **Document Processing**: Upload and process invoices, EFT receipts, and e-way bills
+- **Smart Grouping**: Automatically groups related documents by invoice number
+- **Validation**: Ensures document integrity and completeness before processing
+- **Plastiks Integration**: Optional submission to Plastiks for blockchain-backed PRG (Plastic Recovery Guarantee) registration
+- **Secure Storage**: All documents are securely stored in Supabase Storage
 
-- Supabase: used for DB and file storage.
-- Plastiks staging: `https://staging.plastiks.io` (test network).
-- Local dev: `http://localhost:3000` for your Next.js server.
+## Key Features
 
-### Environment variables
+### Document Processing
+- **Multi-Document Support**: Handles invoices, EFT receipts, and e-way bills
+- **Smart Parsing**: Extracts key information from uploaded documents
+- **Validation**: Ensures all required documents are present before submission
+- **Duplicate Prevention**: Prevents processing of duplicate or invalid documents
 
-Add these to `.env` (or `.env.local`) and restart `npm run dev`:
+### Invoice Management
+- **Automatic Grouping**: Groups related documents by invoice number
+- **Reference Validation**: Validates invoice references in EFT receipts
+- **Status Tracking**: Tracks processing status of each document group
 
-- Supabase
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
-  - `SUPABASE_SERVICE_ROLE_KEY`
-- Plastiks
-  - `PLASTIKS_BASE_URL` (optional; defaults to `https://staging.plastiks.io`)
-  - `API_TOKEN_CALL` (Plastiks API token, e.g. `plastiks_test_api_key_2024`)
-  - `USER_ADDRESS` (checksummed EVM address that matches your private key)
-  - `PRIVATE_KEY` (hex; `0x` prefix allowed)
-- Route protection
-  - `CRON_INGEST_SECRET` (shared secret for ingestion endpoint)
-  - `CRON_SUBMIT_SECRET` (shared secret for submit endpoint)
+### Integration
+- **Supabase Backend**: Secure storage and database operations
+- **Plastiks API**: Blockchain integration for document verification
+- **Web3 Support**: Secure transaction signing for blockchain operations
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+ and npm/yarn
+- Supabase account
+- Plastiks API credentials (for blockchain integration)
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/ocean_integrity.git
+   cd ocean_integrity
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   # or
+   yarn install
+   ```
+
+3. Set up environment variables (see Environment Variables section)
+
+4. Start the development server:
+   ```bash
+   npm run dev
+   # or
+   yarn dev
+   ```
+
+## Environment Variables
+
+Create a `.env.local` file in the root directory with the following variables:
+
+### Required Variables
+```
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Plastiks Integration
+NEXT_PUBLIC_PLASTIKS_BASE_URL=https://staging.plastiks.io
+NEXT_PUBLIC_API_TOKEN_CALL=your_plastiks_api_token
+NEXT_PUBLIC_USER_ADDRESS=your_ethereum_address
+PRIVATE_KEY=your_private_key
+
+# Security
+CRON_INGEST_SECRET=your_ingest_secret
+CRON_SUBMIT_SECRET=your_submit_secret
+```
+
+## Document Processing Flow
+
+1. **Upload**: Users upload documents through the web interface
+2. **Processing**: Documents are processed to extract key information
+3. **Grouping**: Related documents are grouped by invoice number
+4. **Validation**: Each group is validated for completeness
+5. **Submission**: Valid groups can be submitted to Plastiks for blockchain verification
+
+## API Endpoints
+
+### Document Processing
+- `POST /api/process-document` - Process uploaded documents
+- `GET /api/documents` - List processed documents
+- `GET /api/documents/[id]` - Get specific document details
+
+### Plastiks Integration
+- `POST /api/plastiks/submit` - Submit documents to Plastiks
+- `GET /api/plastiks/status/[id]` - Check submission status
+
+## Development
+
+### Tech Stack
+- **Frontend**: Next.js 13+ with TypeScript
+- **UI**: Radix UI, Tailwind CSS
+- **State Management**: React Context
+- **Backend**: Next.js API Routes
+- **Database**: Supabase (PostgreSQL)
+- **Storage**: Supabase Storage
+- **Blockchain**: Ethereum (via Plastiks API)
+
+### Scripts
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm start` - Start production server
+- `npm run lint` - Run ESLint
+
+## Contributing
+
+1. Fork the repository
+2. Create a new branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ### Database schema (table: `recycling_docs`)
 
