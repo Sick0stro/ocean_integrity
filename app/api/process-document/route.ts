@@ -411,6 +411,45 @@ You are an expert document processing AI. Your task is to analyze the provided d
 
     const uploadTime = Date.now() - uploadStart;
 
+    // ========== STEP 9: SAVE AI RESULT TO DB (parsed_documents) ==========
+    console.log(
+      `🗄️ [${requestId}] Step 9: Saving parsed result to database...`
+    );
+
+    try {
+      const db = getSupabaseAdmin();
+      // Align with existing schema: anchor_key, document_type, raw_json, file_url
+      const anchorKey = (parsedJSON?.anchor_key || parsedJSON?.invoice || '')
+        .toString()
+        .trim() || null;
+      const insertPayload = {
+        anchor_key: anchorKey,
+        document_type: parsedJSON?.document_type ?? null,
+        raw_json: parsedJSON ?? null,
+        file_url: storageResult.publicUrl ?? null,
+      } as const;
+
+      const { error: insertError } = await db
+        .from('parsed_documents')
+        .insert(insertPayload);
+
+      if (insertError) {
+        console.warn(
+          `⚠️ [${requestId}] Failed to insert into parsed_documents:`,
+          insertError
+        );
+      } else {
+        console.log(
+          `✅ [${requestId}] Saved parsed document to parsed_documents`
+        );
+      }
+    } catch (e) {
+      console.warn(
+        `⚠️ [${requestId}] Exception while inserting into parsed_documents:`,
+        e
+      );
+    }
+
     // ========== SUCCESS RESPONSE ==========
     const totalTime = Date.now() - startTime;
     console.log(`🎉 [${requestId}] === PROCESSING COMPLETED ===`);

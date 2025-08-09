@@ -35,18 +35,21 @@ interface UploadTestResult {
   error?: string;
   fileUrl?: string;
   filePath?: string;
-  tests?: Record<string, {
-    name: string;
-    success: boolean;
-    error?: string;
-    filePath?: string;
-    fileUrl?: string;
-    errorDetails?: any;
-    mimeType?: string;
-    uploadData?: any;
-    cleanup?: 'success' | 'failed';
-    exception?: boolean;
-  }>;
+  tests?: Record<
+    string,
+    {
+      name: string;
+      success: boolean;
+      error?: string;
+      filePath?: string;
+      fileUrl?: string;
+      errorDetails?: any;
+      mimeType?: string;
+      uploadData?: any;
+      cleanup?: 'success' | 'failed';
+      exception?: boolean;
+    }
+  >;
   summary?: {
     successful: number;
     total: number;
@@ -268,9 +271,9 @@ export async function GET() {
 
     for (const clientTest of clients) {
       console.log(`   🔬 [${requestId}] Testing ${clientTest.name} uploads...`);
-      results.uploadTests[clientTest.name] = { 
+      results.uploadTests[clientTest.name] = {
         success: false, // Initialize with default success value
-        tests: {} 
+        tests: {},
       };
 
       for (const testCase of uploadTestCases) {
@@ -290,28 +293,29 @@ export async function GET() {
           if (uploadError) {
             // Initialize the test result object if it doesn't exist
             if (!results.uploadTests[clientTest.name]) {
-              results.uploadTests[clientTest.name] = { 
+              results.uploadTests[clientTest.name] = {
                 success: false,
-                tests: {} 
+                tests: {},
               };
             }
-            
+
             // Get a reference to the test result object
             const testResult = results.uploadTests[clientTest.name];
-            
+
             // Initialize tests object if it doesn't exist
             if (!testResult.tests) {
               testResult.tests = {};
             }
-            
+
             // Now it's safe to assign
-            const uploadErrorTyped = uploadError as unknown as SupabaseStorageError;
-            
+            const uploadErrorTyped =
+              uploadError as unknown as SupabaseStorageError;
+
             // Ensure tests object exists
             if (!testResult.tests) {
               testResult.tests = {};
             }
-            
+
             testResult.tests[testCase.name] = {
               name: testCase.name,
               success: false,
@@ -340,38 +344,40 @@ export async function GET() {
                 error: 'Failed to generate public URL',
                 mimeType: testCase.contentType,
               };
-              
+
               // Safely initialize the test result structure if it doesn't exist
               const testEntry = results.uploadTests[clientTest.name] || {
                 success: false,
-                tests: {}
+                tests: {},
               };
-              
+
               // Ensure tests object exists
               testEntry.tests = testEntry.tests || {};
               // Update the test result
               testEntry.tests[testCase.name] = testResult;
               // Update the entry in the results
               results.uploadTests[clientTest.name] = testEntry;
-              
-              console.error(`      ❌ [${requestId}] ${testCase.name} failed to generate public URL`);
+
+              console.error(
+                `      ❌ [${requestId}] ${testCase.name} failed to generate public URL`
+              );
               continue;
             }
 
             // Ensure the client test entry exists and is properly typed
             if (!results.uploadTests[clientTest.name]) {
-              results.uploadTests[clientTest.name] = { 
+              results.uploadTests[clientTest.name] = {
                 success: true,
-                tests: {}
+                tests: {},
               };
-            } 
-            
+            }
+
             // Ensure tests object exists and is properly typed
             const testEntry = results.uploadTests[clientTest.name] || {};
             if (!testEntry.tests) {
               testEntry.tests = {};
             }
-            
+
             testEntry.tests[testCase.name] = {
               name: testCase.name,
               success: true,
@@ -389,15 +395,17 @@ export async function GET() {
               await clientTest.client.storage
                 .from('documents')
                 .remove([testCase.fileName]);
-              
+
               // Safe cleanup status update
-              const testResult = results.uploadTests[clientTest.name]?.tests?.[testCase.name];
+              const testResult =
+                results.uploadTests[clientTest.name]?.tests?.[testCase.name];
               if (testResult) {
                 testResult.cleanup = 'success';
               }
             } catch (cleanupError) {
               // Safe error handling for cleanup
-              const testResult = results.uploadTests[clientTest.name]?.tests?.[testCase.name];
+              const testResult =
+                results.uploadTests[clientTest.name]?.tests?.[testCase.name];
               if (testResult) {
                 testResult.cleanup = 'failed';
               }
@@ -410,16 +418,16 @@ export async function GET() {
         } catch (error) {
           // Initialize the test result object if it doesn't exist with all required properties
           if (!results.uploadTests[clientTest.name]) {
-            results.uploadTests[clientTest.name] = { 
+            results.uploadTests[clientTest.name] = {
               success: false, // Required by UploadTestResult
-              tests: {} 
+              tests: {},
             };
           }
-          
+
           // Safe access to the test result object
           const testResult = {
             name: testCase.name,
-            success: false,  // Explicitly set success to false for error case
+            success: false, // Explicitly set success to false for error case
             error: (error as Error).message,
             exception: true,
             mimeType: testCase.contentType,
@@ -428,14 +436,15 @@ export async function GET() {
             fileUrl: undefined,
             errorDetails: error,
             uploadData: undefined,
-            cleanup: undefined
+            cleanup: undefined,
           };
 
           // Safely update the tests object
           if (!results.uploadTests[clientTest.name].tests) {
             results.uploadTests[clientTest.name].tests = {};
           }
-          results.uploadTests[clientTest.name].tests![testCase.name] = testResult;
+          results.uploadTests[clientTest.name].tests![testCase.name] =
+            testResult;
           console.error(
             `      💥 [${requestId}] ${testCase.name} upload exception:`,
             error
@@ -447,11 +456,13 @@ export async function GET() {
       // Safe access to upload tests with proper initialization
       const uploadTests = results.uploadTests[clientTest.name];
       if (!uploadTests) continue;
-      
+
       const tests = uploadTests.tests || {};
-      const successfulTests = Object.values(tests).filter(t => t?.success).length;
+      const successfulTests = Object.values(tests).filter(
+        (t) => t?.success
+      ).length;
       const totalTests = uploadTestCases.length;
-      
+
       // Safe summary creation
       uploadTests.summary = {
         successful: successfulTests,
@@ -470,7 +481,7 @@ export async function GET() {
     // 6. Overall Assessment
     const pdfUploadWorking = Boolean(
       results.uploadTests.anonClient?.summary?.pdfWorking ||
-      results.uploadTests.adminClient?.summary?.pdfWorking
+        results.uploadTests.adminClient?.summary?.pdfWorking
     );
 
     const overallSuccess =

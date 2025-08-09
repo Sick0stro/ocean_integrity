@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
-import { submitToPlastiks, RecyclingDocRow as PlastiksRecyclingDocRow } from '@/lib/plastiks';
+import {
+  submitToPlastiks,
+  RecyclingDocRow as PlastiksRecyclingDocRow,
+} from '@/lib/plastiks';
 import { getSupabaseAdmin } from '@/utils/supabase';
 
 // Extend the RecyclingDocRow from plastiks with our local fields
-interface RecyclingDocRow extends Omit<PlastiksRecyclingDocRow, 'tonnage_kg' | 'tonnage_tons'> {
+interface RecyclingDocRow
+  extends Omit<PlastiksRecyclingDocRow, 'tonnage_kg' | 'tonnage_tons'> {
   invoice_number: string;
   status: string;
   tonnage_kg?: number | null;
@@ -101,7 +105,9 @@ export async function POST(req: Request) {
       // Normalize tons -> kg for submission layer
       const prg = await submitToPlastiks({
         ...row,
-        tonnage_kg: row.tonnage_kg ?? (row.tonnage_tons ? Number(row.tonnage_tons) * 1000 : undefined),
+        tonnage_kg:
+          row.tonnage_kg ??
+          (row.tonnage_tons ? Number(row.tonnage_tons) * 1000 : undefined),
       });
       await markSubmitted(row.invoice_number, {
         plastiks_collection_id: prg.id,
