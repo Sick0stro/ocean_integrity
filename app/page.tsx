@@ -3,17 +3,8 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { Document as AppDocument } from '@/types/document-types';
 import type { ProcessedDocument } from '@/types/processed-document';
-import {
-  FileText,
-  AlertCircle,
-  CheckCircle2,
-  ArrowRight,
-  Loader2,
-  Clock,
-  FileCheck,
-  CreditCard,
-  Truck,
-} from 'lucide-react';
+import { FileText, AlertCircle, CheckCircle2, ArrowRight, Loader2, Clock, FileCheck, CreditCard, Truck } from 'lucide-react';
+import { getInvoiceGroupKey, isSameInvoice } from '@/lib/invoiceUtils';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -243,12 +234,18 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
   );
 };
 
-type GroupDoc = {
+interface GroupDoc {
   id: string;
   document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
   file_url: string | null;
   created_at: string;
   raw_json: Record<string, unknown>;
+  docs?: {
+    id: string;
+    document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
+    created_at: string;
+    raw_json: Record<string, unknown>;
+  };
 };
 
 type InvoiceGroup = {
@@ -256,62 +253,202 @@ type InvoiceGroup = {
   docs: Partial<Record<'invoice' | 'eft_receipt' | 'e-way-bill', GroupDoc[]>>;
 };
 
+// Define the shape of the submit result
+interface SubmitResult {
+  ok: boolean;
+  message: string;
+}
+
 export default function Home() {
+  // Document processing state
   const [files, setFiles] = useState<File[]>([]);
-  const [processedDocuments, setProcessedDocuments] = useState<
-    ProcessedDocument[]
-  >([]);
+  const [processedDocuments, setProcessedDocuments] = useState<ProcessedDocument[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    'upload' | 'results' | 'groups' | 'submit'
-  >('upload');
-  // ===== Group & Verify state =====
+  const [isDocumentsLoaded, setIsDocumentsLoaded] = useState(false);
+  
+  // UI state
+  const [activeTab, setActiveTab] = useState<'upload' | 'results' | 'groups' | 'submit'>('upload');
+  
+  // Document grouping state
   const [groups, setGroups] = useState<Record<string, InvoiceGroup>>({});
   const [isGroupsLoading, setIsGroupsLoading] = useState(false);
+  // Track all processed invoice numbers for validation
+  const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<Set<string>>(new Set());
+  
+  // Submission state
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
-  const [submitResult, setSubmitResult] = useState<
-    Record<string, { ok: boolean; message: string }>
-  >({});
+  const [submitResult, setSubmitResult] = useState<Record<string, SubmitResult>>({});
+  
+  // Blob URLs for PDF previews - moved to the main state section
+
+  // Calculate the status of a group (complete status, count of files, missing files)
+  const computeGroupStatus = (group: InvoiceGroup | undefined) => {
+    if (!group?.docs) {
+      return { complete: false, count: 0, missing: ['invoice', 'eft_receipt', 'e-way-bill'] };
+    }
+
+    const hasInvoice = Boolean(group.docs.invoice?.length);
+    const hasEftReceipt = Boolean(group.docs.eft_receipt?.length);
+    const hasEWayBill = Boolean(group.docs['e-way-bill']?.length);
+    
+    const count = [hasInvoice, hasEftReceipt, hasEWayBill].filter(Boolean).length;
+    const missing = [
+      !hasInvoice && 'invoice',
+      !hasEftReceipt && 'eft_receipt',
+      !hasEWayBill && 'e-way-bill'
+    ].filter(Boolean) as string[];
+
+    return {
+      complete: hasInvoice && hasEftReceipt && hasEWayBill,
+      count,
+      missing
+    };
+  };
+
+  // Check if an invoice group is complete (has invoice, EFT receipt, and e-way bill)
+  const isCompleteGroup = useCallback((invoiceKey: string, groupsMap: Record<string, InvoiceGroup>): boolean => {
+    if (!invoiceKey) return false;
+    
+    // Find all groups that match this invoice (handling different formats)
+    const matchingGroups = Object.entries(groupsMap).filter(([key]) => 
+      isSameInvoice(key, invoiceKey)
+    );
+    
+    // If no matches, it's not complete
+    if (matchingGroups.length === 0) return false;
+    
+    // Check if any matching group is complete
+    return matchingGroups.some(([_, group]) => {
+      const hasInvoice = group.docs.invoice && group.docs.invoice.length > 0;
+      const hasEftReceipt = group.docs.eft_receipt && group.docs.eft_receipt.length > 0;
+      const hasEWayBill = group.docs['e-way-bill'] && group.docs['e-way-bill'].length > 0;
+      
+      const isComplete = hasInvoice && hasEftReceipt && hasEWayBill;
+      console.log(`Group '${invoiceKey}' is ${isComplete ? 'complete' : 'incomplete'}`);
+      return isComplete;
+    });
+  }, []);
+
+  // Track if an invoice number is from a processed invoice (not just a reference)
+  const trackProcessedInvoice = useCallback((invoiceNumber: string) => {
+    if (invoiceNumber) {
+      setProcessedInvoiceNumbers(prev => {
+        const updated = new Set(prev);
+        updated.add(invoiceNumber);
+        return updated;
+      });
+    }
+  }, []);
 
   // Build/merge a single parsed_documents row into groups map
   const mergeRowIntoGroups = useCallback(
     (row: GroupDoc, map: Record<string, InvoiceGroup>) => {
-      const ensureGroup = (invoiceKey: string) => {
-        if (!invoiceKey) return;
-        if (!map[invoiceKey]) {
-          map[invoiceKey] = { invoice: invoiceKey, docs: {} };
+      try {
+        console.group(`Processing document ${row.id} (${row.document_type})`);
+        
+        // Helper function to ensure a group exists for an invoice key and add the document to it
+        const ensureGroup = (invoiceKey: string) => {
+          if (!invoiceKey) {
+            console.log('Skipping empty invoice key');
+            return;
+          }
+          
+          console.log(`Ensuring group for invoice: '${invoiceKey}'`);
+          
+          // Skip if this invoice is already part of a complete group
+          if (isCompleteGroup(invoiceKey, map)) {
+            console.log(`Skipping '${invoiceKey}' - already part of a complete group`);
+            return;
+          }
+          
+          // Find existing group with matching invoice number (handling different formats)
+          const existingKey = Object.keys(map).find(key => 
+            isSameInvoice(key, invoiceKey)
+          );
+          
+          const groupKey = existingKey || getInvoiceGroupKey(invoiceKey);
+          
+          if (!map[groupKey]) {
+            console.log(`Creating new group for invoice: '${invoiceKey}'`);
+            map[groupKey] = {
+              invoice: invoiceKey,
+              docs: {}
+            };
+          }
+          
+          // Add document to the appropriate document type array
+          const docType = row.document_type;
+          if (!map[groupKey].docs[docType]) {
+            map[groupKey].docs[docType] = [];
+          }
+          
+          // Check if this document is already in the group to avoid duplicates
+          if (!map[groupKey].docs[docType]?.some(doc => doc.id === row.id)) {
+            map[groupKey].docs[docType] = [
+              ...(map[groupKey].docs[docType] || []),
+              row
+            ];
+            console.log(`Added document ${row.id} to group ${groupKey} as type ${docType}`);
+          }
+        };
+        
+        // Get the primary invoice key from the document
+        const rj = (row.raw_json || {}) as Record<string, unknown>;
+        const primary = (
+          (rj.anchor_key || rj.invoice || '') as string
+        ).toString().trim();
+        
+        if (primary) {
+          console.log(`Primary invoice for document ${row.id}: '${primary}'`);
+          // Track the invoice number if this is an actual invoice document
+          if (row.document_type === 'invoice') {
+            trackProcessedInvoice(primary);
+          }
+          ensureGroup(primary);
+        } else {
+          console.warn(`No primary invoice found for document ${row.id}`);
         }
-        const list = map[invoiceKey].docs[row.document_type] || [];
-        // de-dup by id and keep newest first
-        const filtered = [row, ...list.filter((d) => d.id !== row.id)].sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        map[invoiceKey].docs[row.document_type] = filtered;
-      };
-
-      // Canonical grouping key is anchor_key if present in raw_json, else raw_json.invoice
-      const rj = (row.raw_json || {}) as Record<string, unknown>;
-      const primary = (
-        (rj as Record<string, unknown>)['anchor_key'] ||
-        (rj as Record<string, unknown>)['invoice'] ||
-        ''
-      )
-        .toString()
-        .trim();
-      if (primary) ensureGroup(primary);
-      if (row.document_type === 'eft_receipt') {
-        const s = ((rj as Record<string, unknown>)['second_invoice'] || '')
-          .toString()
-          .trim();
-        const t = ((rj as Record<string, unknown>)['third_invoice'] || '')
-          .toString()
-          .trim();
-        if (s) ensureGroup(s);
-        if (t) ensureGroup(t);
+        
+        // Handle EFT receipts that reference other invoices
+        if (row.document_type === 'eft_receipt') {
+          const secondInvoice = ((rj.second_invoice || '') as string).trim();
+          const thirdInvoice = ((rj.third_invoice || '') as string).trim();
+          
+          // Only process EFT references that match our processed invoices
+          const validReferences = [secondInvoice, thirdInvoice].filter(inv => 
+            inv && processedInvoiceNumbers.has(inv)
+          );
+          
+          validReferences.forEach(invoice => {
+            console.log(`Processing valid invoice reference from EFT: '${invoice}'`);
+            ensureGroup(invoice);
+          });
+          
+          console.log('Processed EFT receipt with references:', {
+            id: row.id,
+            primary,
+            secondInvoice,
+            thirdInvoice
+          });
+          
+          // Process additional invoices if they're different from primary
+          if (secondInvoice && secondInvoice !== primary) {
+            console.log(`Processing second_invoice: ${secondInvoice}`);
+            ensureGroup(secondInvoice);
+          }
+          
+          if (thirdInvoice && thirdInvoice !== primary && thirdInvoice !== secondInvoice) {
+            console.log(`Processing third_invoice: ${thirdInvoice}`);
+            ensureGroup(thirdInvoice);
+          }
+        }
+      } catch (error) {
+        console.error('Error in mergeRowIntoGroups:', error);
+      } finally {
+        console.groupEnd();
       }
     },
-    []
+    [isCompleteGroup, isSameInvoice, getInvoiceGroupKey]
   );
 
   // Realtime subscription to parsed_documents
@@ -321,23 +458,41 @@ export default function Home() {
 
     const loadInitial = async () => {
       setIsGroupsLoading(true);
-      const { data, error } = await supa
-        .from('parsed_documents')
-        .select('id, document_type, file_url, created_at, raw_json')
-        .order('created_at', { ascending: false })
-        .limit(1000);
-      if (error) {
-        console.error('Failed to load parsed_documents', error);
-        setIsGroupsLoading(false);
-        return;
+      try {
+        const { data, error } = await supa
+          .from('parsed_documents')
+          .select('id, document_type, file_url, created_at, raw_json')
+          .order('created_at', { ascending: false })
+          .limit(1000);
+          
+        if (error) {
+          console.error('Failed to load parsed_documents', error);
+          return;
+        }
+        
+        if (cancelled) return;
+        
+        // Only process groups if we have data
+        if (data && data.length > 0) {
+          const map: Record<string, InvoiceGroup> = {};
+          (data as unknown as GroupDoc[]).forEach((row) => {
+            if (row) {
+              mergeRowIntoGroups(row, map);
+            }
+          });
+          
+          // Mark documents as loaded
+          setIsDocumentsLoaded(true);
+          
+          setGroups(map);
+        }
+      } catch (error) {
+        console.error('Error loading parsed documents:', error);
+      } finally {
+        if (!cancelled) {
+          setIsGroupsLoading(false);
+        }
       }
-      if (cancelled) return;
-      const map: Record<string, InvoiceGroup> = {};
-      (data as unknown as GroupDoc[] | null)?.forEach((row) => {
-        mergeRowIntoGroups(row, map);
-      });
-      setGroups(map);
-      setIsGroupsLoading(false);
     };
 
     loadInitial();
@@ -347,8 +502,8 @@ export default function Home() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'parsed_documents' },
-        (payload) => {
-          setGroups((prev) => {
+        (payload: any) => {
+          setGroups((prev: Record<string, InvoiceGroup>) => {
             const map = { ...prev };
             const row = (payload.new || payload.old) as unknown as GroupDoc & {
               raw_json: Record<string, unknown>;
@@ -398,20 +553,7 @@ export default function Home() {
     };
   }, [mergeRowIntoGroups]);
 
-  const computeGroupStatus = useCallback((g: InvoiceGroup) => {
-    const required: Array<'invoice' | 'eft_receipt' | 'e-way-bill'> = [
-      'invoice',
-      'eft_receipt',
-      'e-way-bill',
-    ];
-    const haveUrls = required.map((t) =>
-      Boolean(g.docs[t]?.[0]?.file_url || null)
-    );
-    const count = haveUrls.filter(Boolean).length;
-    const missing = required.filter((t, i) => !haveUrls[i]);
-    const complete = count === required.length;
-    return { count, missing, complete };
-  }, []);
+  // computeGroupStatus is defined above with more comprehensive implementation
 
   const handleSubmitGroup = useCallback(async (invoice: string) => {
     setSubmitting((prev) => ({ ...prev, [invoice]: true }));
@@ -1487,34 +1629,37 @@ export default function Home() {
                 <CardHeader>
                   <CardTitle>Group & Verify</CardTitle>
                   <CardDescription>
-                    Groups are built in real time from parsed documents.
-                    Complete all three files to enable submission.
+                    {isDocumentsLoaded ? (
+                      'Groups are built from parsed documents. Complete all three files to enable submission.'
+                    ) : (
+                      'Loading document groups...'
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className='p-6'>
-                  {isGroupsLoading ? (
+                  {isGroupsLoading || !isDocumentsLoaded ? (
                     <div className='flex items-center gap-2 text-slate-600'>
                       <Loader2 className='h-4 w-4 animate-spin' /> Loading
-                      groups...
+                      {isGroupsLoading ? ' groups...' : ' documents...'}
                     </div>
                   ) : Object.keys(groups).length === 0 ? (
                     <div className='text-slate-600 text-sm'>
-                      No groups yet. Upload and process documents to see groups
-                      here.
+                      No groups found. Upload and process documents to see groups here.
                     </div>
                   ) : (
                     <div className='space-y-4'>
-                      {Object.values(groups).map((g) => {
-                        const status = computeGroupStatus(g);
+                      {Object.entries(groups).map(([invoiceKey, group]) => {
+                        if (!group) return null;
+                        const status = computeGroupStatus(group);
                         return (
                           <div
-                            key={g.invoice}
+                            key={invoiceKey}
                             className='border rounded-lg p-4 bg-white'
                           >
                             <div className='flex items-center justify-between'>
                               <div>
                                 <div className='font-medium text-slate-800'>
-                                  Invoice: {g.invoice}
+                                  Invoice: {group.invoice || 'N/A'}
                                 </div>
                                 <div className='text-xs text-slate-600'>
                                   Status: {status.count} of 3 files uploaded
@@ -1549,7 +1694,7 @@ export default function Home() {
                                   'e-way-bill',
                                 ] as const
                               ).map((t) => {
-                                const latest = groups[g.invoice].docs[t]?.[0];
+                                const latest = group.docs?.[t]?.[0];
                                 const tTitle = documentTypes[t]?.title || t;
                                 return (
                                   <div key={t} className='border rounded p-3'>
