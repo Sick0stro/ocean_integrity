@@ -129,6 +129,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
   "weight": "number",
   "weight_unit_of_mesurement": "string", // exsample KG
   "mode": "string",
+  "city": "string",// generate city from ship_to_address,
   "ship_to_address": "string", 
   "ship_to_company_name": "string",
   "ship_to_country_code": "string",// generate country code from ship to address, exsample IN,BR,US,CA,GB
@@ -152,7 +153,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
     const geminiStart = Date.now();
 
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

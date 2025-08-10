@@ -268,88 +268,30 @@ interface DataSheetProps {
 const DataSheet: React.FC<DataSheetProps> = ({
   data,
   documentType,
-  onUpdate,
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
   const template =
     documentTemplates[documentType as keyof typeof documentTemplates] || {};
-  const [editableData, setEditableData] = useState<NestedObject>(
+  const [displayData] = useState<NestedObject>(
     mergeWithTemplate(template, data as unknown as NestedObject)
   );
 
-  // Ensure state resets if data deeply changes (force remount via key in parent for full reset)
+  // Reset display data if data changes
   useEffect(() => {
     const freshTemplate =
       documentTemplates[documentType as keyof typeof documentTemplates] || {};
-    setEditableData(
-      mergeWithTemplate(freshTemplate, data as unknown as NestedObject)
-    );
-    setIsEditing(false);
+    mergeWithTemplate(freshTemplate, data as unknown as NestedObject);
   }, [data, documentType]);
-
-  const handleEdit = () => {
-    setIsEditing(true);
-  };
-
-  const handleSave = () => {
-    onUpdate(editableData as unknown as AppDocument);
-    setIsEditing(false);
-  };
-
-  const handleCancel = () => {
-    setEditableData(data as unknown as NestedObject); // Reset to original data
-    setIsEditing(false);
-  };
-
-  const handleChange = (path: string, value: string) => {
-    const updatedData = setNestedValue({ ...editableData }, path, value);
-    setEditableData(updatedData);
-  };
 
   return (
     <div className='flex flex-col'>
       <div className='flex items-center justify-between mb-2'>
         <h4 className='font-medium text-slate-800 text-sm'>Extracted Data</h4>
-        <div className='flex items-center gap-2'>
-          {isEditing ? (
-            <>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={handleSave}
-                className='flex items-center gap-1 text-green-600 hover:text-green-700'
-              >
-                <Save className='h-4 w-4' />
-                Save
-              </Button>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={handleCancel}
-                className='flex items-center gap-1 text-red-600 hover:text-red-700'
-              >
-                <XCircle className='h-4 w-4' />
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant='ghost'
-              size='sm'
-              onClick={handleEdit}
-              className='flex items-center gap-1'
-            >
-              <Edit className='h-4 w-4' />
-              Edit
-            </Button>
-          )}
-        </div>
       </div>
       <div className='p-4 border rounded-md bg-slate-50/50'>
         <DataRenderer
-          data={editableData}
-          isEditing={isEditing}
-          handleChange={handleChange}
+          data={displayData}
+          isEditing={false}
+          handleChange={() => {}}
         />
       </div>
     </div>
