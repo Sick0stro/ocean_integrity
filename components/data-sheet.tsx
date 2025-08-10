@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Edit, Save, XCircle } from 'lucide-react';
 import type { Document as AppDocument } from '@/types/document-types';
 import {
   Table,
@@ -21,21 +19,6 @@ type NestedObject = {
   [key: string]: string | number | boolean | NestedObject | NestedObject[];
 };
 
-const setNestedValue = <T extends NestedObject>(
-  obj: T,
-  path: string,
-  value: string | number | null
-): T => {
-  const keys = path.split('.');
-
-  // Create a new object with the updated value
-  return keys.reduceRight<T>((acc, key, i) => {
-    return {
-      ...acc,
-      [key]: i === keys.length - 1 ? value : acc[key],
-    };
-  }, obj);
-};
 
 interface DataRendererProps {
   data: NestedObject;

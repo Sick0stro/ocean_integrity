@@ -1,4 +1,4 @@
-export interface InvoiceNumber {
+interface InvoiceNumber {
   /** Original invoice string */
   original: string;
   /** Normalized format: MAT-UP-24-25-032 */
@@ -20,7 +20,7 @@ export interface InvoiceNumber {
  * - MAT-UP-24-25-032
  * - MAT/24-25/032
  */
-export function parseInvoiceNumber(invoice: string): InvoiceNumber | null {
+function parseInvoiceNumber(invoice: string): InvoiceNumber | null {
   if (!invoice) return null;
 
   const clean = invoice.toString().trim().toUpperCase();
@@ -87,7 +87,7 @@ export function parseInvoiceNumber(invoice: string): InvoiceNumber | null {
  * Compare two invoice numbers for equality
  * Handles different formats and partial matches
  */
-export function isSameInvoice(a: string, b: string): boolean {
+function isSameInvoice(a: string, b: string): boolean {
   if (!a || !b) return false;
   if (a === b) return true;
   
@@ -115,7 +115,7 @@ export function isSameInvoice(a: string, b: string): boolean {
 /**
  * Get a stable key for grouping invoices
  */
-export function getInvoiceGroupKey(invoice: string): string {
+function getInvoiceGroupKey(invoice: string): string {
   const parsed = parseInvoiceNumber(invoice);
   if (!parsed) return invoice; // Fallback to original
   
@@ -132,8 +132,4 @@ export function getInvoiceGroupKey(invoice: string): string {
   return components.join('-');
 }
 
-export default {
-  parseInvoiceNumber,
-  isSameInvoice,
-  getInvoiceGroupKey
-};
+export { parseInvoiceNumber, isSameInvoice, getInvoiceGroupKey };

@@ -3,6 +3,24 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { Document as AppDocument } from '@/types/document-types';
 import type { ProcessedDocument } from '@/types/processed-document';
+
+interface RecyclingDocument {
+  id: string;
+  document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
+  file_url: string | null;
+  created_at: string;
+  raw_json: Record<string, unknown>;
+  invoice_number?: string;
+  recycler_company?: string;
+  plastic_type?: string;
+  tonnage_tons?: number;
+  tonnage_kg?: number;
+  country?: string;
+  plastiks_collection_id?: string | null;
+  plastiks_metadata_hash?: string | null;
+  plastiks_collection_address?: string | null;
+  plastiks_submitted_at?: string | null;
+}
 import { FileText, AlertCircle, CheckCircle2, ArrowRight, Loader2, Clock, FileCheck, CreditCard, Truck, UploadCloud } from 'lucide-react';
 import { getInvoiceGroupKey, isSameInvoice } from '@/lib/invoiceUtils';
 import { Button } from '@/components/ui/button';
@@ -271,7 +289,7 @@ export default function Home() {
   
   // Document grouping state
   const [groups, setGroups] = useState<Record<string, InvoiceGroup>>({});
-  const [recyclingDocs, setRecyclingDocs] = useState<Record<string, any>>({});
+  const [recyclingDocs, setRecyclingDocs] = useState<Record<string, RecyclingDocument>>({});
   const [isGroupsLoading, setIsGroupsLoading] = useState(false);
   // Track all processed invoice numbers for validation
   const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<Set<string>>(new Set());
@@ -414,16 +432,30 @@ export default function Home() {
   const trackProcessedInvoice = useCallback((invoiceNumber: string) => {
     if (invoiceNumber) {
       setProcessedInvoiceNumbers(prev => {
+        // Only update if the invoice number is not already in the set
+        if (prev.has(invoiceNumber)) return prev;
         const updated = new Set(prev);
         updated.add(invoiceNumber);
         return updated;
       });
     }
-  }, []);
+  }, []); // Removed setProcessedInvoiceNumbers from deps as it's stable
 
   // Build/merge a single parsed_documents row into groups map
   const mergeRowIntoGroups = useCallback(
     (row: GroupDoc, map: Record<string, InvoiceGroup>) => {
+      // Define isCompleteGroup inside useCallback to avoid dependency issues
+      const isCompleteGroup = (invoiceKey: string, groups: Record<string, InvoiceGroup>) => {
+        const group = groups[invoiceKey];
+        if (!group) return false;
+        
+        const hasInvoice = (group.docs.invoice?.length || 0) > 0;
+        const hasEftReceipt = (group.docs.eft_receipt?.length || 0) > 0;
+        const hasEWayBill = (group.docs['e-way-bill']?.length || 0) > 0;
+        
+        return hasInvoice && hasEftReceipt && hasEWayBill;
+      };
+
       try {
         console.group(`Processing document ${row.id} (${row.document_type})`);
         
@@ -529,7 +561,7 @@ export default function Home() {
         console.groupEnd();
       }
     },
-    [isCompleteGroup, isSameInvoice, getInvoiceGroupKey]
+    [isSameInvoice, getInvoiceGroupKey, trackProcessedInvoice, processedInvoiceNumbers]
   );
 
   // Load recycling docs data with all required fields
@@ -637,12 +669,21 @@ export default function Home() {
 
     loadInitial();
 
+    // Define the payload type for the postgres_changes event
+    type PostgresChangePayload = {
+      eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+      new: Record<string, unknown> | null;
+      old: Record<string, unknown> | null;
+      schema: string;
+      table: string;
+    };
+
     const channel = supa
       .channel('parsed_documents_changes')
-      .on(
+      .on<PostgresChangePayload>(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'parsed_documents' },
-        (payload: any) => {
+        (payload) => {
           setGroups((prev: Record<string, InvoiceGroup>) => {
             const map = { ...prev };
             const row = (payload.new || payload.old) as unknown as GroupDoc & {
@@ -1946,8 +1987,8 @@ export default function Home() {
                                       <div>
                                         <div className='text-slate-500 text-xs font-medium mb-1'>Weight</div>
                                         <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[group.invoice]?.tonnage_tons 
-                                            ? `${recyclingDocs[group.invoice]?.tonnage_tons.toString()} tons` 
+                                          {recyclingDocs[group.invoice]?.tonnage_tons !== undefined 
+                                            ? `${recyclingDocs[group.invoice]?.tonnage_tons?.toString() || '0'} tons` 
                                             : 'N/A'}
                                         </div>
                                       </div>
