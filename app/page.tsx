@@ -21,8 +21,10 @@ interface RecyclingDocument {
   plastiks_collection_address?: string | null;
   plastiks_submitted_at?: string | null;
 }
+
 import { FileText, AlertCircle, CheckCircle2, ArrowRight, Loader2, Clock, FileCheck, CreditCard, Truck, UploadCloud } from 'lucide-react';
-import { getInvoiceGroupKey, isSameInvoice } from '@/lib/invoiceUtils';
+
+
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -404,31 +406,8 @@ export default function Home() {
     };
   };
 
-  // Check if an invoice group is complete (has invoice, EFT receipt, and e-way bill)
-  // Moved implementation inside mergeRowIntoGroups to avoid dependency issues
-  // This function is kept for reference but marked as unused to satisfy TypeScript
-  const _isCompleteGroup = useCallback((invoiceKey: string, groupsMap: Record<string, InvoiceGroup>): boolean => {
-    if (!invoiceKey) return false;
-    
-    // Find all groups that match this invoice (handling different formats)
-    const matchingGroups = Object.entries(groupsMap).filter(([key]) => 
-      isSameInvoice(key, invoiceKey)
-    );
-    
-    // If no matches, it's not complete
-    if (matchingGroups.length === 0) return false;
-    
-    // Check if any matching group is complete
-    return matchingGroups.some(([groupKey, group]) => {
-      const hasInvoice = group.docs.invoice && group.docs.invoice.length > 0;
-      const hasEftReceipt = group.docs.eft_receipt && group.docs.eft_receipt.length > 0;
-      const hasEWayBill = group.docs['e-way-bill'] && group.docs['e-way-bill'].length > 0;
-      
-      const isComplete = hasInvoice && hasEftReceipt && hasEWayBill;
-      console.log(`Group '${invoiceKey}' is ${isComplete ? 'complete' : 'incomplete'}`);
-      return isComplete;
-    });
-  }, []);
+  // Note: _isCompleteGroup implementation moved inside mergeRowIntoGroups
+  // to avoid dependency issues and keep related logic together
 
   // Track if an invoice number is from a processed invoice (not just a reference)
   const trackProcessedInvoice = useCallback((invoiceNumber: string) => {
@@ -446,8 +425,10 @@ export default function Home() {
   // Build/merge a single parsed_documents row into groups map
   const mergeRowIntoGroups = useCallback(
     (row: GroupDoc, map: Record<string, InvoiceGroup>) => {
-      // Import the utility functions directly in the callback to avoid dependency issues
-      const { isSameInvoice, getInvoiceGroupKey } = require('@/lib/invoiceUtils');
+      // Inline the functions to avoid dependency issues
+      const normalize = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const isSameInvoice = (a: string, b: string) => a && b ? normalize(a) === normalize(b) : false;
+      const getInvoiceGroupKey = (invoiceNumber: string) => invoiceNumber ? normalize(invoiceNumber) : '';
       
       // Define isCompleteGroup inside useCallback to avoid dependency issues
       const isCompleteGroup = (invoiceKey: string, groups: Record<string, InvoiceGroup>) => {
