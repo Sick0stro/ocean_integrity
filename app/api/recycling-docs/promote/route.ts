@@ -119,6 +119,9 @@ export async function POST(req: Request) {
       created_at: string;
       raw_json: Record<string, unknown>;
     };
+    // Import the invoice matching utilities
+    const { isSameInvoice } = await import('@/lib/invoiceUtils');
+    
     const rows = (data || []).filter((row: ParsedRow) => {
       const rj = (row?.raw_json || {}) as Record<string, unknown>;
       const candidates: string[] = [];
@@ -126,14 +129,17 @@ export async function POST(req: Request) {
       const inv = rj['invoice'];
       const s2 = rj['second_invoice'];
       const s3 = rj['third_invoice'];
+      
+      // Add all potential invoice numbers to candidates
       if (ak) candidates.push(String(ak));
       if (inv) candidates.push(String(inv));
       if (s2) candidates.push(String(s2));
       if (s3) candidates.push(String(s3));
-      return candidates
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .includes(invoice);
+      
+      // Check if any candidate matches the target invoice using the same logic as frontend
+      return candidates.some(candidate => 
+        isSameInvoice(candidate.trim(), invoice)
+      );
     }) as Array<ParsedRow>;
 
     console.log(
@@ -219,7 +225,12 @@ export async function POST(req: Request) {
     const country = ((ewb['ship_to_country_code'] as string) || '')
       .toString()
       .trim();
-    const city = ''; // Unknown reliably from current structures
+    // Get city from invoice or e-way bill, with fallback to empty string
+    const city = (
+      (inv['city'] as string) || 
+      (ewb['city'] as string) || 
+      ''
+    ).toString().trim();
 
     const currency =
       (
@@ -245,7 +256,7 @@ export async function POST(req: Request) {
       city,
       currency,
       upload_date,
-      uploaded_by: 'ui-promote',
+      uploaded_by: 'ocean-integrity-ai',
       status: 'updated' as const,
     };
 
