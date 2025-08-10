@@ -304,7 +304,7 @@ export default function Home() {
     
     // Find all invoice numbers that were just submitted successfully
     const submittedInvoices = Object.entries(submitResult)
-      .filter(([_, result]) => result?.ok)
+      .filter(([, result]) => result?.ok)
       .map(([invoice]) => invoice);
 
     if (submittedInvoices.length === 0) return;
@@ -405,7 +405,9 @@ export default function Home() {
   };
 
   // Check if an invoice group is complete (has invoice, EFT receipt, and e-way bill)
-  const isCompleteGroup = useCallback((invoiceKey: string, groupsMap: Record<string, InvoiceGroup>): boolean => {
+  // Moved implementation inside mergeRowIntoGroups to avoid dependency issues
+  // This function is kept for reference but marked as unused to satisfy TypeScript
+  const _isCompleteGroup = useCallback((invoiceKey: string, groupsMap: Record<string, InvoiceGroup>): boolean => {
     if (!invoiceKey) return false;
     
     // Find all groups that match this invoice (handling different formats)
@@ -417,7 +419,7 @@ export default function Home() {
     if (matchingGroups.length === 0) return false;
     
     // Check if any matching group is complete
-    return matchingGroups.some(([_, group]) => {
+    return matchingGroups.some(([groupKey, group]) => {
       const hasInvoice = group.docs.invoice && group.docs.invoice.length > 0;
       const hasEftReceipt = group.docs.eft_receipt && group.docs.eft_receipt.length > 0;
       const hasEWayBill = group.docs['e-way-bill'] && group.docs['e-way-bill'].length > 0;
@@ -444,6 +446,9 @@ export default function Home() {
   // Build/merge a single parsed_documents row into groups map
   const mergeRowIntoGroups = useCallback(
     (row: GroupDoc, map: Record<string, InvoiceGroup>) => {
+      // Import the utility functions directly in the callback to avoid dependency issues
+      const { isSameInvoice, getInvoiceGroupKey } = require('@/lib/invoiceUtils');
+      
       // Define isCompleteGroup inside useCallback to avoid dependency issues
       const isCompleteGroup = (invoiceKey: string, groups: Record<string, InvoiceGroup>) => {
         const group = groups[invoiceKey];
@@ -561,7 +566,7 @@ export default function Home() {
         console.groupEnd();
       }
     },
-    [isSameInvoice, getInvoiceGroupKey, trackProcessedInvoice, processedInvoiceNumbers]
+    [trackProcessedInvoice, processedInvoiceNumbers] // Removed isSameInvoice and getInvoiceGroupKey as they're now imported inside
   );
 
   // Load recycling docs data with all required fields
@@ -1414,17 +1419,17 @@ export default function Home() {
             <div className='flex justify-center'>
               <TabsList className='grid w-full grid-cols-4'>
                 <TabsTrigger value='upload' className='text-base py-1'>
-                  1. Upload & Process
+                  Upload & Process
                 </TabsTrigger>
                 <TabsTrigger
                   value='results'
                   disabled={completedCount === 0}
                   className='text-base py-1'
                 >
-                  2. Review & Export
+                  Review & Export
                 </TabsTrigger>
                 <TabsTrigger value='groups' className='text-base py-1'>
-                  3. Push to Plastiks
+                  Push to Plastiks
                 </TabsTrigger>
               </TabsList>
             </div>

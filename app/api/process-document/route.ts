@@ -401,7 +401,9 @@ You are an expert document processing AI. Your task is to analyze the provided d
             .uploadToSignedUrl(signedPath, signed.signedUrl, blob, {
               contentType: 'application/pdf',
               upsert: true,
-            } as any);
+              cacheControl: '3600',
+              duplex: 'half'
+            });
           if (!uploadSignedErr) {
             const { data: urlData } = admin.storage
               .from('documents')
