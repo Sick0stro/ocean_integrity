@@ -14,16 +14,27 @@ interface RecyclingDocument {
   recycler_company?: string;
   plastic_type?: string;
   tonnage_tons?: number;
-  tonnage_kg?: number;
+  weight_kg?: number;
   country?: string;
+  status?: string;
   plastiks_collection_id?: string | null;
   plastiks_metadata_hash?: string | null;
   plastiks_collection_address?: string | null;
   plastiks_submitted_at?: string | null;
 }
 
-import { FileText, AlertCircle, CheckCircle2, ArrowRight, Loader2, Clock, FileCheck, CreditCard, Truck, UploadCloud } from 'lucide-react';
-
+import {
+  FileText,
+  AlertCircle,
+  CheckCircle2,
+  ArrowRight,
+  Loader2,
+  Clock,
+  FileCheck,
+  CreditCard,
+  Truck,
+  UploadCloud,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -266,7 +277,7 @@ interface GroupDoc {
     created_at: string;
     raw_json: Record<string, unknown>;
   };
-};
+}
 
 type InvoiceGroup = {
   invoice: string;
@@ -282,28 +293,38 @@ interface SubmitResult {
 export default function Home() {
   // Document processing state
   const [files, setFiles] = useState<File[]>([]);
-  const [processedDocuments, setProcessedDocuments] = useState<ProcessedDocument[]>([]);
+  const [processedDocuments, setProcessedDocuments] = useState<
+    ProcessedDocument[]
+  >([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDocumentsLoaded, setIsDocumentsLoaded] = useState(false);
-  
+
   // UI state
-  const [activeTab, setActiveTab] = useState<'upload' | 'results' | 'groups' | 'submit'>('upload');
-  
+  const [activeTab, setActiveTab] = useState<
+    'upload' | 'results' | 'groups' | 'submit'
+  >('upload');
+
   // Document grouping state
   const [groups, setGroups] = useState<Record<string, InvoiceGroup>>({});
-  const [recyclingDocs, setRecyclingDocs] = useState<Record<string, RecyclingDocument>>({});
+  const [recyclingDocs, setRecyclingDocs] = useState<
+    Record<string, RecyclingDocument>
+  >({});
   const [isGroupsLoading, setIsGroupsLoading] = useState(false);
   // Track all processed invoice numbers for validation
-  const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<Set<string>>(new Set());
-  
+  const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<
+    Set<string>
+  >(new Set());
+
   // Submission state
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
-  const [submitResult, setSubmitResult] = useState<Record<string, SubmitResult>>({});
-  
+  const [submitResult, setSubmitResult] = useState<
+    Record<string, SubmitResult>
+  >({});
+
   // Poll for updated Plastiks submission details
   useEffect(() => {
     if (!submitResult || Object.keys(submitResult).length === 0) return;
-    
+
     // Find all invoice numbers that were just submitted successfully
     const submittedInvoices = Object.entries(submitResult)
       .filter(([, result]) => result?.ok)
@@ -311,10 +332,37 @@ export default function Home() {
 
     if (submittedInvoices.length === 0) return;
 
+    // Check if all submitted invoices already have complete Plastiks data
+    const allHaveCompleteData = submittedInvoices.every((invoice) => {
+      const doc = recyclingDocs[invoice];
+      return (
+        doc &&
+        doc.plastiks_collection_id &&
+        doc.plastiks_collection_address &&
+        doc.plastiks_metadata_hash &&
+        doc.status === 'submitted'
+      );
+    });
+
+    if (allHaveCompleteData) {
+      console.log(
+        '✅ All documents have complete Plastiks data. Stopping polling.'
+      );
+      return; // Don't poll if we already have all the data
+    }
+
+    let pollCount = 0;
+    const maxPolls = 10; // Stop after 30 seconds (10 polls × 3s interval)
+
     // Initial fetch
     const fetchUpdatedDocs = async () => {
       try {
-        console.log('Polling for updated Plastiks details for invoices:', submittedInvoices);
+        pollCount++;
+        console.log(
+          `Polling for updated Plastiks details for invoices (${pollCount}/${maxPolls}):`,
+          submittedInvoices
+        );
+
         const supabase = getSupabaseBrowser();
         const { data: updatedDocs, error } = await supabase
           .from('recycling_docs')
@@ -326,32 +374,67 @@ export default function Home() {
           return;
         }
 
-        console.log('Received updated docs:', JSON.stringify(updatedDocs, null, 2));
+        console.log(
+          'Received updated docs:',
+          JSON.stringify(updatedDocs, null, 2)
+        );
 
         if (updatedDocs && updatedDocs.length > 0) {
-          setRecyclingDocs(prev => {
+          setRecyclingDocs((prev) => {
             const updated = { ...prev };
-            updatedDocs.forEach(doc => {
+            updatedDocs.forEach((doc) => {
               if (doc.invoice_number) {
                 const updatedDoc = {
                   ...(updated[doc.invoice_number] || {}),
                   ...doc,
-                  plastiks_collection_address: doc.plastiks_collection_address || updated[doc.invoice_number]?.plastiks_collection_address,
-                  plastiks_metadata_hash: doc.plastiks_metadata_hash || updated[doc.invoice_number]?.plastiks_metadata_hash,
-                  plastiks_submitted_at: doc.plastiks_submitted_at || updated[doc.invoice_number]?.plastiks_submitted_at,
+                  plastiks_collection_address:
+                    doc.plastiks_collection_address ||
+                    updated[doc.invoice_number]?.plastiks_collection_address,
+                  plastiks_metadata_hash:
+                    doc.plastiks_metadata_hash ||
+                    updated[doc.invoice_number]?.plastiks_metadata_hash,
+                  plastiks_submitted_at:
+                    doc.plastiks_submitted_at ||
+                    updated[doc.invoice_number]?.plastiks_submitted_at,
                 };
-                
+
                 console.log(`Updating doc ${doc.invoice_number}:`, {
                   hasAddress: !!updatedDoc.plastiks_collection_address,
                   hasHash: !!updatedDoc.plastiks_metadata_hash,
-                  doc: updatedDoc
+                  doc: updatedDoc,
                 });
-                
+
                 updated[doc.invoice_number] = updatedDoc;
               }
             });
             return updated;
           });
+
+          // Check if we now have complete data for all invoices
+          const nowHaveCompleteData = submittedInvoices.every((invoice) => {
+            const doc = updatedDocs.find((d) => d.invoice_number === invoice);
+            return (
+              doc &&
+              doc.plastiks_collection_id &&
+              doc.plastiks_collection_address &&
+              doc.plastiks_metadata_hash &&
+              doc.status === 'submitted'
+            );
+          });
+
+          if (nowHaveCompleteData) {
+            console.log(
+              '✅ All documents now have complete Plastiks data. Stopping polling.'
+            );
+            clearInterval(intervalId);
+            return;
+          }
+        }
+
+        // Stop polling after max attempts
+        if (pollCount >= maxPolls) {
+          console.log('⚠️ Max polling attempts reached. Stopping polling.');
+          clearInterval(intervalId);
         }
       } catch (err) {
         console.error('Error in polling function:', err);
@@ -366,43 +449,49 @@ export default function Home() {
 
     // Clean up interval on component unmount or when dependencies change
     return () => clearInterval(intervalId);
-  }, [submitResult]);
+  }, [submitResult, recyclingDocs]); // Added recyclingDocs to dependencies
 
   // Initialize submitting state for all groups
   useEffect(() => {
     const initialSubmitting: Record<string, boolean> = {};
-    Object.keys(groups).forEach(invoice => {
+    Object.keys(groups).forEach((invoice) => {
       initialSubmitting[invoice] = false;
     });
-    setSubmitting(prev => ({
+    setSubmitting((prev) => ({
       ...initialSubmitting,
-      ...prev
+      ...prev,
     }));
   }, [groups]);
-  
+
   // Blob URLs for PDF previews - moved to the main state section
 
   // Calculate the status of a group (complete status, count of files, missing files)
   const computeGroupStatus = (group: InvoiceGroup | undefined) => {
     if (!group?.docs) {
-      return { complete: false, count: 0, missing: ['invoice', 'eft_receipt', 'e-way-bill'] };
+      return {
+        complete: false,
+        count: 0,
+        missing: ['invoice', 'eft_receipt', 'e-way-bill'],
+      };
     }
 
     const hasInvoice = Boolean(group.docs.invoice?.length);
     const hasEftReceipt = Boolean(group.docs.eft_receipt?.length);
     const hasEWayBill = Boolean(group.docs['e-way-bill']?.length);
-    
-    const count = [hasInvoice, hasEftReceipt, hasEWayBill].filter(Boolean).length;
+
+    const count = [hasInvoice, hasEftReceipt, hasEWayBill].filter(
+      Boolean
+    ).length;
     const missing = [
       !hasInvoice && 'invoice',
       !hasEftReceipt && 'eft_receipt',
-      !hasEWayBill && 'e-way-bill'
+      !hasEWayBill && 'e-way-bill',
     ].filter(Boolean) as string[];
 
     return {
       complete: hasInvoice && hasEftReceipt && hasEWayBill,
       count,
-      missing
+      missing,
     };
   };
 
@@ -412,7 +501,7 @@ export default function Home() {
   // Track if an invoice number is from a processed invoice (not just a reference)
   const trackProcessedInvoice = useCallback((invoiceNumber: string) => {
     if (invoiceNumber) {
-      setProcessedInvoiceNumbers(prev => {
+      setProcessedInvoiceNumbers((prev) => {
         // Only update if the invoice number is not already in the set
         if (prev.has(invoiceNumber)) return prev;
         const updated = new Set(prev);
@@ -426,77 +515,90 @@ export default function Home() {
   const mergeRowIntoGroups = useCallback(
     (row: GroupDoc, map: Record<string, InvoiceGroup>) => {
       // Inline the functions to avoid dependency issues
-      const normalize = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-      const isSameInvoice = (a: string, b: string) => a && b ? normalize(a) === normalize(b) : false;
-      const getInvoiceGroupKey = (invoiceNumber: string) => invoiceNumber ? normalize(invoiceNumber) : '';
-      
+      const normalize = (s: string) =>
+        s
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '');
+      const isSameInvoice = (a: string, b: string) =>
+        a && b ? normalize(a) === normalize(b) : false;
+      const getInvoiceGroupKey = (invoiceNumber: string) =>
+        invoiceNumber ? normalize(invoiceNumber) : '';
+
       // Define isCompleteGroup inside useCallback to avoid dependency issues
-      const isCompleteGroup = (invoiceKey: string, groups: Record<string, InvoiceGroup>) => {
+      const isCompleteGroup = (
+        invoiceKey: string,
+        groups: Record<string, InvoiceGroup>
+      ) => {
         const group = groups[invoiceKey];
         if (!group) return false;
-        
+
         const hasInvoice = (group.docs.invoice?.length || 0) > 0;
         const hasEftReceipt = (group.docs.eft_receipt?.length || 0) > 0;
         const hasEWayBill = (group.docs['e-way-bill']?.length || 0) > 0;
-        
+
         return hasInvoice && hasEftReceipt && hasEWayBill;
       };
 
       try {
         console.group(`Processing document ${row.id} (${row.document_type})`);
-        
+
         // Helper function to ensure a group exists for an invoice key and add the document to it
         const ensureGroup = (invoiceKey: string) => {
           if (!invoiceKey) {
             console.log('Skipping empty invoice key');
             return;
           }
-          
+
           console.log(`Ensuring group for invoice: '${invoiceKey}'`);
-          
+
           // Skip if this invoice is already part of a complete group
           if (isCompleteGroup(invoiceKey, map)) {
-            console.log(`Skipping '${invoiceKey}' - already part of a complete group`);
+            console.log(
+              `Skipping '${invoiceKey}' - already part of a complete group`
+            );
             return;
           }
-          
+
           // Find existing group with matching invoice number (handling different formats)
-          const existingKey = Object.keys(map).find(key => 
+          const existingKey = Object.keys(map).find((key) =>
             isSameInvoice(key, invoiceKey)
           );
-          
+
           const groupKey = existingKey || getInvoiceGroupKey(invoiceKey);
-          
+
           if (!map[groupKey]) {
             console.log(`Creating new group for invoice: '${invoiceKey}'`);
             map[groupKey] = {
               invoice: invoiceKey,
-              docs: {}
+              docs: {},
             };
           }
-          
+
           // Add document to the appropriate document type array
           const docType = row.document_type;
           if (!map[groupKey].docs[docType]) {
             map[groupKey].docs[docType] = [];
           }
-          
+
           // Check if this document is already in the group to avoid duplicates
-          if (!map[groupKey].docs[docType]?.some(doc => doc.id === row.id)) {
+          if (!map[groupKey].docs[docType]?.some((doc) => doc.id === row.id)) {
             map[groupKey].docs[docType] = [
               ...(map[groupKey].docs[docType] || []),
-              row
+              row,
             ];
-            console.log(`Added document ${row.id} to group ${groupKey} as type ${docType}`);
+            console.log(
+              `Added document ${row.id} to group ${groupKey} as type ${docType}`
+            );
           }
         };
-        
+
         // Get the primary invoice key from the document
         const rj = (row.raw_json || {}) as Record<string, unknown>;
-        const primary = (
-          (rj.anchor_key || rj.invoice || '') as string
-        ).toString().trim();
-        
+        const primary = ((rj.anchor_key || rj.invoice || '') as string)
+          .toString()
+          .trim();
+
         if (primary) {
           console.log(`Primary invoice for document ${row.id}: '${primary}'`);
           // Track the invoice number if this is an actual invoice document
@@ -507,36 +609,42 @@ export default function Home() {
         } else {
           console.warn(`No primary invoice found for document ${row.id}`);
         }
-        
+
         // Handle EFT receipts that reference other invoices
         if (row.document_type === 'eft_receipt') {
           const secondInvoice = ((rj.second_invoice || '') as string).trim();
           const thirdInvoice = ((rj.third_invoice || '') as string).trim();
-          
+
           // Only process EFT references that match our processed invoices
-          const validReferences = [secondInvoice, thirdInvoice].filter(inv => 
-            inv && processedInvoiceNumbers.has(inv)
+          const validReferences = [secondInvoice, thirdInvoice].filter(
+            (inv) => inv && processedInvoiceNumbers.has(inv)
           );
-          
-          validReferences.forEach(invoice => {
-            console.log(`Processing valid invoice reference from EFT: '${invoice}'`);
+
+          validReferences.forEach((invoice) => {
+            console.log(
+              `Processing valid invoice reference from EFT: '${invoice}'`
+            );
             ensureGroup(invoice);
           });
-          
+
           console.log('Processed EFT receipt with references:', {
             id: row.id,
             primary,
             secondInvoice,
-            thirdInvoice
+            thirdInvoice,
           });
-          
+
           // Process additional invoices if they're different from primary
           if (secondInvoice && secondInvoice !== primary) {
             console.log(`Processing second_invoice: ${secondInvoice}`);
             ensureGroup(secondInvoice);
           }
-          
-          if (thirdInvoice && thirdInvoice !== primary && thirdInvoice !== secondInvoice) {
+
+          if (
+            thirdInvoice &&
+            thirdInvoice !== primary &&
+            thirdInvoice !== secondInvoice
+          ) {
             console.log(`Processing third_invoice: ${thirdInvoice}`);
             ensureGroup(thirdInvoice);
           }
@@ -553,42 +661,46 @@ export default function Home() {
   // Load recycling docs data with all required fields
   useEffect(() => {
     let cancelled = false;
-    
+
     const loadRecyclingDocs = async () => {
       if (!isDocumentsLoaded) return;
-      
+
       try {
         const supa = getSupabaseBrowser();
         const { data, error } = await supa
           .from('recycling_docs')
           .select('*')
           .order('created_at', { ascending: false });
-        
+
         if (!cancelled && !error && data) {
-          const docsMap = data.reduce((acc, doc) => ({
-            ...acc,
-            [doc.invoice_number]: {
-              ...doc,
-              // Ensure we have all required fields with defaults
-              tonnage_tons: doc.tonnage_tons || 0,
-              country: doc.country || doc.origin || '',
-              plastic_type: doc.plastic_type || 'Unknown',
-              recycler_company: doc.recycler_company || 'Unknown',
-              plastiks_collection_id: doc.plastiks_collection_id || null,
-              plastiks_collection_address: doc.plastiks_collection_address || null,
-              plastiks_metadata_hash: doc.plastiks_metadata_hash || null,
-              plastiks_submitted_at: doc.plastiks_submitted_at || null,
-            }
-          }), {});
+          const docsMap = data.reduce(
+            (acc, doc) => ({
+              ...acc,
+              [doc.invoice_number]: {
+                ...doc,
+                // Ensure we have all required fields with defaults
+                tonnage_tons: doc.tonnage_tons || 0,
+                country: doc.country || doc.origin || '',
+                plastic_type: doc.plastic_type || 'Unknown',
+                recycler_company: doc.recycler_company || 'Unknown',
+                plastiks_collection_id: doc.plastiks_collection_id || null,
+                plastiks_collection_address:
+                  doc.plastiks_collection_address || null,
+                plastiks_metadata_hash: doc.plastiks_metadata_hash || null,
+                plastiks_submitted_at: doc.plastiks_submitted_at || null,
+              },
+            }),
+            {}
+          );
           setRecyclingDocs(docsMap);
         }
       } catch (error) {
         console.error('Error loading recycling docs:', error);
       }
     };
-    
+
     loadRecyclingDocs();
-    
+
     return () => {
       cancelled = true;
     };
@@ -607,39 +719,43 @@ export default function Home() {
           .select('id, document_type, file_url, created_at, raw_json')
           .order('created_at', { ascending: false })
           .limit(1000);
-          
+
         if (error) {
           console.error('Failed to load parsed_documents', error);
           return;
         }
-        
+
         if (cancelled) return;
-        
+
         // Only process groups if we have data
         if (data && data.length > 0) {
           const map: Record<string, InvoiceGroup> = {};
-          
+
           (data as unknown as GroupDoc[]).forEach((row) => {
             if (!row) return;
-            
+
             // Get the primary invoice key from the document
             const rj = (row.raw_json || {}) as Record<string, unknown>;
             const primary = (rj.anchor_key || rj.invoice || '') as string;
-            
+
             if (!primary) return;
-            
+
             // Ensure we have a valid document type
             if (!row.document_type) return;
-            
+
             // Skip if document type is not one we care about
-            if (!['invoice', 'eft_receipt', 'e-way-bill'].includes(row.document_type)) {
+            if (
+              !['invoice', 'eft_receipt', 'e-way-bill'].includes(
+                row.document_type
+              )
+            ) {
               return;
             }
-            
+
             // Merge the row into groups
             mergeRowIntoGroups(row, map);
           });
-          
+
           // Update the groups state
           setGroups(map);
           setIsDocumentsLoaded(true);
@@ -1793,11 +1909,9 @@ export default function Home() {
                 <CardHeader>
                   <CardTitle>Group & Verify</CardTitle>
                   <CardDescription>
-                    {isDocumentsLoaded ? (
-                      'Groups are built from parsed documents. Complete all three files to enable submission.'
-                    ) : (
-                      'Loading document groups...'
-                    )}
+                    {isDocumentsLoaded
+                      ? 'Groups are built from parsed documents. Complete all three files to enable submission.'
+                      : 'Loading document groups...'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className='p-6'>
@@ -1808,7 +1922,8 @@ export default function Home() {
                     </div>
                   ) : Object.keys(groups).length === 0 ? (
                     <div className='text-slate-600 text-sm'>
-                      No groups found. Upload and process documents to see groups here.
+                      No groups found. Upload and process documents to see
+                      groups here.
                     </div>
                   ) : (
                     <div className='space-y-8'>
@@ -1816,7 +1931,7 @@ export default function Home() {
                         const latestByType = {
                           invoice: group.docs?.['invoice']?.[0],
                           'e-way-bill': group.docs?.['e-way-bill']?.[0],
-                          'eft_receipt': group.docs?.['eft_receipt']?.[0],
+                          eft_receipt: group.docs?.['eft_receipt']?.[0],
                         };
                         if (!group) return null;
                         const status = computeGroupStatus(group);
@@ -1834,17 +1949,17 @@ export default function Home() {
                                   Status: {status.count} of 3 files uploaded
                                 </div>
                               </div>
-                                <div className='flex items-center gap-2'>
-                                  {status.complete ? (
-                                    <Badge className='bg-green-100 text-green-700 border-0'>
-                                      Complete
-                                    </Badge>
-                                  ) : (
-                                    <Badge className='bg-red-100 text-red-700 border-0'>
-                                      Incomplete
-                                    </Badge>
-                                  )}
-                                </div>
+                              <div className='flex items-center gap-2'>
+                                {status.complete ? (
+                                  <Badge className='bg-green-100 text-green-700 border-0'>
+                                    Complete
+                                  </Badge>
+                                ) : (
+                                  <Badge className='bg-red-100 text-red-700 border-0'>
+                                    Incomplete
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
 
                             {!status.complete && status.missing.length > 0 && (
@@ -1865,15 +1980,26 @@ export default function Home() {
                               ).map((t) => {
                                 const latest = group.docs?.[t]?.[0];
                                 const tTitle = documentTypes[t]?.title || t;
-                                const docType = latest?.document_type as keyof typeof documentTypes;
-                                const DocIcon = documentTypes[docType]?.icon || FileText;
-                                const iconColor = documentTypes[docType]?.color || 'text-slate-500';
+                                const docType =
+                                  latest?.document_type as keyof typeof documentTypes;
+                                const DocIcon =
+                                  documentTypes[docType]?.icon || FileText;
+                                const iconColor =
+                                  documentTypes[docType]?.color ||
+                                  'text-slate-500';
 
                                 return (
-                                  <div key={t} className='border rounded-lg overflow-hidden bg-white'>
+                                  <div
+                                    key={t}
+                                    className='border rounded-lg overflow-hidden bg-white'
+                                  >
                                     <div className='bg-slate-50 px-4 py-2 border-b flex items-center gap-2'>
-                                      <DocIcon className={`h-4 w-4 ${iconColor}`} />
-                                      <h4 className='font-medium text-slate-800'>{tTitle}</h4>
+                                      <DocIcon
+                                        className={`h-4 w-4 ${iconColor}`}
+                                      />
+                                      <h4 className='font-medium text-slate-800'>
+                                        {tTitle}
+                                      </h4>
                                       {latest?.file_url && (
                                         <a
                                           href={latest.file_url}
@@ -1901,23 +2027,51 @@ export default function Home() {
                                           </div>
                                         )}
                                       </div>
-                                      <div className='p-4 overflow-auto' style={{ maxHeight: '500px' }}>
+                                      <div
+                                        className='p-4 overflow-auto'
+                                        style={{ maxHeight: '500px' }}
+                                      >
                                         {latest?.raw_json ? (
                                           <div className='space-y-4'>
-                                            <h5 className='font-medium text-slate-800 border-b pb-2'>Extracted Data</h5>
+                                            <h5 className='font-medium text-slate-800 border-b pb-2'>
+                                              Extracted Data
+                                            </h5>
                                             <div className='space-y-2 text-sm'>
                                               {latest.raw_json ? (
-                                                Object.entries(latest.raw_json as Record<string, unknown>).map(([key, value]) => {
-                                                  if (value === null || value === undefined || value === '') return null;
-                                                  if (typeof value === 'object' && !Array.isArray(value)) return null;
-                                                  
-                                                  const displayValue = Array.isArray(value) 
-                                                    ? value.map(String).join(', ')
-                                                    : String(value);
-                                                  
+                                                Object.entries(
+                                                  latest.raw_json as Record<
+                                                    string,
+                                                    unknown
+                                                  >
+                                                ).map(([key, value]) => {
+                                                  if (
+                                                    value === null ||
+                                                    value === undefined ||
+                                                    value === ''
+                                                  )
+                                                    return null;
+                                                  if (
+                                                    typeof value === 'object' &&
+                                                    !Array.isArray(value)
+                                                  )
+                                                    return null;
+
+                                                  const displayValue =
+                                                    Array.isArray(value)
+                                                      ? value
+                                                          .map(String)
+                                                          .join(', ')
+                                                      : String(value);
+
                                                   return (
-                                                    <div key={key} className='grid grid-cols-3 gap-2'>
-                                                      <div className='text-slate-500 capitalize'>{key.replace(/_/g, ' ')}:</div>
+                                                    <div
+                                                      key={key}
+                                                      className='grid grid-cols-3 gap-2'
+                                                    >
+                                                      <div className='text-slate-500 capitalize'>
+                                                        {key.replace(/_/g, ' ')}
+                                                        :
+                                                      </div>
                                                       <div className='col-span-2 font-medium'>
                                                         {displayValue}
                                                       </div>
@@ -1925,7 +2079,9 @@ export default function Home() {
                                                   );
                                                 })
                                               ) : (
-                                                <div className='text-slate-400 text-center py-2'>No data available</div>
+                                                <div className='text-slate-400 text-center py-2'>
+                                                  No data available
+                                                </div>
                                               )}
                                             </div>
                                           </div>
@@ -1941,7 +2097,8 @@ export default function Home() {
                               })}
                             </div>
                             <div className='mt-6 pt-4 border-t border-slate-100'>
-                              {recyclingDocs[group.invoice]?.plastiks_submitted_at ? (
+                              {recyclingDocs[group.invoice]
+                                ?.plastiks_submitted_at ? (
                                 <div className='mb-4 space-y-2 text-sm'>
                                   <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
                                     <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
@@ -1950,65 +2107,112 @@ export default function Home() {
                                     </h4>
                                     <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Invoice #</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Invoice #
+                                        </div>
                                         <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[group.invoice]?.invoice_number?.toString() || 'N/A'}
+                                          {recyclingDocs[
+                                            group.invoice
+                                          ]?.invoice_number?.toString() ||
+                                            'N/A'}
                                         </div>
                                       </div>
-                                      
+
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Recycler Company</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Recycler Company
+                                        </div>
                                         <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[group.invoice]?.recycler_company?.toString() || 'N/A'}
+                                          {recyclingDocs[
+                                            group.invoice
+                                          ]?.recycler_company?.toString() ||
+                                            'N/A'}
                                         </div>
                                       </div>
-                                      
+
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Plastic Type</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Plastic Type
+                                        </div>
                                         <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[group.invoice]?.plastic_type?.toString() || 'N/A'}
+                                          {recyclingDocs[
+                                            group.invoice
+                                          ]?.plastic_type?.toString() || 'N/A'}
                                         </div>
                                       </div>
-                                      
+
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Weight</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Weight
+                                        </div>
                                         <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[group.invoice]?.tonnage_tons !== undefined 
-                                            ? `${recyclingDocs[group.invoice]?.tonnage_tons?.toString() || '0'} tons` 
+                                          {recyclingDocs[group.invoice]
+                                            ?.tonnage_tons !== undefined
+                                            ? `${
+                                                recyclingDocs[
+                                                  group.invoice
+                                                ]?.tonnage_tons?.toString() ||
+                                                '0'
+                                              } tons`
                                             : 'N/A'}
                                         </div>
                                       </div>
-                                      
+
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Country</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Country
+                                        </div>
                                         <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[group.invoice]?.country?.toString() || 'N/A'}
+                                          {recyclingDocs[
+                                            group.invoice
+                                          ]?.country?.toString() || 'N/A'}
                                         </div>
                                       </div>
-                                      
+
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Collection ID</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Collection ID
+                                        </div>
                                         <div className='font-mono text-xs text-slate-600 break-all'>
-                                          {recyclingDocs[group.invoice]?.plastiks_collection_id?.toString() || 'N/A'}
+                                          {recyclingDocs[
+                                            group.invoice
+                                          ]?.plastiks_collection_id?.toString() ||
+                                            'N/A'}
                                         </div>
                                       </div>
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Metadata Hash</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Metadata Hash
+                                        </div>
                                         <div className='font-mono text-xs text-slate-600 break-all'>
-                                          {recyclingDocs[group.invoice]?.plastiks_metadata_hash?.toString() || 'N/A'}
+                                          {recyclingDocs[
+                                            group.invoice
+                                          ]?.plastiks_metadata_hash?.toString() ||
+                                            'N/A'}
                                         </div>
                                       </div>
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Collection Address</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Collection Address
+                                        </div>
                                         <div className='font-mono text-xs text-slate-600 break-all'>
-                                          {recyclingDocs[group.invoice]?.plastiks_collection_address?.toString() || 'N/A'}
+                                          {recyclingDocs[
+                                            group.invoice
+                                          ]?.plastiks_collection_address?.toString() ||
+                                            'N/A'}
                                         </div>
                                       </div>
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Submitted At</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Submitted At
+                                        </div>
                                         <div className='text-sm text-slate-700'>
-                                          {recyclingDocs[group.invoice]?.plastiks_submitted_at 
-                                            ? new Date(recyclingDocs[group.invoice]?.plastiks_submitted_at ?? '').toLocaleString() 
+                                          {recyclingDocs[group.invoice]
+                                            ?.plastiks_submitted_at
+                                            ? new Date(
+                                                recyclingDocs[group.invoice]
+                                                  ?.plastiks_submitted_at ?? ''
+                                              ).toLocaleString()
                                             : 'N/A'}
                                         </div>
                                       </div>
@@ -2017,63 +2221,107 @@ export default function Home() {
                                 </div>
                               ) : (
                                 <div className='mb-4 space-y-4'>
-                                  <h4 className='font-medium text-slate-800'>Data to be sent to Plastiks:</h4>
+                                  <h4 className='font-medium text-slate-800'>
+                                    Data to be sent to Plastiks:
+                                  </h4>
                                   <div className='bg-blue-50 p-4 rounded-lg border border-blue-100'>
                                     <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Invoice #</div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(latestByType.invoice?.raw_json?.invoice_number || 
-                                           latestByType.invoice?.raw_json?.invoice || 'N/A')}
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Invoice #
                                         </div>
-                                      </div>
-                                      
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Company</div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(latestByType.invoice?.raw_json?.bill_to_company_name ||
-                                           latestByType['e-way-bill']?.raw_json?.ship_to_company_name || 'N/A')}
-                                        </div>
-                                      </div>
-                                      
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Plastic Type</div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(latestByType.invoice?.raw_json?.plastic_type ||
-                                           latestByType['e-way-bill']?.raw_json?.plastic_type || 'N/A')}
-                                        </div>
-                                      </div>
-                                      
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Weight</div>
-                                        <div className='font-medium text-slate-800'>
-                                          {latestByType.invoice?.raw_json?.weight 
-                                            ? `${String(latestByType.invoice.raw_json.weight)} ${String(latestByType.invoice.raw_json.weight_unit || 'kg')}`
-                                            : 'N/A'}
-                                        </div>
-                                      </div>
-                                      
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>City</div>
                                         <div className='font-medium text-slate-800'>
                                           {String(
-                                            latestByType['e-way-bill']?.raw_json?.from_location || 
-                                            latestByType['e-way-bill']?.raw_json?.city ||
-                                            latestByType.invoice?.raw_json?.city || 
-                                            'N/A'
+                                            latestByType.invoice?.raw_json
+                                              ?.invoice_number ||
+                                              latestByType.invoice?.raw_json
+                                                ?.invoice ||
+                                              'N/A'
                                           )}
                                         </div>
                                       </div>
-                                      
+
                                       <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>Country</div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Company
+                                        </div>
                                         <div className='font-medium text-slate-800'>
                                           {String(
-                                            latestByType['e-way-bill']?.raw_json?.ship_to_country_code ||
-                                            latestByType['e-way-bill']?.raw_json?.origin_country ||
-                                            latestByType['e-way-bill']?.raw_json?.country ||
-                                            latestByType.invoice?.raw_json?.country || 
-                                            'N/A'
+                                            latestByType.invoice?.raw_json
+                                              ?.bill_to_company_name ||
+                                              latestByType['e-way-bill']
+                                                ?.raw_json
+                                                ?.ship_to_company_name ||
+                                              'N/A'
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Plastic Type
+                                        </div>
+                                        <div className='font-medium text-slate-800'>
+                                          {String(
+                                            latestByType.invoice?.raw_json
+                                              ?.plastic_type ||
+                                              latestByType['e-way-bill']
+                                                ?.raw_json?.plastic_type ||
+                                              'N/A'
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Weight
+                                        </div>
+                                        <div className='font-medium text-slate-800'>
+                                          {latestByType.invoice?.raw_json
+                                            ?.weight
+                                            ? `${String(
+                                                latestByType.invoice.raw_json
+                                                  .weight
+                                              )} ${String(
+                                                latestByType.invoice.raw_json
+                                                  .weight_unit || 'kg'
+                                              )}`
+                                            : 'N/A'}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          City
+                                        </div>
+                                        <div className='font-medium text-slate-800'>
+                                          {String(
+                                            latestByType['e-way-bill']?.raw_json
+                                              ?.from_location ||
+                                              latestByType['e-way-bill']
+                                                ?.raw_json?.city ||
+                                              latestByType.invoice?.raw_json
+                                                ?.city ||
+                                              'N/A'
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Country
+                                        </div>
+                                        <div className='font-medium text-slate-800'>
+                                          {String(
+                                            latestByType['e-way-bill']?.raw_json
+                                              ?.ship_to_country_code ||
+                                              latestByType['e-way-bill']
+                                                ?.raw_json?.origin_country ||
+                                              latestByType['e-way-bill']
+                                                ?.raw_json?.country ||
+                                              latestByType.invoice?.raw_json
+                                                ?.country ||
+                                              'N/A'
                                           )}
                                         </div>
                                       </div>
@@ -2081,74 +2329,137 @@ export default function Home() {
                                   </div>
                                 </div>
                               )}
-                              
-                              {!recyclingDocs[group.invoice]?.plastiks_submitted_at && (
+
+                              {!recyclingDocs[group.invoice]
+                                ?.plastiks_submitted_at && (
                                 <div>
                                   {submitResult[group.invoice]?.ok ? (
                                     <div className='mt-4 p-3 bg-green-50 border border-green-200 rounded-md'>
                                       <div className='flex items-start gap-2 text-green-800'>
                                         <CheckCircle2 className='h-4 w-4 flex-shrink-0 mt-0.5' />
                                         <div className='space-y-2 w-full'>
-                                          <p className='font-medium'>Successfully Submitted to Plastiks</p>
-                                          
+                                          <p className='font-medium'>
+                                            Successfully Submitted to Plastiks
+                                          </p>
+
                                           {/* Display all available Plastiks details */}
                                           <div className='grid grid-cols-1 gap-2 text-sm'>
                                             <div className='flex justify-between'>
-                                              <span className='text-slate-600'>Invoice #:</span>
-                                              <span className='font-medium'>{recyclingDocs[group.invoice]?.invoice_number || 'N/A'}</span>
-                                            </div>
-                                            
-                                            <div className='flex justify-between'>
-                                              <span className='text-slate-600'>Company:</span>
-                                              <span className='font-medium'>{recyclingDocs[group.invoice]?.recycler_company || 'N/A'}</span>
-                                            </div>
-                                            
-                                            <div className='flex justify-between'>
-                                              <span className='text-slate-600'>Plastic Type:</span>
-                                              <span className='font-medium'>{recyclingDocs[group.invoice]?.plastic_type || 'N/A'}</span>
-                                            </div>
-                                            
-                                            <div className='flex justify-between'>
-                                              <span className='text-slate-600'>Weight:</span>
+                                              <span className='text-slate-600'>
+                                                Invoice #:
+                                              </span>
                                               <span className='font-medium'>
-                                                {recyclingDocs[group.invoice]?.tonnage_tons 
-                                                  ? `${recyclingDocs[group.invoice]?.tonnage_tons} tons` 
-                                                  : recyclingDocs[group.invoice]?.tonnage_kg 
-                                                    ? `${recyclingDocs[group.invoice]?.tonnage_kg} kg` 
-                                                    : 'N/A'}
+                                                {recyclingDocs[group.invoice]
+                                                  ?.invoice_number || 'N/A'}
                                               </span>
                                             </div>
-                                            
+
                                             <div className='flex justify-between'>
-                                              <span className='text-slate-600'>Country:</span>
-                                              <span className='font-medium'>{recyclingDocs[group.invoice]?.country || 'N/A'}</span>
+                                              <span className='text-slate-600'>
+                                                Company:
+                                              </span>
+                                              <span className='font-medium'>
+                                                {recyclingDocs[group.invoice]
+                                                  ?.recycler_company || 'N/A'}
+                                              </span>
                                             </div>
-                                            
-                                            {recyclingDocs[group.invoice]?.plastiks_collection_id && (
+
+                                            <div className='flex justify-between'>
+                                              <span className='text-slate-600'>
+                                                Plastic Type:
+                                              </span>
+                                              <span className='font-medium'>
+                                                {recyclingDocs[group.invoice]
+                                                  ?.plastic_type || 'N/A'}
+                                              </span>
+                                            </div>
+
+                                            <div className='flex justify-between'>
+                                              <span className='text-slate-600'>
+                                                Weight:
+                                              </span>
+                                              <span className='font-medium'>
+                                                {recyclingDocs[group.invoice]
+                                                  ?.tonnage_tons
+                                                  ? `${
+                                                      recyclingDocs[
+                                                        group.invoice
+                                                      ]?.tonnage_tons
+                                                    } tons`
+                                                  : recyclingDocs[group.invoice]
+                                                      ?.weight_kg
+                                                  ? `${
+                                                      recyclingDocs[
+                                                        group.invoice
+                                                      ]?.weight_kg
+                                                    } kg`
+                                                  : 'N/A'}
+                                              </span>
+                                            </div>
+
+                                            <div className='flex justify-between'>
+                                              <span className='text-slate-600'>
+                                                Country:
+                                              </span>
+                                              <span className='font-medium'>
+                                                {recyclingDocs[group.invoice]
+                                                  ?.country || 'N/A'}
+                                              </span>
+                                            </div>
+
+                                            {recyclingDocs[group.invoice]
+                                              ?.plastiks_collection_id && (
                                               <div className='flex justify-between'>
-                                                <span className='text-slate-600'>Collection ID:</span>
-                                                <span className='font-medium'>{recyclingDocs[group.invoice].plastiks_collection_id}</span>
+                                                <span className='text-slate-600'>
+                                                  Collection ID:
+                                                </span>
+                                                <span className='font-medium'>
+                                                  {
+                                                    recyclingDocs[group.invoice]
+                                                      .plastiks_collection_id
+                                                  }
+                                                </span>
                                               </div>
                                             )}
-                                            
-                                            {recyclingDocs[group.invoice]?.plastiks_collection_address && (
+
+                                            {recyclingDocs[group.invoice]
+                                              ?.plastiks_collection_address && (
                                               <div className='flex flex-col'>
-                                                <span className='text-slate-600 text-xs mb-1'>Collection Address:</span>
-                                                <span className='text-xs break-all bg-white p-2 rounded border'>{recyclingDocs[group.invoice].plastiks_collection_address}</span>
+                                                <span className='text-slate-600 text-xs mb-1'>
+                                                  Collection Address:
+                                                </span>
+                                                <span className='text-xs break-all bg-white p-2 rounded border'>
+                                                  {
+                                                    recyclingDocs[group.invoice]
+                                                      .plastiks_collection_address
+                                                  }
+                                                </span>
                                               </div>
                                             )}
-                                            
-                                            {recyclingDocs[group.invoice]?.plastiks_metadata_hash && (
+
+                                            {recyclingDocs[group.invoice]
+                                              ?.plastiks_metadata_hash && (
                                               <div className='flex flex-col'>
-                                                <span className='text-slate-600 text-xs mb-1'>Metadata Hash:</span>
-                                                <span className='text-xs break-all bg-white p-2 rounded border font-mono'>{recyclingDocs[group.invoice].plastiks_metadata_hash}</span>
+                                                <span className='text-slate-600 text-xs mb-1'>
+                                                  Metadata Hash:
+                                                </span>
+                                                <span className='text-xs break-all bg-white p-2 rounded border font-mono'>
+                                                  {
+                                                    recyclingDocs[group.invoice]
+                                                      .plastiks_metadata_hash
+                                                  }
+                                                </span>
                                               </div>
                                             )}
                                           </div>
-                                          
-                                          {submitResult[group.invoice]?.message && (
+
+                                          {submitResult[group.invoice]
+                                            ?.message && (
                                             <p className='text-xs text-green-700 mt-2'>
-                                              {String(submitResult[group.invoice]?.message)}
+                                              {String(
+                                                submitResult[group.invoice]
+                                                  ?.message
+                                              )}
                                             </p>
                                           )}
                                         </div>
@@ -2159,9 +2470,14 @@ export default function Home() {
                                       <div className='flex items-start gap-2 text-red-800'>
                                         <AlertCircle className='h-4 w-4 flex-shrink-0 mt-0.5' />
                                         <div>
-                                          <p className='font-medium'>Submission Failed</p>
+                                          <p className='font-medium'>
+                                            Submission Failed
+                                          </p>
                                           <p className='text-xs text-red-700 mt-1'>
-                                            {String(submitResult[group.invoice]?.message || '')}
+                                            {String(
+                                              submitResult[group.invoice]
+                                                ?.message || ''
+                                            )}
                                           </p>
                                         </div>
                                       </div>
@@ -2169,31 +2485,57 @@ export default function Home() {
                                   ) : null}
                                 </div>
                               )}
-                              
-                              {!submitResult[group.invoice]?.ok && !recyclingDocs[group.invoice]?.plastiks_submitted_at && (
-                                <Button
-                                  size='sm'
-                                  disabled={!status.complete || submitting[group.invoice]}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSubmitGroup(group.invoice);
-                                  }}
-                                  className='w-full gap-2 mt-2'
-                                >
-                                  {submitting[group.invoice] ? (
-                                    <span className='flex items-center gap-2'>
-                                      <Loader2 className='h-3 w-3 animate-spin' />
-                                      Submitting to Plastiks...
-                                    </span>
-                                  ) : (
-                                    <span className='flex items-center gap-2'>
-                                      <UploadCloud className='h-3 w-3' />
-                                      Push to Plastiks
-                                      <ArrowRight className='h-3 w-3' />
-                                    </span>
-                                  )}
-                                </Button>
-                              )}
+
+                              <Button
+                                size='sm'
+                                disabled={
+                                  !status.complete ||
+                                  submitting[group.invoice] ||
+                                  submitResult[group.invoice]?.ok ||
+                                  !!recyclingDocs[group.invoice]
+                                    ?.plastiks_submitted_at
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSubmitGroup(group.invoice);
+                                }}
+                                className={`w-full gap-2 mt-2 ${
+                                  submitResult[group.invoice]?.ok ||
+                                  recyclingDocs[group.invoice]
+                                    ?.plastiks_submitted_at
+                                    ? 'bg-green-600 hover:bg-green-600 text-white'
+                                    : submitResult[group.invoice] &&
+                                      !submitResult[group.invoice]?.ok
+                                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                                    : ''
+                                }`}
+                              >
+                                {submitting[group.invoice] ? (
+                                  <span className='flex items-center gap-2'>
+                                    <Loader2 className='h-3 w-3 animate-spin' />
+                                    Submitting to Plastiks...
+                                  </span>
+                                ) : submitResult[group.invoice]?.ok ||
+                                  recyclingDocs[group.invoice]
+                                    ?.plastiks_submitted_at ? (
+                                  <span className='flex items-center gap-2'>
+                                    <CheckCircle2 className='h-3 w-3' />
+                                    Successfully Submitted
+                                  </span>
+                                ) : submitResult[group.invoice] &&
+                                  !submitResult[group.invoice]?.ok ? (
+                                  <span className='flex items-center gap-2'>
+                                    <AlertCircle className='h-3 w-3' />
+                                    Retry Submission
+                                  </span>
+                                ) : (
+                                  <span className='flex items-center gap-2'>
+                                    <UploadCloud className='h-3 w-3' />
+                                    Push to Plastiks
+                                    <ArrowRight className='h-3 w-3' />
+                                  </span>
+                                )}
+                              </Button>
                             </div>
                           </div>
                         );

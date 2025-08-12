@@ -99,13 +99,35 @@ export async function POST(req: Request) {
           row.invoice_number
         }' | type='${row.plastic_type}' | tons='${row.tonnage_tons ?? 'n/a'}'`
       );
+
+      // 🔍 ADVANCED LOGGING: Log complete row data being processed
+      console.log(
+        `📋 [submit:${requestId}] Row data from recycling_docs table:`
+      );
+      console.log(`   📄 Invoice Number: ${row.invoice_number}`);
+      console.log(`   🏢 Company: ${row.recycler_company}`);
+      console.log(`   🔬 Plastic Type: ${row.plastic_type}`);
+      console.log(`   ⚖️  Weight: ${row.weight_kg}kg / ${row.tonnage_tons}t`);
+      console.log(`   🌍 Location: ${row.city}, ${row.country || row.origin}`);
+      console.log(`   📎 Attachment URLs available in database:`);
+      console.log(`      📄 Invoice: ${row.invoice_url || 'NULL'}`);
+      console.log(`      💳 EFT: ${row.eft_url || 'NULL'}`);
+      console.log(`      🚛 E-way Bill: ${row.ewaybill_url || 'NULL'}`);
+      console.log(`   🔄 Status: ${row.status}`);
+      console.log(`   📅 Created: ${row.created_at}`);
+
       // Normalize tons -> kg for submission layer
-      const prg = await submitToPlastiks({
+      const submissionRow = {
         ...row,
         tonnage_kg:
-          row.tonnage_kg ??
+          row.weight_kg ??
           (row.tonnage_tons ? Number(row.tonnage_tons) * 1000 : undefined),
-      });
+      };
+
+      console.log(
+        `🚀 [submit:${requestId}] Calling submitToPlastiks() with normalized data...`
+      );
+      const prg = await submitToPlastiks(submissionRow);
       console.log(
         `🟢 [submit:${requestId}] Plastiks PRG created id=${prg.id} address=${prg.address}`
       );

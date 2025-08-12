@@ -15,17 +15,20 @@ Ocean Integrity is a modern web application that streamlines the processing and 
 ## Key Features
 
 ### Document Processing
+
 - **Multi-Document Support**: Handles invoices, EFT receipts, and e-way bills
 - **Smart Parsing**: Extracts key information from uploaded documents
 - **Validation**: Ensures all required documents are present before submission
 - **Duplicate Prevention**: Prevents processing of duplicate or invalid documents
 
 ### Invoice Management
+
 - **Automatic Grouping**: Groups related documents by invoice number
 - **Reference Validation**: Validates invoice references in EFT receipts
 - **Status Tracking**: Tracks processing status of each document group
 
 ### Integration
+
 - **Supabase Backend**: Secure storage and database operations
 - **Plastiks API**: Blockchain integration for document verification
 - **Web3 Support**: Secure transaction signing for blockchain operations
@@ -33,6 +36,7 @@ Ocean Integrity is a modern web application that streamlines the processing and 
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 18+ and npm/yarn
 - Supabase account
 - Plastiks API credentials (for blockchain integration)
@@ -40,12 +44,14 @@ Ocean Integrity is a modern web application that streamlines the processing and 
 ### Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/your-username/ocean_integrity.git
    cd ocean_integrity
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    # or
@@ -66,6 +72,7 @@ Ocean Integrity is a modern web application that streamlines the processing and 
 Create a `.env.local` file in the root directory with the following variables:
 
 ### Required Variables
+
 ```
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
@@ -94,17 +101,20 @@ CRON_SUBMIT_SECRET=your_submit_secret
 ## API Endpoints
 
 ### Document Processing
+
 - `POST /api/process-document` - Process uploaded documents
 - `GET /api/documents` - List processed documents
 - `GET /api/documents/[id]` - Get specific document details
 
 ### Plastiks Integration
+
 - `POST /api/plastiks/submit` - Submit documents to Plastiks
 - `GET /api/plastiks/status/[id]` - Check submission status
 
 ## Development
 
 ### Tech Stack
+
 - **Frontend**: Next.js 13+ with TypeScript
 - **UI**: Radix UI, Tailwind CSS
 - **State Management**: React Context
@@ -114,6 +124,7 @@ CRON_SUBMIT_SECRET=your_submit_secret
 - **Blockchain**: Ethereum (via Plastiks API)
 
 ### Scripts
+
 - `npm run dev` - Start development server
 - `npm run build` - Build for production
 - `npm start` - Start production server
@@ -144,7 +155,7 @@ alter table public.recycling_docs
   add column if not exists recycler_company text,
   add column if not exists plastic_type text,
   add column if not exists tonnage_tons numeric(18,3),     -- canonical unit
-  add column if not exists tonnage_kg numeric(18,3),       -- back-compat (derived)
+  add column if not exists weight_kg numeric(18,3),        -- back-compat (derived)
   add column if not exists country text,
   add column if not exists city text,
   add column if not exists origin text,
@@ -165,7 +176,7 @@ create index if not exists idx_recycling_docs_status on public.recycling_docs(st
 
 Notes:
 
-- We store `tonnage_tons` as the source of truth (you send tonnes). We also fill `tonnage_kg` for deployments where the column is NOT NULL.
+- We store `tonnage_tons` as the source of truth (you send tonnes). We also fill `weight_kg` for deployments where the column is NOT NULL.
 - `status` transitions: `new|updated` → `submitted` or `failed`.
 
 ### API endpoints (server)
@@ -199,7 +210,7 @@ Notes:
     - Plastic types allowed now: `LDPE`, `PET`, `PP`, `PVC` (case-insensitive).
     - Units: if `tonnage_unit` omitted, defaults to tonnes.
   - Behavior:
-    - Stores `tonnage_tons` and also fills `tonnage_kg = tonnage_tons * 1000` (for back-compat).
+    - Stores `tonnage_tons` and also fills `weight_kg = tonnage_tons * 1000` (for back-compat).
     - Upsert by `invoice_number`.
   - Responses:
     - 200: `{ "success": true, "upserted": N }`

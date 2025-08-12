@@ -121,7 +121,7 @@ export async function POST(req: Request) {
     };
     // Import the invoice matching utilities
     const { isSameInvoice } = await import('@/lib/invoiceUtils');
-    
+
     const rows = (data || []).filter((row: ParsedRow) => {
       const rj = (row?.raw_json || {}) as Record<string, unknown>;
       const candidates: string[] = [];
@@ -129,15 +129,15 @@ export async function POST(req: Request) {
       const inv = rj['invoice'];
       const s2 = rj['second_invoice'];
       const s3 = rj['third_invoice'];
-      
+
       // Add all potential invoice numbers to candidates
       if (ak) candidates.push(String(ak));
       if (inv) candidates.push(String(inv));
       if (s2) candidates.push(String(s2));
       if (s3) candidates.push(String(s3));
-      
+
       // Check if any candidate matches the target invoice using the same logic as frontend
-      return candidates.some(candidate => 
+      return candidates.some((candidate) =>
         isSameInvoice(candidate.trim(), invoice)
       );
     }) as Array<ParsedRow>;
@@ -226,11 +226,9 @@ export async function POST(req: Request) {
       .toString()
       .trim();
     // Get city from invoice or e-way bill, with fallback to empty string
-    const city = (
-      (inv['city'] as string) || 
-      (ewb['city'] as string) || 
-      ''
-    ).toString().trim();
+    const city = ((inv['city'] as string) || (ewb['city'] as string) || '')
+      .toString()
+      .trim();
 
     const currency =
       (
@@ -250,7 +248,7 @@ export async function POST(req: Request) {
       recycler_company: recycler_company || 'Unknown',
       plastic_type,
       tonnage_tons: tonnage_kg / 1000,
-      tonnage_kg,
+      weight_kg: tonnage_kg, // Fixed: use weight_kg instead of tonnage_kg
       origin: country,
       country,
       city,
@@ -269,7 +267,7 @@ export async function POST(req: Request) {
     if (upsertError) throw upsertError;
 
     console.log(
-      `🟢 [promote:${requestId}] Upserted recycling_docs for invoice='${invoice}' | plastic_type='${plastic_type}' | tonnage_kg=${tonnage_kg} | urls: inv=${Boolean(
+      `🟢 [promote:${requestId}] Upserted recycling_docs for invoice='${invoice}' | plastic_type='${plastic_type}' | weight_kg=${tonnage_kg} | urls: inv=${Boolean(
         invoice_url
       )}, eft=${Boolean(eft_url)}, ewb=${Boolean(ewaybill_url)}`
     );

@@ -85,7 +85,9 @@ function axiosErrorToString(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const status = err.response?.status;
     const data = err.response?.data;
-    return `HTTP ${status} - ${typeof data === 'string' ? data : JSON.stringify(data)}`;
+    return `HTTP ${status} - ${
+      typeof data === 'string' ? data : JSON.stringify(data)
+    }`;
   }
   return String(err);
 }
@@ -121,6 +123,10 @@ export async function createPrgCollection(
     weightKg: number;
     city?: string;
     country?: string;
+    // NEW: Attachment URLs
+    invoice_url?: string;
+    eft_url?: string;
+    ewaybill_url?: string;
   }
 ) {
   const pricePerKg = 1.0; // 1 token per kg (staging default)
@@ -140,13 +146,53 @@ export async function createPrgCollection(
     country: params.country || '',
     // Disable auto-image generation to avoid staging dependency failures
     use_autogen_image: 'false',
+    // 🔥 NEW: Include attachment URLs in Plastiks request
+    invoice_url: params.invoice_url || '',
+    eft_url: params.eft_url || '',
+    ewaybill_url: params.ewaybill_url || '',
   };
+
+  // 🔍 ADVANCED LOGGING: Log what's being sent to Plastiks
+  console.log('🚀 [PLASTIKS_REQUEST] Creating PRG Collection WITH ATTACHMENTS');
+  console.log(
+    '📦 [PLASTIKS_REQUEST] Request URL:',
+    client.defaults.baseURL + '/api/collections/prg'
+  );
+  console.log('📝 [PLASTIKS_REQUEST] Request Headers:', {
+    'API-key': client.defaults.headers['API-key'] ? '[HIDDEN]' : 'NOT_SET',
+    'User-Address': client.defaults.headers['User-Address'],
+    'Content-Type': client.defaults.headers['Content-Type'],
+  });
+  console.log(
+    '📋 [PLASTIKS_REQUEST] Request Body:',
+    JSON.stringify(body, null, 2)
+  );
+
+  // 🔥 NEW: Log attachment inclusion
+  console.log('📎 [PLASTIKS_REQUEST] ATTACHMENTS NOW INCLUDED:');
+  console.log('   📄 Invoice URL:', params.invoice_url || 'NOT_PROVIDED');
+  console.log('   💳 EFT URL:', params.eft_url || 'NOT_PROVIDED');
+  console.log('   🚛 E-way Bill URL:', params.ewaybill_url || 'NOT_PROVIDED');
+  console.log(
+    '✅ [PLASTIKS_REQUEST] CRITICAL: Attachments ARE NOW included in Plastiks submission!'
+  );
 
   try {
     const resp = await client.post('/api/collections/prg', body);
+
+    // 🔍 ADVANCED LOGGING: Log response
+    console.log('✅ [PLASTIKS_RESPONSE] PRG Creation Response:');
+    console.log('📊 [PLASTIKS_RESPONSE] Status:', resp.status);
+    console.log('📋 [PLASTIKS_RESPONSE] Headers:', resp.headers);
+    console.log(
+      '📦 [PLASTIKS_RESPONSE] Response Body:',
+      JSON.stringify(resp.data, null, 2)
+    );
+
     if (!resp.data?.success) throw new Error('plastiks: PRG creation failed');
     return resp.data.collection as PlastiksCollection;
   } catch (e) {
+    console.error('❌ [PLASTIKS_ERROR] PRG Creation Failed:', e);
     throw new Error(`plastiks: PRG creation error: ${axiosErrorToString(e)}`);
   }
 }
@@ -158,23 +204,50 @@ export async function signMetadataHash(
   collectionAddress: string
 ) {
   try {
+    // 🔍 ADVANCED LOGGING: Log metadata hash signing
+    console.log('🔐 [PLASTIKS_REQUEST] Signing metadata hash...');
+    console.log(
+      '📦 [PLASTIKS_REQUEST] URL:',
+      client.defaults.baseURL +
+        `/api/collections/${collectionAddress}/sign_metadata_hash`
+    );
+    console.log('📋 [PLASTIKS_REQUEST] Params:', {
+      contract_address: cfg.plastikCrypto,
+    });
+
     const resp = await client.get(
       `/api/collections/${collectionAddress}/sign_metadata_hash`,
       {
         params: { contract_address: cfg.plastikCrypto },
       }
     );
+
+    console.log('✅ [PLASTIKS_RESPONSE] Metadata hash response:', resp.data);
+
     const hashToSign: string | undefined = resp.data?.hash_to_sign;
     if (!hashToSign) throw new Error('plastiks: hash_to_sign missing');
+
+    console.log('🔐 [PLASTIKS_REQUEST] Signing hash with wallet...');
     const signature = await wallet.signMessage(ethers.getBytes(hashToSign));
+
+    console.log('📤 [PLASTIKS_REQUEST] Saving metadata signature...');
     const saveResp = await client.post(
       `/api/collections/${collectionAddress}/save_metadata_signature`,
       { signature }
     );
+
+    console.log(
+      '✅ [PLASTIKS_RESPONSE] Save signature response:',
+      saveResp.data
+    );
+
     if (!saveResp.data?.success)
       throw new Error('plastiks: save_metadata_signature failed');
   } catch (e) {
-    throw new Error(`plastiks: sign_metadata_hash error: ${axiosErrorToString(e)}`);
+    console.error('❌ [PLASTIKS_ERROR] Metadata hash signing failed:', e);
+    throw new Error(
+      `plastiks: sign_metadata_hash error: ${axiosErrorToString(e)}`
+    );
   }
 }
 
@@ -227,9 +300,12 @@ export async function signFixedPrice(
         price: String(priceWei),
       }
     );
-    if (!resp.data?.success) throw new Error('plastiks: sign_fixed_price failed');
+    if (!resp.data?.success)
+      throw new Error('plastiks: sign_fixed_price failed');
   } catch (e) {
-    throw new Error(`plastiks: sign_fixed_price error: ${axiosErrorToString(e)}`);
+    throw new Error(
+      `plastiks: sign_fixed_price error: ${axiosErrorToString(e)}`
+    );
   }
 }
 
@@ -293,14 +369,51 @@ export async function submitToPlastiks(row: RecyclingDocRow) {
   const chain = await getBlockchainConfig(client);
   const wallet = new ethers.Wallet(cfg.privateKey);
 
+  // 🔍 ADVANCED LOGGING: Log complete row data
+  console.log('🎯 [PLASTIKS_SUBMIT] Starting submission to Plastiks');
+  console.log('📄 [PLASTIKS_SUBMIT] Invoice:', row.invoice_number);
+  console.log('🏢 [PLASTIKS_SUBMIT] Company:', row.recycler_company);
+  console.log('📊 [PLASTIKS_SUBMIT] Weight:', row.tonnage_kg, 'kg');
+  console.log(
+    '🌍 [PLASTIKS_SUBMIT] Location:',
+    row.city,
+    row.country || row.origin
+  );
+
+  // 🔥 ADVANCED LOGGING: Show available attachments that WILL NOW be sent
+  console.log(
+    '📎 [PLASTIKS_SUBMIT] Available Attachment URLs (NOW being sent to Plastiks):'
+  );
+  console.log('   📄 Invoice URL:', row.invoice_url);
+  console.log('   💳 EFT URL:', row.eft_url);
+  console.log('   🚛 E-way Bill URL:', row.ewaybill_url);
+  console.log(
+    '🔥 [PLASTIKS_SUBMIT] CRITICAL: Attachments ARE NOW included in Plastiks submission!'
+  );
+
   // Build name/description from business data
   const name = `${row.recycler_company} – ${row.invoice_number}`;
-  const description = `Recycling proof ${row.plastic_type} ${row.tonnage_kg}kg, ${row.city || ''} ${row.country || row.origin || ''}`.trim();
+  const description = `Recycling proof ${row.plastic_type} ${
+    row.tonnage_kg
+  }kg, ${row.city || ''} ${row.country || row.origin || ''}`.trim();
 
   // Map to Plastiks expected labels when possible
-  const typeMap: Record<string, string> = { PET: 'PET 1', PP: 'PP 5', PVC: 'PVC 3', LDPE: 'LDPE 4' };
+  const typeMap: Record<string, string> = {
+    PET: 'PET 1',
+    PP: 'PP 5',
+    PVC: 'PVC 3',
+    LDPE: 'LDPE 4',
+  };
   const normalizedType = row.plastic_type?.toUpperCase?.() || '';
   const plastiksType = typeMap[normalizedType] || row.plastic_type;
+
+  console.log('📝 [PLASTIKS_SUBMIT] Sending only metadata to Plastiks:');
+  console.log('   📛 Name:', name);
+  console.log('   📖 Description:', description);
+  console.log('   🔬 Plastic Type:', plastiksType);
+  console.log('   ⚖️  Weight:', row.tonnage_kg, 'kg');
+  console.log('   🏙️  City:', row.city || '');
+  console.log('   🌍 Country:', row.country || row.origin || '');
 
   const prg = await createPrgCollection(client, {
     name,
@@ -309,11 +422,29 @@ export async function submitToPlastiks(row: RecyclingDocRow) {
     weightKg: row.tonnage_kg,
     city: row.city || '',
     country: row.country || row.origin || '',
+    // 🔥 NEW: Include attachment URLs
+    invoice_url: row.invoice_url,
+    eft_url: row.eft_url,
+    ewaybill_url: row.ewaybill_url,
   });
 
+  console.log('🔐 [PLASTIKS_SUBMIT] Starting blockchain signing process...');
   await signMetadataHash(client, chain, wallet, prg.address);
+  console.log('✅ [PLASTIKS_SUBMIT] Metadata hash signed');
+
   await signFixedPrice(client, chain, wallet, prg);
+  console.log('✅ [PLASTIKS_SUBMIT] Fixed price signed');
+
   await signVoucher(client, chain, wallet, prg);
+  console.log('✅ [PLASTIKS_SUBMIT] Voucher signed');
+
+  console.log('🎉 [PLASTIKS_SUBMIT] Submission completed successfully');
+  console.log('📦 [PLASTIKS_SUBMIT] Final PRG Collection:', {
+    id: prg.id,
+    address: prg.address,
+    weight: prg.weight,
+    metadata_hash: prg.metadata_hash,
+  });
 
   return prg;
 }

@@ -33,8 +33,8 @@ type UpsertRow = {
   recycler_company: string;
   plastic_type: string;
   tonnage_tons: number;
-  // Back-compat: some DBs have NOT NULL tonnage_kg; provide it too
-  tonnage_kg?: number;
+  // Back-compat: some DBs have NOT NULL weight_kg; provide it too
+  weight_kg?: number;
   origin: string; // keep for backward compatibility, mirrors country
   country: string;
   city: string;
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
         Number(item.tonnage_value),
         item.tonnage_unit
       );
-      const tonnage_kg = tonnage_tons * 1000;
+      const weight_kg = tonnage_tons * 1000;
       // Normalize plastic type to allowed set
       const allowed = ['LDPE', 'PET', 'PP', 'PVC'];
       const incomingType = String(item.plastic_type || '').toUpperCase();
@@ -125,7 +125,7 @@ export async function POST(req: Request) {
         recycler_company: String(item.recycler_company).trim(),
         plastic_type,
         tonnage_tons,
-        tonnage_kg,
+        weight_kg,
         origin: country,
         country,
         city,
