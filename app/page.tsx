@@ -310,6 +310,13 @@ export default function Home() {
     Record<string, RecyclingDocument>
   >({});
   const [isGroupsLoading, setIsGroupsLoading] = useState(false);
+
+  // 🚀 PERFORMANCE: Show loading immediately when switching to groups tab
+  useEffect(() => {
+    if (activeTab === 'groups' && Object.keys(groups).length === 0) {
+      setIsGroupsLoading(true);
+    }
+  }, [activeTab, groups]);
   // Track all processed invoice numbers for validation
   const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<
     Set<string>
@@ -658,14 +665,18 @@ export default function Home() {
     [trackProcessedInvoice, processedInvoiceNumbers] // Removed isSameInvoice and getInvoiceGroupKey as they're now imported inside
   );
 
-  // Load recycling docs data with all required fields
+  // 🚀 PERFORMANCE FIX: Lazy load recycling docs only when Push to Plastiks tab is active
   useEffect(() => {
     let cancelled = false;
 
     const loadRecyclingDocs = async () => {
-      if (!isDocumentsLoaded) return;
+      // Only load recycling docs when groups tab is active and we have documents loaded
+      if (activeTab !== 'groups' || !isDocumentsLoaded) return;
 
       try {
+        console.log('📊 [PERFORMANCE] Loading recycling docs...');
+        console.time('⏱️ [PERFORMANCE] Recycling docs loading');
+
         const supa = getSupabaseBrowser();
         const { data, error } = await supa
           .from('recycling_docs')
@@ -673,6 +684,7 @@ export default function Home() {
           .order('created_at', { ascending: false });
 
         if (!cancelled && !error && data) {
+          console.log(`✅ [PERFORMANCE] Loaded ${data.length} recycling docs`);
           const docsMap = data.reduce(
             (acc, doc) => ({
               ...acc,
@@ -696,6 +708,8 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Error loading recycling docs:', error);
+      } finally {
+        console.timeEnd('⏱️ [PERFORMANCE] Recycling docs loading');
       }
     };
 
@@ -704,21 +718,27 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [isDocumentsLoaded]);
+  }, [isDocumentsLoaded, activeTab]);
 
-  // Realtime subscription to parsed_documents
+  // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
   useEffect(() => {
+    // Only load groups data when the groups tab is active
+    if (activeTab !== 'groups') return;
+
     const supa = getSupabaseBrowser();
     let cancelled = false;
 
     const loadInitial = async () => {
       setIsGroupsLoading(true);
+      console.time('⏱️ [PERFORMANCE] Groups data loading');
+
       try {
+        console.log('📊 [PERFORMANCE] Loading parsed documents for groups...');
         const { data, error } = await supa
           .from('parsed_documents')
           .select('id, document_type, file_url, created_at, raw_json')
           .order('created_at', { ascending: false })
-          .limit(1000);
+          .limit(500); // 🚀 PERFORMANCE: Reduced from 1000 to 500
 
         if (error) {
           console.error('Failed to load parsed_documents', error);
@@ -729,6 +749,9 @@ export default function Home() {
 
         // Only process groups if we have data
         if (data && data.length > 0) {
+          console.log(
+            `🔄 [PERFORMANCE] Processing ${data.length} documents...`
+          );
           const map: Record<string, InvoiceGroup> = {};
 
           (data as unknown as GroupDoc[]).forEach((row) => {
@@ -757,6 +780,9 @@ export default function Home() {
           });
 
           // Update the groups state
+          console.log(
+            `✅ [PERFORMANCE] Created ${Object.keys(map).length} groups`
+          );
           setGroups(map);
           setIsDocumentsLoaded(true);
         }
@@ -765,11 +791,15 @@ export default function Home() {
       } finally {
         if (!cancelled) {
           setIsGroupsLoading(false);
+          console.timeEnd('⏱️ [PERFORMANCE] Groups data loading');
         }
       }
     };
 
-    loadInitial();
+    // Only load if we don't already have groups data
+    if (Object.keys(groups).length === 0) {
+      loadInitial();
+    }
 
     // Define the payload type for the postgres_changes event
     type PostgresChangePayload = {
@@ -834,7 +864,7 @@ export default function Home() {
       cancelled = true;
       supa.removeChannel(channel);
     };
-  }, [mergeRowIntoGroups]);
+  }, [mergeRowIntoGroups, activeTab, groups]); // 🚀 Added activeTab dependency
 
   // computeGroupStatus is defined above with more comprehensive implementation
 
@@ -1514,7 +1544,7 @@ export default function Home() {
             className='space-y-6'
           >
             <div className='flex justify-center'>
-              <TabsList className='grid w-full grid-cols-4'>
+              <TabsList className='grid w-full grid-cols-3'>
                 <TabsTrigger value='upload' className='text-base py-1'>
                   Upload & Process
                 </TabsTrigger>
@@ -2329,163 +2359,6 @@ export default function Home() {
                                   </div>
                                 </div>
                               )}
-
-                              {!recyclingDocs[group.invoice]
-                                ?.plastiks_submitted_at && (
-                                <div>
-                                  {submitResult[group.invoice]?.ok ? (
-                                    <div className='mt-4 p-3 bg-green-50 border border-green-200 rounded-md'>
-                                      <div className='flex items-start gap-2 text-green-800'>
-                                        <CheckCircle2 className='h-4 w-4 flex-shrink-0 mt-0.5' />
-                                        <div className='space-y-2 w-full'>
-                                          <p className='font-medium'>
-                                            Successfully Submitted to Plastiks
-                                          </p>
-
-                                          {/* Display all available Plastiks details */}
-                                          <div className='grid grid-cols-1 gap-2 text-sm'>
-                                            <div className='flex justify-between'>
-                                              <span className='text-slate-600'>
-                                                Invoice #:
-                                              </span>
-                                              <span className='font-medium'>
-                                                {recyclingDocs[group.invoice]
-                                                  ?.invoice_number || 'N/A'}
-                                              </span>
-                                            </div>
-
-                                            <div className='flex justify-between'>
-                                              <span className='text-slate-600'>
-                                                Company:
-                                              </span>
-                                              <span className='font-medium'>
-                                                {recyclingDocs[group.invoice]
-                                                  ?.recycler_company || 'N/A'}
-                                              </span>
-                                            </div>
-
-                                            <div className='flex justify-between'>
-                                              <span className='text-slate-600'>
-                                                Plastic Type:
-                                              </span>
-                                              <span className='font-medium'>
-                                                {recyclingDocs[group.invoice]
-                                                  ?.plastic_type || 'N/A'}
-                                              </span>
-                                            </div>
-
-                                            <div className='flex justify-between'>
-                                              <span className='text-slate-600'>
-                                                Weight:
-                                              </span>
-                                              <span className='font-medium'>
-                                                {recyclingDocs[group.invoice]
-                                                  ?.tonnage_tons
-                                                  ? `${
-                                                      recyclingDocs[
-                                                        group.invoice
-                                                      ]?.tonnage_tons
-                                                    } tons`
-                                                  : recyclingDocs[group.invoice]
-                                                      ?.weight_kg
-                                                  ? `${
-                                                      recyclingDocs[
-                                                        group.invoice
-                                                      ]?.weight_kg
-                                                    } kg`
-                                                  : 'N/A'}
-                                              </span>
-                                            </div>
-
-                                            <div className='flex justify-between'>
-                                              <span className='text-slate-600'>
-                                                Country:
-                                              </span>
-                                              <span className='font-medium'>
-                                                {recyclingDocs[group.invoice]
-                                                  ?.country || 'N/A'}
-                                              </span>
-                                            </div>
-
-                                            {recyclingDocs[group.invoice]
-                                              ?.plastiks_collection_id && (
-                                              <div className='flex justify-between'>
-                                                <span className='text-slate-600'>
-                                                  Collection ID:
-                                                </span>
-                                                <span className='font-medium'>
-                                                  {
-                                                    recyclingDocs[group.invoice]
-                                                      .plastiks_collection_id
-                                                  }
-                                                </span>
-                                              </div>
-                                            )}
-
-                                            {recyclingDocs[group.invoice]
-                                              ?.plastiks_collection_address && (
-                                              <div className='flex flex-col'>
-                                                <span className='text-slate-600 text-xs mb-1'>
-                                                  Collection Address:
-                                                </span>
-                                                <span className='text-xs break-all bg-white p-2 rounded border'>
-                                                  {
-                                                    recyclingDocs[group.invoice]
-                                                      .plastiks_collection_address
-                                                  }
-                                                </span>
-                                              </div>
-                                            )}
-
-                                            {recyclingDocs[group.invoice]
-                                              ?.plastiks_metadata_hash && (
-                                              <div className='flex flex-col'>
-                                                <span className='text-slate-600 text-xs mb-1'>
-                                                  Metadata Hash:
-                                                </span>
-                                                <span className='text-xs break-all bg-white p-2 rounded border font-mono'>
-                                                  {
-                                                    recyclingDocs[group.invoice]
-                                                      .plastiks_metadata_hash
-                                                  }
-                                                </span>
-                                              </div>
-                                            )}
-                                          </div>
-
-                                          {submitResult[group.invoice]
-                                            ?.message && (
-                                            <p className='text-xs text-green-700 mt-2'>
-                                              {String(
-                                                submitResult[group.invoice]
-                                                  ?.message
-                                              )}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ) : submitResult[group.invoice]?.message ? (
-                                    <div className='mt-4 p-3 bg-red-50 border border-red-200 rounded-md'>
-                                      <div className='flex items-start gap-2 text-red-800'>
-                                        <AlertCircle className='h-4 w-4 flex-shrink-0 mt-0.5' />
-                                        <div>
-                                          <p className='font-medium'>
-                                            Submission Failed
-                                          </p>
-                                          <p className='text-xs text-red-700 mt-1'>
-                                            {String(
-                                              submitResult[group.invoice]
-                                                ?.message || ''
-                                            )}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ) : null}
-                                </div>
-                              )}
-
                               <Button
                                 size='sm'
                                 disabled={
