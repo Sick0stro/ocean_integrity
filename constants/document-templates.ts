@@ -15,6 +15,7 @@ export const documentTemplates: DocumentTemplates = {
     etf_date: '',
     sender_name: '',
     bank_name: '',
+    reciver_name: '',
   },
   invoice: {
     document_title: 'Invoice',
@@ -22,6 +23,7 @@ export const documentTemplates: DocumentTemplates = {
     invoice_date: '',
     bill_to_address: '',
     bill_to_company_name: '',
+    bill_from_company_name: '',
     vehicle_number: '',
     weight: undefined,
     weight_unit_of_mesurement: '',
@@ -35,6 +37,7 @@ export const documentTemplates: DocumentTemplates = {
     weight_unit_of_mesurement: '',
     ship_to_address: '',
     ship_to_company_name: '',
+    ship_from_company_name: '',
     ship_to_country_code: '',
     vehicle_number: '',
     eway_bill_no: '',

@@ -202,6 +202,18 @@ export async function POST(req: Request) {
       .toString()
       .trim();
 
+    const network_operator_company = (
+      (inv['bill_from_company_name'] as string) ||
+      ((inv['recipient'] as Record<string, unknown> | undefined)?.[
+        'name'
+      ] as string) ||
+      (ewb['ship_from_company_name'] as string) ||
+      ''
+    )
+      .toString()
+      .trim();
+
+
     const plastic_type = (
       (inv['plastic_type'] as string) ||
       (ewb['plastic_type'] as string) ||
@@ -246,6 +258,7 @@ export async function POST(req: Request) {
       eft_url,
       ewaybill_url,
       recycler_company: recycler_company || 'Unknown',
+      network_operator_company: network_operator_company || 'Unknown',
       plastic_type,
       tonnage_tons: tonnage_kg / 1000,
       weight_kg: tonnage_kg, // Fixed: use weight_kg instead of tonnage_kg

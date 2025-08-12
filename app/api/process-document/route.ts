@@ -104,6 +104,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
   "bank_name": "string",
   "etf_date": "string (dd/mm/yyyy)",
   "sender_name": "string",
+  "reciver_name": "string",
 }
 
 **Template for \`invoice\`**
@@ -113,6 +114,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
   "invoice_date": "string (dd-mm-yyyy)",
   "bill_to_address": "string", 
   "bill_to_company_name": "string",
+  "bill_from_company_name": "string",
   "vehicle_number": "string",
   "weight": "number",// generate weight from Qty
   "weight_unit_of_mesurement": "string", // exsample KG
@@ -132,6 +134,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
   "city": "string",// generate city from ship_to_address,
   "ship_to_address": "string", 
   "ship_to_company_name": "string",
+  "ship_from_company_name": "string",
   "ship_to_country_code": "string",// generate country code from ship to address, exsample IN,BR,US,CA,GB
   "vehicle_number": "string",
 }

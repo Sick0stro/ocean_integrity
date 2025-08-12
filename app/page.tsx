@@ -11,6 +11,7 @@ interface RecyclingDocument {
   created_at: string;
   raw_json: Record<string, unknown>;
   invoice_number?: string;
+  network_operator_company?: string;
   recycler_company?: string;
   plastic_type?: string;
   tonnage_tons?: number;
@@ -2159,6 +2160,17 @@ export default function Home() {
                                             'N/A'}
                                         </div>
                                       </div>
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Network Operator Company
+                                        </div>
+                                        <div className='font-medium text-slate-800'>
+                                          {recyclingDocs[
+                                            group.invoice
+                                          ]?.network_operator_company?.toString() ||
+                                            'N/A'}
+                                        </div>
+                                      </div>
 
                                       <div>
                                         <div className='text-slate-500 text-xs font-medium mb-1'>
@@ -2282,6 +2294,21 @@ export default function Home() {
                                               latestByType['e-way-bill']
                                                 ?.raw_json
                                                 ?.ship_to_company_name ||
+                                              'N/A'
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        Network Operator	
+                                        </div>
+                                        <div className='font-medium text-slate-800'>
+                                          {String(
+                                            latestByType.invoice?.raw_json
+                                              ?.bill_from_company_name ||
+                                              latestByType['e-way-bill']
+                                                ?.raw_json
+                                                ?.ship_from_company_name ||
                                               'N/A'
                                           )}
                                         </div>

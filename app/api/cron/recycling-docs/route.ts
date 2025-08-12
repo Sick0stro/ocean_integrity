@@ -8,6 +8,7 @@ interface IngestionItem {
   eft_url: string;
   ewaybill_url: string;
   recycler_company: string;
+  network_operator_company: string;
   plastic_type: string; // e.g., PET1
   tonnage_value: number; // numeric value (typically tonnes)
   tonnage_unit?: 'kg' | 't'; // kg or tonnes (t)
@@ -31,6 +32,7 @@ type UpsertRow = {
   eft_url: string;
   ewaybill_url: string;
   recycler_company: string;
+  network_operator_company: string;
   plastic_type: string;
   tonnage_tons: number;
   // Back-compat: some DBs have NOT NULL weight_kg; provide it too
@@ -86,6 +88,7 @@ export async function POST(req: Request) {
         'eft_url',
         'ewaybill_url',
         'recycler_company',
+        'network_operator_company',
         'plastic_type',
         'tonnage_value',
         'country',
@@ -123,6 +126,7 @@ export async function POST(req: Request) {
         eft_url: String(item.eft_url).trim(),
         ewaybill_url: String(item.ewaybill_url).trim(),
         recycler_company: String(item.recycler_company).trim(),
+        network_operator_company: String(item.network_operator_company).trim(),
         plastic_type,
         tonnage_tons,
         weight_kg,

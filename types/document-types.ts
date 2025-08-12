@@ -14,6 +14,7 @@ interface EFTReceipt extends BaseDocument {
   etf_date?: string; // dd/mm/yyyy
   sender_name?: string;
   bank_name: string;
+  reciver_name?: string;
 }
 
 // Invoice
@@ -24,6 +25,7 @@ interface Invoice extends BaseDocument {
   invoice_date?: string; // dd-mm-yyyy
   bill_to_address?: string;
   bill_to_company_name?: string;
+  bill_from_company_name?: string;
   vehicle_number?: string;
   weight?: number;
   weight_unit_of_mesurement?: string; // e.g., KG
@@ -40,6 +42,7 @@ interface EWayBill extends BaseDocument {
   weight_unit_of_mesurement?: string; // e.g., KG
   ship_to_address?: string;
   ship_to_company_name?: string;
+  ship_from_company_name?: string;
   ship_to_country_code?: string; // e.g., IN, BR, US
   vehicle_number?: string;
   eway_bill_no: string;
