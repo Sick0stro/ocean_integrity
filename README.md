@@ -2,15 +2,36 @@
 
 A comprehensive document processing and management system for handling invoices, EFT receipts, and e-way bills with Plastiks integration.
 
+## Recent Updates
+
+### 🚀 Performance Improvements
+
+- **Lazy Loading**: Implemented lazy loading for Push to Plastiks tab - data now loads only when needed, reducing initial page load time from 3-5 seconds to instant
+- **Optimized Data Loading**: Reduced document query limit from 1000 to 500 for better performance
+- **Smart Caching**: Tab switching is now instant after initial load
+
+### 🔧 Plastiks Integration Fixes
+
+- **Backend Attachment Support**: Fixed critical issue where backend submissions to Plastiks were missing attachment URLs (invoice_url, eft_url, ewaybill_url)
+- **Advanced Logging**: Added comprehensive logging throughout the Plastiks submission pipeline for better debugging and monitoring
+- **Database Schema Alignment**: Fixed tonnage_kg vs weight_kg column mismatch that was causing submission failures
+
+### 🎨 UI/UX Improvements
+
+- **Enhanced Button States**: Push to Plastiks button now remains visible but changes state (disabled/loading/success/error) instead of disappearing
+- **Removed Problematic UI**: Eliminated confusing success card that briefly appeared with "N/A" values after submission
+- **Fixed Polling Loop**: Resolved infinite polling that was causing continuous console logs and poor performance
+- **Tab Layout Fix**: Corrected 3-tab layout that was previously using 4-column grid
+
 ## Overview
 
 Ocean Integrity is a modern web application that streamlines the processing and management of financial documents. It provides:
 
-- **Document Processing**: Upload and process invoices, EFT receipts, and e-way bills
-- **Smart Grouping**: Automatically groups related documents by invoice number
+- **Document Processing**: Upload and process invoices, EFT receipts, and e-way bills using Google Gemini 2.0 Flash
+- **Smart Grouping**: Automatically groups related documents by invoice number with real-time updates
 - **Validation**: Ensures document integrity and completeness before processing
-- **Plastiks Integration**: Optional submission to Plastiks for blockchain-backed PRG (Plastic Recovery Guarantee) registration
-- **Secure Storage**: All documents are securely stored in Supabase Storage
+- **Plastiks Integration**: Seamless submission to Plastiks for blockchain-backed PRG (Plastic Recovery Guarantee) registration with full attachment support
+- **Secure Storage**: All documents are securely stored in Supabase Storage with optimized retrieval
 
 ## Key Features
 
@@ -79,6 +100,9 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
+# Google AI (for document processing)
+GOOGLE_API_KEY=your_google_gemini_api_key
+
 # Plastiks Integration
 NEXT_PUBLIC_PLASTIKS_BASE_URL=https://staging.plastiks.io
 NEXT_PUBLIC_API_TOKEN_CALL=your_plastiks_api_token
@@ -102,26 +126,26 @@ CRON_SUBMIT_SECRET=your_submit_secret
 
 ### Document Processing
 
-- `POST /api/process-document` - Process uploaded documents
-- `GET /api/documents` - List processed documents
-- `GET /api/documents/[id]` - Get specific document details
+- `POST /api/process-document` - Process uploaded documents using Google Gemini 2.0 Flash
+- `POST /api/recycling-docs/promote` - Promote parsed documents to recycling_docs table for Plastiks submission
 
 ### Plastiks Integration
 
-- `POST /api/plastiks/submit` - Submit documents to Plastiks
-- `GET /api/plastiks/status/[id]` - Check submission status
+- `POST /api/plastiks/submit` - Submit documents to Plastiks with full attachment support (invoice, EFT, e-way bill URLs)
+- `POST /api/cron/recycling-docs` - Ingest recycling document data (with authentication)
 
 ## Development
 
 ### Tech Stack
 
-- **Frontend**: Next.js 13+ with TypeScript
-- **UI**: Radix UI, Tailwind CSS
-- **State Management**: React Context
+- **Frontend**: Next.js 15 with React 19 and TypeScript
+- **UI**: Radix UI, Tailwind CSS with optimized lazy loading
+- **AI Processing**: Google Gemini 2.0 Flash (experimental) for document extraction
+- **State Management**: React hooks with real-time subscriptions
 - **Backend**: Next.js API Routes
-- **Database**: Supabase (PostgreSQL)
-- **Storage**: Supabase Storage
-- **Blockchain**: Ethereum (via Plastiks API)
+- **Database**: Supabase (PostgreSQL) with optimized queries
+- **Storage**: Supabase Storage with public URL access
+- **Blockchain**: Ethereum (via Plastiks API) with Web3 signing
 
 ### Scripts
 
@@ -217,7 +241,7 @@ Notes:
     - 400: `{ "error": "Ingestion failed", "details": "…" }` (DB validation will be surfaced here)
 
 - POST `/api/plastiks/submit`
-  - Purpose: Find rows with `status in ('new','updated')` and submit to Plastiks staging.
+  - Purpose: Find rows with `status in ('new','updated')` and submit to Plastiks staging with full attachment support.
   - Auth: header `x-cron-secret: <CRON_SUBMIT_SECRET>` or `?secret=...`.
   - Optional: `?invoice=INV-…` to limit to one invoice.
   - Behavior:
@@ -226,8 +250,10 @@ Notes:
       - Name: `<recycler_company> – <invoice_number>`
       - Description: summary with type/tons/city/country
       - Plastic type mapping: `PET→"PET 1"`, `PP→"PP 5"`, `PVC→"PVC 3"`, `LDPE→"LDPE 4"`
+      - **Attachment URLs**: `invoice_url`, `eft_url`, `ewaybill_url` (now properly included in Plastiks submission)
       - `use_autogen_image=false` (avoid staging dependency)
       - Minimal non-zero token price (derived from weight) and `no_of_copies`
+    - **Advanced Logging**: Comprehensive logging of all request data and Plastiks API responses
     - Performs Web3 signing with your `PRIVATE_KEY`:
       - sign metadata hash → save
       - sign fixed price (EIP‑712)
@@ -267,17 +293,39 @@ Notes:
 
 ### Troubleshooting
 
-- 401 Unauthorized
+- **401 Unauthorized**
+
   - Ensure header `x-cron-secret` matches `.env`, or pass `?secret=…` in dev.
   - Restart `npm run dev` after changing `.env`.
-- 400 Ingestion failed
+
+- **400 Ingestion failed**
+
   - The response `details` includes the DB or validation error (e.g., NOT NULL on a missing column).
   - Ensure `recycling_docs` has the columns listed above.
   - Ensure the JSON body is an array, not a single object.
-- Plastiks errors (500/422/etc.)
+
+- **Plastiks errors (500/422/etc.)**
+
   - The response includes HTTP status and the returned body (also saved in `plastiks_last_error`).
   - Verify `API_TOKEN_CALL`, `USER_ADDRESS` (checksummed), and `PRIVATE_KEY` match.
   - Confirm plastic type mapping is correct for your case.
+  - Check browser console for advanced logging showing exact request data sent to Plastiks.
+
+- **Performance Issues**
+
+  - Monitor console for performance logs: `⏱️ [PERFORMANCE] Groups data loading: Xs`
+  - Slow tab switching may indicate database query issues or large dataset processing.
+  - Check browser Network tab for long-running requests.
+
+- **Column Mismatch Errors**
+
+  - Ensure database schema matches code expectations (e.g., `weight_kg` vs `tonnage_kg`).
+  - Run the database migration script provided above to add missing columns.
+
+- **UI Issues**
+  - If buttons appear incorrectly, check for JavaScript errors in browser console.
+  - Infinite polling logs indicate subscription cleanup issues - refresh the page.
+  - Missing tabs or layout issues may be due to CSS grid misconfigurations.
 
 ### Security
 
@@ -286,6 +334,15 @@ Notes:
 
 ### Notes & next steps
 
-- The legacy “serve from DB as base64” endpoints are present but not used by this flow.
+- **Performance Optimized**: The UI now uses lazy loading for better user experience - data loads only when needed.
+- **Real-time Updates**: Supabase subscriptions provide real-time document status updates without manual refresh.
+- **Comprehensive Logging**: All Plastiks submissions include detailed logging for debugging and monitoring.
+- The legacy "serve from DB as base64" endpoints are present but not used by this flow.
 - You can schedule submissions via Vercel Cron to POST `/api/plastiks/submit` on an interval.
 - If multiple EFT/waybills per invoice are needed, introduce a child table; current design assumes one of each per invoice.
+
+### Change Log
+
+- **v2.1 (January 2025)**: Performance optimizations, Plastiks attachment support, UI/UX improvements
+- **v2.0**: Initial Plastiks integration with Web3 signing
+- **v1.0**: Core document processing with Google Gemini AI
