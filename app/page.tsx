@@ -67,6 +67,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { VideoText } from '@/components/magicui/video-text';
+import AuthWrapper, { useSession } from '@/components/AuthWrapper';
 import CSVDownloadBtn from '@/components/csv-download-btn';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
@@ -291,7 +292,9 @@ interface SubmitResult {
   message: string;
 }
 
-export default function Home() {
+function HomeContent() {
+  const session = useSession(); // 👈 Get session for auth token
+
   // Document processing state
   const [files, setFiles] = useState<File[]>([]);
   const [processedDocuments, setProcessedDocuments] = useState<
@@ -1085,9 +1088,33 @@ export default function Home() {
           const formData = new FormData();
           formData.append('file', currentFile);
 
+          // Log session and token details
+          console.log(`🔐 Frontend: Auth session details:`, {
+            hasSession: !!session,
+            userId: session?.user?.id,
+            userEmail: session?.user?.email,
+            hasAccessToken: !!session?.access_token,
+            tokenLength: session?.access_token?.length,
+            tokenPreview: session?.access_token
+              ? `${session.access_token.substring(0, 20)}...`
+              : null,
+          });
+
+          const headers = {
+            Authorization: `Bearer ${session?.access_token}`, // 👈 ADD AUTH TOKEN
+          };
+
           console.log(`🌐 Frontend: Sending request to /api/process-document`);
+          console.log(`📋 Frontend: Request headers:`, {
+            hasAuthHeader: !!headers.Authorization,
+            authHeaderPreview: headers.Authorization
+              ? `${headers.Authorization.substring(0, 30)}...`
+              : null,
+          });
+
           const response = await fetch('/api/process-document', {
             method: 'POST',
+            headers,
             body: formData,
           });
 
@@ -1096,6 +1123,18 @@ export default function Home() {
             `⏰ Frontend: API response received in ${responseTime}ms`
           );
           console.log(`📊 Frontend: Response status: ${response.status}`);
+          console.log(
+            `📋 Frontend: Response headers:`,
+            Object.fromEntries(response.headers.entries())
+          );
+
+          if (!response.ok) {
+            console.error(`❌ Frontend: HTTP Error ${response.status}:`, {
+              status: response.status,
+              statusText: response.statusText,
+              url: response.url,
+            });
+          }
 
           const result = await response.json();
           console.log(
@@ -2300,7 +2339,7 @@ export default function Home() {
                                       </div>
                                       <div>
                                         <div className='text-slate-500 text-xs font-medium mb-1'>
-                                        Network Operator	
+                                          Network Operator
                                         </div>
                                         <div className='font-medium text-slate-800'>
                                           {String(
@@ -2449,5 +2488,14 @@ export default function Home() {
         </div>
       </div>
     </main>
+  );
+}
+
+// Wrap with AuthWrapper
+export default function Home() {
+  return (
+    <AuthWrapper>
+      <HomeContent />
+    </AuthWrapper>
   );
 }

@@ -12,6 +12,101 @@ export async function POST(req: Request) {
 
   console.log(`🚀 [${requestId}] === DOCUMENT PROCESSING STARTED ===`);
   console.log(`⏰ [${requestId}] Timestamp: ${new Date().toISOString()}`);
+  console.log(`🌐 [${requestId}] Request method: ${req.method}`);
+  console.log(`📍 [${requestId}] Request URL: ${req.url}`);
+  console.log(`🔧 [${requestId}] Environment: ${process.env.NODE_ENV}`);
+  console.log(
+    `🗄️ [${requestId}] Supabase URL: ${
+      process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    }`
+  );
+  console.log(
+    `🔑 [${requestId}] Has Service Role Key: ${!!process.env
+      .SUPABASE_SERVICE_ROLE_KEY}`
+  );
+  console.log(
+    `🔑 [${requestId}] Has Anon Key: ${!!process.env.SUPABASE_ANON_KEY}`
+  );
+  console.log(
+    `🤖 [${requestId}] Has Google API Key: ${!!process.env.GOOGLE_API_KEY}`
+  );
+
+  // ========== AUTHENTICATION CHECK ==========
+  console.log(`🔐 [${requestId}] Step 0: Checking authentication...`);
+
+  // Log all headers for debugging
+  console.log(`📋 [${requestId}] Request headers:`, {
+    authorization: req.headers.get('Authorization')
+      ? 'Bearer [PRESENT]'
+      : 'MISSING',
+    contentType: req.headers.get('Content-Type'),
+    userAgent: req.headers.get('User-Agent'),
+    origin: req.headers.get('Origin'),
+    referer: req.headers.get('Referer'),
+  });
+
+  // Get auth header
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error(`❌ [${requestId}] ERROR: No authorization header`);
+    console.error(`🔍 [${requestId}] Auth header details:`, {
+      hasHeader: !!authHeader,
+      headerValue: authHeader ? `${authHeader.substring(0, 20)}...` : 'null',
+      startsWithBearer: authHeader?.startsWith('Bearer '),
+    });
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized - No token provided' },
+      { status: 401 }
+    );
+  }
+
+  const token = authHeader.replace('Bearer ', '');
+  console.log(`🔑 [${requestId}] Token extracted:`, {
+    tokenLength: token.length,
+    tokenPreview: `${token.substring(0, 20)}...${token.substring(
+      token.length - 10
+    )}`,
+    tokenType: token.startsWith('eyJ') ? 'JWT-like' : 'Other',
+  });
+
+  // Verify user with Supabase
+  console.log(`🔄 [${requestId}] Verifying token with Supabase...`);
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser(token);
+
+  console.log(`📥 [${requestId}] Supabase auth response:`, {
+    hasUser: !!user,
+    hasError: !!authError,
+    userId: user?.id,
+    userEmail: user?.email,
+    errorMessage: authError?.message,
+    errorCode: authError?.status,
+  });
+
+  if (authError || !user) {
+    console.error(`❌ [${requestId}] ERROR: Authentication failed`);
+    console.error(`🔍 [${requestId}] Auth error details:`, {
+      message: authError?.message,
+      status: authError?.status,
+      name: authError?.name,
+      fullError: authError,
+    });
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized - Invalid token' },
+      { status: 401 }
+    );
+  }
+
+  console.log(`✅ [${requestId}] User authenticated successfully:`);
+  console.log(`👤 [${requestId}] User details:`, {
+    id: user.id,
+    email: user.email,
+    emailConfirmed: user.email_confirmed_at,
+    lastSignIn: user.last_sign_in_at,
+    createdAt: user.created_at,
+  });
 
   // Diagnostics removed from hot path for reliability
 
@@ -405,7 +500,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
               contentType: 'application/pdf',
               upsert: true,
               cacheControl: '3600',
-              duplex: 'half'
+              duplex: 'half',
             });
           if (!uploadSignedErr) {
             const { data: urlData } = admin.storage
@@ -483,11 +578,33 @@ You are an expert document processing AI. Your task is to analyze the provided d
           document_type: parsedJSON?.document_type ?? null,
           raw_json: parsedJSON ?? null,
           file_url: storageResult.publicUrl,
+          user_id: user.id, // 👈 ADD USER OWNERSHIP
         } as const;
+
+        console.log(`💾 [${requestId}] Inserting document into database:`, {
+          anchor_key: insertPayload.anchor_key,
+          document_type: insertPayload.document_type,
+          has_raw_json: !!insertPayload.raw_json,
+          file_url: insertPayload.file_url,
+          user_id: insertPayload.user_id,
+          user_email: user.email,
+        });
 
         const { error: insertError } = await db
           .from('parsed_documents')
           .insert(insertPayload);
+
+        console.log(`📝 [${requestId}] Database insert result:`, {
+          success: !insertError,
+          error: insertError
+            ? {
+                message: insertError.message,
+                code: insertError.code,
+                details: insertError.details,
+                hint: insertError.hint,
+              }
+            : null,
+        });
 
         if (insertError) {
           console.warn(
