@@ -35,7 +35,7 @@ const supabase = createClient(
 console.log('✅ [SUPABASE] Client created successfully');
 
 export function LoginForm() {
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(true); // 👈 Default to sign-up for better first-time UX
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,6 +43,7 @@ export function LoginForm() {
   const [messageType, setMessageType] = useState<'success' | 'error' | null>(
     null
   );
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
 
   // Check environment variables on component mount
   useEffect(() => {
@@ -71,6 +72,51 @@ export function LoginForm() {
 
     console.log('🔍 [ENV] Environment check completed');
   }, []);
+
+  // Smart email suggestions (simplified approach)
+  useEffect(() => {
+    if (!email || !email.includes('@')) {
+      setEmailSuggestion(null);
+      return;
+    }
+
+    // Simple heuristic-based suggestions
+    const timeoutId = setTimeout(() => {
+      console.log('💡 [EMAIL_HINT] Providing smart suggestion for:', email);
+
+      // For common email domains, suggest sign-up for first-time users
+      const commonDomains = [
+        'gmail.com',
+        'yahoo.com',
+        'hotmail.com',
+        'outlook.com',
+      ];
+      const emailDomain = email.split('@')[1]?.toLowerCase();
+
+      if (commonDomains.includes(emailDomain || '')) {
+        if (isSignUp) {
+          setEmailSuggestion(
+            "Looking good! We'll create your account after you verify your email."
+          );
+        } else {
+          setEmailSuggestion(
+            'If this is your first time, click "Sign up" below to create an account.'
+          );
+        }
+      } else {
+        // For business emails, be more neutral
+        if (isSignUp) {
+          setEmailSuggestion('Ready to create your account with this email.');
+        } else {
+          setEmailSuggestion(
+            'If you haven\'t created an account yet, click "Sign up" below.'
+          );
+        }
+      }
+    }, 800); // Show suggestion after user stops typing
+
+    return () => clearTimeout(timeoutId);
+  }, [email, isSignUp]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,14 +261,26 @@ export function LoginForm() {
         <form onSubmit={handleSubmit} className='space-y-4'>
           <div className='space-y-2'>
             <Label htmlFor='email'>Email</Label>
-            <Input
-              id='email'
-              type='email'
-              placeholder='name@example.com'
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+            <div className='relative'>
+              <Input
+                id='email'
+                type='email'
+                placeholder='name@example.com'
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              {email && email.includes('@') && (
+                <div className='absolute right-2 top-1/2 transform -translate-y-1/2'>
+                  <div className='h-4 w-4 text-green-500'>✓</div>
+                </div>
+              )}
+            </div>
+            {emailSuggestion && (
+              <p className='text-sm text-muted-foreground mt-1 px-1'>
+                💡 {emailSuggestion}
+              </p>
+            )}
           </div>
           <div className='space-y-2'>
             <Label htmlFor='password'>Password</Label>
@@ -270,8 +328,13 @@ export function LoginForm() {
             <>
               Already have an account?{' '}
               <button
-                onClick={() => setIsSignUp(false)}
-                className='underline hover:text-primary'
+                onClick={() => {
+                  setIsSignUp(false);
+                  setEmailSuggestion(null);
+                  setMessage('');
+                  setMessageType(null);
+                }}
+                className='underline hover:text-primary font-medium'
               >
                 Sign in
               </button>
@@ -280,14 +343,27 @@ export function LoginForm() {
             <>
               Don&apos;t have an account?{' '}
               <button
-                onClick={() => setIsSignUp(true)}
-                className='underline hover:text-primary'
+                onClick={() => {
+                  setIsSignUp(true);
+                  setEmailSuggestion(null);
+                  setMessage('');
+                  setMessageType(null);
+                }}
+                className='underline hover:text-primary font-medium'
               >
                 Sign up
               </button>
             </>
           )}
         </div>
+
+        {/* First-time user helper */}
+        {isSignUp && !email && (
+          <div className='mt-2 text-center text-xs text-muted-foreground bg-muted/50 rounded-lg p-3'>
+            🌟 <strong>First time here?</strong> Just enter your email and
+            we&apos;ll guide you through the process!
+          </div>
+        )}
       </CardContent>
     </Card>
   );
