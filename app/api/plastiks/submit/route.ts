@@ -9,13 +9,20 @@ interface ProcessResult {
   error?: string;
 }
 
-async function getPendingRows() {
+async function getPendingRows(userFilter?: string) {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+  let query = supabase
     .from('recycling_docs')
     .select('*')
     .in('status', ['new', 'updated'])
     .limit(100);
+
+  // Optional: filter by specific user_id
+  if (userFilter) {
+    query = query.eq('user_id', userFilter);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
@@ -78,15 +85,24 @@ export async function POST(req: Request) {
     }
   }
 
-  // Optional: process a single invoice_number via query param
+  // Optional filters via query params
   const single = url.searchParams.get('invoice');
-  console.log(`🔵 [submit:${requestId}] Filter invoice='${single || ''}'`);
+  const userFilter = url.searchParams.get('user_id');
+  console.log(
+    `🔵 [submit:${requestId}] Filters - invoice='${single || ''}' user_id='${
+      userFilter || ''
+    }'`
+  );
 
   const results: ProcessResult[] = [];
 
-  // Load pending rows
-  const rows = await getPendingRows();
-  console.log(`🔵 [submit:${requestId}] Pending rows: ${rows.length}`);
+  // Load pending rows (optionally filtered by user)
+  const rows = await getPendingRows(userFilter || undefined);
+  console.log(
+    `🔵 [submit:${requestId}] Pending rows: ${rows.length}${
+      userFilter ? ` (filtered by user: ${userFilter})` : ' (all users)'
+    }`
+  );
   const toProcess = single
     ? rows.filter((r) => r.invoice_number === single)
     : rows;
@@ -97,7 +113,9 @@ export async function POST(req: Request) {
       console.log(
         `🟡 [submit:${requestId}] Processing invoice='${
           row.invoice_number
-        }' | type='${row.plastic_type}' | tons='${row.tonnage_tons ?? 'n/a'}'`
+        }' | user_id='${row.user_id}' | type='${row.plastic_type}' | tons='${
+          row.tonnage_tons ?? 'n/a'
+        }'`
       );
 
       // 🔍 ADVANCED LOGGING: Log complete row data being processed
@@ -105,6 +123,7 @@ export async function POST(req: Request) {
         `📋 [submit:${requestId}] Row data from recycling_docs table:`
       );
       console.log(`   📄 Invoice Number: ${row.invoice_number}`);
+      console.log(`   👤 User ID: ${row.user_id}`);
       console.log(`   🏢 Company: ${row.recycler_company}`);
       console.log(`   🔬 Plastic Type: ${row.plastic_type}`);
       console.log(`   ⚖️  Weight: ${row.weight_kg}kg / ${row.tonnage_tons}t`);

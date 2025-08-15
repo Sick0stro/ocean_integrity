@@ -105,7 +105,7 @@ export async function POST(req: Request) {
   try {
     const { data, error } = await supa
       .from('parsed_documents')
-      .select('id, document_type, file_url, created_at, raw_json')
+      .select('id, document_type, file_url, created_at, raw_json, user_id')
       .in('document_type', required)
       .order('created_at', { ascending: false });
 
@@ -118,6 +118,7 @@ export async function POST(req: Request) {
       file_url: string | null;
       created_at: string;
       raw_json: Record<string, unknown>;
+      user_id: string;
     };
     // Import the invoice matching utilities
     const { isSameInvoice } = await import('@/lib/invoiceUtils');
@@ -176,6 +177,30 @@ export async function POST(req: Request) {
       );
     }
 
+    // ========== USER OWNERSHIP CHECK ==========
+    const allUserIds = [invRow.user_id, eftRow.user_id, ewbRow.user_id];
+    const uniqueUserIds = [...new Set(allUserIds)];
+
+    if (uniqueUserIds.length > 1) {
+      console.error(
+        `🔴 [promote:${requestId}] Data integrity violation: Documents belong to different users`,
+        { invoice, userIds: allUserIds }
+      );
+      return NextResponse.json(
+        {
+          error: 'Data integrity violation',
+          details: 'Documents belong to different users',
+          userIds: allUserIds,
+        },
+        { status: 400 }
+      );
+    }
+
+    const documentUserId = uniqueUserIds[0];
+    console.log(
+      `🔐 [promote:${requestId}] All documents belong to user: ${documentUserId}`
+    );
+
     const inv = (invRow.raw_json || {}) as Record<string, unknown>;
     const eft = (eftRow.raw_json || {}) as Record<string, unknown>;
     const ewb = (ewbRow.raw_json || {}) as Record<string, unknown>;
@@ -212,7 +237,6 @@ export async function POST(req: Request) {
     )
       .toString()
       .trim();
-
 
     const plastic_type = (
       (inv['plastic_type'] as string) ||
@@ -269,6 +293,7 @@ export async function POST(req: Request) {
       upload_date,
       uploaded_by: 'ocean-integrity-ai',
       status: 'updated' as const,
+      user_id: documentUserId, // 👈 ADD USER OWNERSHIP
     };
 
     const { error: upsertError } = await supa
@@ -280,7 +305,7 @@ export async function POST(req: Request) {
     if (upsertError) throw upsertError;
 
     console.log(
-      `🟢 [promote:${requestId}] Upserted recycling_docs for invoice='${invoice}' | plastic_type='${plastic_type}' | weight_kg=${tonnage_kg} | urls: inv=${Boolean(
+      `🟢 [promote:${requestId}] Upserted recycling_docs for invoice='${invoice}' | user_id='${documentUserId}' | plastic_type='${plastic_type}' | weight_kg=${tonnage_kg} | urls: inv=${Boolean(
         invoice_url
       )}, eft=${Boolean(eft_url)}, ewb=${Boolean(ewaybill_url)}`
     );
