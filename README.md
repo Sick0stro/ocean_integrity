@@ -4,17 +4,35 @@ A comprehensive document processing and management system for handling invoices,
 
 ## Recent Updates
 
+### 🔐 Authentication System (January 2025)
+
+- **Complete User Authentication**: Full sign-up/sign-in system with Supabase Auth
+- **Email Verification**: Users must verify their email before accessing the application
+- **User Isolation**: Strict data separation - each user only sees their own documents
+- **Smart UX**: Intelligent login form that detects first-time vs returning users
+- **Beautiful UI**: Modern shadcn/ui login forms with contextual suggestions and success alerts
+- **Session Management**: React Context-based session sharing with optimized auth listeners
+
+### 🛡️ Security & Data Protection
+
+- **Row Level Security (RLS)**: Database-level user isolation with Supabase RLS policies
+- **API Authentication**: All endpoints now require valid JWT tokens
+- **User-Specific Operations**: Document processing, promotion, and Plastiks submission are user-scoped
+- **Data Integrity**: Cross-user data access prevention with comprehensive validation
+
 ### 🚀 Performance Improvements
 
 - **Lazy Loading**: Implemented lazy loading for Push to Plastiks tab - data now loads only when needed, reducing initial page load time from 3-5 seconds to instant
 - **Optimized Data Loading**: Reduced document query limit from 1000 to 500 for better performance
 - **Smart Caching**: Tab switching is now instant after initial load
+- **Fixed Infinite Loops**: Resolved auth-related re-render loops for better performance
 
 ### 🔧 Plastiks Integration Fixes
 
 - **Backend Attachment Support**: Fixed critical issue where backend submissions to Plastiks were missing attachment URLs (invoice_url, eft_url, ewaybill_url)
 - **Advanced Logging**: Added comprehensive logging throughout the Plastiks submission pipeline for better debugging and monitoring
 - **Database Schema Alignment**: Fixed tonnage_kg vs weight_kg column mismatch that was causing submission failures
+- **User-Scoped Submissions**: Plastiks submissions now respect user ownership and isolation
 
 ### 🎨 UI/UX Improvements
 
@@ -22,36 +40,50 @@ A comprehensive document processing and management system for handling invoices,
 - **Removed Problematic UI**: Eliminated confusing success card that briefly appeared with "N/A" values after submission
 - **Fixed Polling Loop**: Resolved infinite polling that was causing continuous console logs and poor performance
 - **Tab Layout Fix**: Corrected 3-tab layout that was previously using 4-column grid
+- **Smart Login Experience**: First-time users get guided sign-up flow, returning users get streamlined sign-in
 
 ## Overview
 
 Ocean Integrity is a modern web application that streamlines the processing and management of financial documents. It provides:
 
+- **User Authentication**: Secure sign-up/sign-in with email verification and complete user isolation
 - **Document Processing**: Upload and process invoices, EFT receipts, and e-way bills using Google Gemini 2.0 Flash
 - **Smart Grouping**: Automatically groups related documents by invoice number with real-time updates
+- **User Data Isolation**: Each user only sees and manages their own documents with strict privacy controls
 - **Validation**: Ensures document integrity and completeness before processing
 - **Plastiks Integration**: Seamless submission to Plastiks for blockchain-backed PRG (Plastic Recovery Guarantee) registration with full attachment support
-- **Secure Storage**: All documents are securely stored in Supabase Storage with optimized retrieval
+- **Secure Storage**: All documents are securely stored in Supabase Storage with user-specific access controls
 
 ## Key Features
 
-### Document Processing
+### 🔐 Authentication & Security
+
+- **User Authentication**: Complete sign-up/sign-in system with email verification
+- **Smart UX**: Intelligent login forms that detect first-time vs returning users
+- **Session Management**: Secure JWT-based authentication with React Context
+- **Data Isolation**: Each user's documents are completely isolated from others
+- **Row Level Security**: Database-level security policies prevent cross-user data access
+- **API Protection**: All endpoints require authentication and validate user ownership
+
+### 📄 Document Processing
 
 - **Multi-Document Support**: Handles invoices, EFT receipts, and e-way bills
-- **Smart Parsing**: Extracts key information from uploaded documents
+- **AI-Powered Parsing**: Extracts key information using Google Gemini 2.0 Flash
+- **User-Scoped Processing**: Documents are automatically associated with the authenticated user
 - **Validation**: Ensures all required documents are present before submission
 - **Duplicate Prevention**: Prevents processing of duplicate or invalid documents
 
-### Invoice Management
+### 📊 Invoice Management
 
-- **Automatic Grouping**: Groups related documents by invoice number
+- **Automatic Grouping**: Groups related documents by invoice number within user's data
 - **Reference Validation**: Validates invoice references in EFT receipts
 - **Status Tracking**: Tracks processing status of each document group
+- **User-Specific Views**: Each user only sees their own document groups
 
-### Integration
+### 🔗 Integration
 
-- **Supabase Backend**: Secure storage and database operations
-- **Plastiks API**: Blockchain integration for document verification
+- **Supabase Backend**: Secure storage and database operations with user authentication
+- **Plastiks API**: Blockchain integration for document verification with user-scoped submissions
 - **Web3 Support**: Secure transaction signing for blockchain operations
 
 ## Getting Started
@@ -116,23 +148,45 @@ CRON_SUBMIT_SECRET=your_submit_secret
 
 ## Document Processing Flow
 
-1. **Upload**: Users upload documents through the web interface
-2. **Processing**: Documents are processed to extract key information
-3. **Grouping**: Related documents are grouped by invoice number
-4. **Validation**: Each group is validated for completeness
-5. **Submission**: Valid groups can be submitted to Plastiks for blockchain verification
+1. **Authentication**: Users sign up/sign in with email verification
+2. **Upload**: Authenticated users upload documents through the web interface
+3. **Processing**: Documents are processed to extract key information and associated with the user
+4. **Grouping**: Related documents are grouped by invoice number within the user's data
+5. **Validation**: Each group is validated for completeness
+6. **Submission**: Valid groups can be submitted to Plastiks for blockchain verification (user-scoped)
 
 ## API Endpoints
+
+### 🔐 Authentication Required
+
+All API endpoints now require valid JWT authentication tokens passed via `Authorization: Bearer <token>` header.
 
 ### Document Processing
 
 - `POST /api/process-document` - Process uploaded documents using Google Gemini 2.0 Flash
+  - **Authentication**: Required - documents are associated with the authenticated user
+  - **User Isolation**: Only processes documents for the authenticated user
+  - **Headers**: `Authorization: Bearer <jwt_token>`
+
+### Document Promotion
+
 - `POST /api/recycling-docs/promote` - Promote parsed documents to recycling_docs table for Plastiks submission
+  - **Authentication**: Via cron secrets for automated processing
+  - **User Isolation**: Ensures all documents in a group belong to the same user
+  - **Data Integrity**: Validates user ownership before promotion
 
 ### Plastiks Integration
 
-- `POST /api/plastiks/submit` - Submit documents to Plastiks with full attachment support (invoice, EFT, e-way bill URLs)
+- `POST /api/plastiks/submit` - Submit documents to Plastiks with full attachment support
+  - **Authentication**: Via cron secrets for automated processing
+  - **User Filtering**: Optional `?user_id=<uuid>` parameter to process specific user's documents
+  - **User Isolation**: Respects user ownership when processing submissions
+  - **Full Attachment Support**: Includes invoice, EFT, and e-way bill URLs
+
+### Data Ingestion
+
 - `POST /api/cron/recycling-docs` - Ingest recycling document data (with authentication)
+  - **Authentication**: Via cron secrets (`x-cron-secret` header or `?secret=` query param)
 
 ## Development
 
@@ -166,11 +220,33 @@ CRON_SUBMIT_SECRET=your_submit_secret
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### Database schema (table: `recycling_docs`)
+### Database Schema
 
-One row per `invoice_number`. You can safely run this to add any missing columns.
+#### User Authentication & Isolation
+
+The application uses Supabase Auth with Row Level Security (RLS) for complete user data isolation.
+
+#### Table: `parsed_documents`
 
 ```sql
+-- Add user ownership and enable RLS
+alter table public.parsed_documents
+  add column if not exists user_id uuid references auth.users(id) not null;
+
+-- Enable Row Level Security
+alter table public.parsed_documents enable row level security;
+
+-- Create RLS policies for user isolation
+create policy "users_own_parsed_documents" on public.parsed_documents
+  for all using (auth.uid() = user_id);
+```
+
+#### Table: `recycling_docs`
+
+One row per `invoice_number` per user. You can safely run this to add any missing columns.
+
+```sql
+-- Add all required columns including user ownership
 alter table public.recycling_docs
   add column if not exists invoice_number text,
   add column if not exists invoice_url text,
@@ -194,8 +270,20 @@ alter table public.recycling_docs
   add column if not exists plastiks_last_error text,
   add column if not exists plastiks_submitted_at timestamptz,
   add column if not exists created_at timestamptz default now(),
-  add column if not exists updated_at timestamptz default now();
+  add column if not exists updated_at timestamptz default now(),
+  add column if not exists user_id uuid references auth.users(id) not null; -- USER OWNERSHIP
+
+-- Enable Row Level Security
+alter table public.recycling_docs enable row level security;
+
+-- Create RLS policies for user isolation
+create policy "users_own_recycling_docs" on public.recycling_docs
+  for all using (auth.uid() = user_id);
+
+-- Create indexes
 create index if not exists idx_recycling_docs_status on public.recycling_docs(status);
+create index if not exists idx_recycling_docs_user_id on public.recycling_docs(user_id);
+create index if not exists idx_parsed_documents_user_id on public.parsed_documents(user_id);
 ```
 
 Notes:
@@ -341,8 +429,60 @@ Notes:
 - You can schedule submissions via Vercel Cron to POST `/api/plastiks/submit` on an interval.
 - If multiple EFT/waybills per invoice are needed, introduce a child table; current design assumes one of each per invoice.
 
+## Authentication Setup
+
+### 1. Supabase Auth Configuration
+
+Ensure your Supabase project has email authentication enabled:
+
+1. Go to **Authentication > Settings** in your Supabase dashboard
+2. Enable **Email** provider
+3. Configure **Email Templates** for verification emails
+4. Set **Site URL** to your application URL (e.g., `http://localhost:3001` for development)
+
+### 2. User Experience
+
+#### First-Time Users
+- See "Create Account" form by default
+- Get contextual email suggestions based on domain
+- Receive green success alert: "📧 Check your email to verify your account!"
+- Must click verification link in email before accessing the app
+
+#### Returning Users
+- Can easily toggle to "Sign in" mode
+- Get helpful suggestions if they're in the wrong mode
+- Automatic login after email verification
+
+### 3. Security Features
+
+- **Email Verification Required**: Users cannot access the app until they verify their email
+- **JWT-Based Sessions**: Secure token-based authentication
+- **Automatic Session Management**: Handles token refresh and expiration
+- **Row Level Security**: Database-level user isolation
+- **API Protection**: All endpoints validate user tokens
+
+## Development Notes
+
+### Authentication Flow
+
+1. **User Registration**: New users sign up with email/password
+2. **Email Verification**: Verification email sent automatically
+3. **Account Activation**: Users click link to verify and auto-login
+4. **Session Management**: JWT tokens handle ongoing authentication
+5. **Data Association**: All user actions are tied to their user ID
+6. **Secure Access**: RLS policies ensure users only see their own data
+
+### Testing Authentication
+
+1. **Sign Up**: Create a new account with a real email address
+2. **Check Email**: Look for verification email (check spam folder)
+3. **Verify**: Click the verification link
+4. **Upload Documents**: Test that documents are user-specific
+5. **Sign Out/In**: Verify session persistence
+
 ### Change Log
 
+- **v3.0 (January 2025)**: Complete authentication system with user isolation, smart UX, and security features
 - **v2.1 (January 2025)**: Performance optimizations, Plastiks attachment support, UI/UX improvements
 - **v2.0**: Initial Plastiks integration with Web3 signing
 - **v1.0**: Core document processing with Google Gemini AI
