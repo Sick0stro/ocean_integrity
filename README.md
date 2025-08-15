@@ -443,12 +443,14 @@ Ensure your Supabase project has email authentication enabled:
 ### 2. User Experience
 
 #### First-Time Users
+
 - See "Create Account" form by default
 - Get contextual email suggestions based on domain
 - Receive green success alert: "📧 Check your email to verify your account!"
 - Must click verification link in email before accessing the app
 
 #### Returning Users
+
 - Can easily toggle to "Sign in" mode
 - Get helpful suggestions if they're in the wrong mode
 - Automatic login after email verification
