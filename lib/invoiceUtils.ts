@@ -5,11 +5,11 @@ interface InvoiceNumber {
   normalized: string;
   /** Individual components for flexible comparison */
   parts: {
-    prefix: string;  // e.g., "MAT"
+    prefix: string; // e.g., "MAT"
     region?: string; // e.g., "UP" or "MH"
-    year: string;    // e.g., "24"
-    period: string;  // e.g., "25"
-    number: string;  // e.g., "032" (padded to 3 digits)
+    year: string; // e.g., "24"
+    period: string; // e.g., "25"
+    number: string; // e.g., "032" (padded to 3 digits)
   };
 }
 
@@ -24,7 +24,7 @@ function parseInvoiceNumber(invoice: string): InvoiceNumber | null {
   if (!invoice) return null;
 
   const clean = invoice.toString().trim().toUpperCase();
-  
+
   // Define patterns in order of specificity
   const patterns: Array<{
     regex: RegExp;
@@ -35,30 +35,35 @@ function parseInvoiceNumber(invoice: string): InvoiceNumber | null {
       regex: /^([A-Z]+)[\/\-]([A-Z]+)[\/\-](\d{2})[\/\-]?(\d{2})[\/\-](\d+)$/,
       handler: (match) => ({
         original: invoice,
-        normalized: `${match[1]}-${match[2]}-${match[3]}-${match[4]}-${match[5].padStart(3, '0')}`,
+        normalized: `${match[1]}-${match[2]}-${match[3]}-${
+          match[4]
+        }-${match[5].padStart(3, '0')}`,
         parts: {
           prefix: match[1],
           region: match[2],
           year: match[3],
           period: match[4],
-          number: match[5].padStart(3, '0')
-        }
-      })
+          number: match[5].padStart(3, '0'),
+        },
+      }),
     },
     // Format: MAT/24-25/032
     {
       regex: /^([A-Z]+)[\/\-](\d{2})[\/\-]?(\d{2})[\/\-](\d+)$/,
       handler: (match) => ({
         original: invoice,
-        normalized: `${match[1]}-${match[2]}-${match[3]}-${match[4].padStart(3, '0')}`,
+        normalized: `${match[1]}-${match[2]}-${match[3]}-${match[4].padStart(
+          3,
+          '0'
+        )}`,
         parts: {
           prefix: match[1],
           year: match[2],
           period: match[3],
-          number: match[4].padStart(3, '0')
-        }
-      })
-    }
+          number: match[4].padStart(3, '0'),
+        },
+      }),
+    },
   ];
 
   // Try each pattern until we find a match
@@ -68,7 +73,10 @@ function parseInvoiceNumber(invoice: string): InvoiceNumber | null {
   }
 
   // Fallback: Return a basic normalized version with all required fields
-  const normalized = clean.replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  const normalized = clean
+    .replace(/[^A-Z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
   const parts = normalized.split('-');
   return {
     original: invoice,
@@ -78,8 +86,8 @@ function parseInvoiceNumber(invoice: string): InvoiceNumber | null {
       region: parts[1],
       year: '00',
       period: '00',
-      number: parts[parts.length - 1]?.padStart(3, '0') || '000'
-    }
+      number: parts[parts.length - 1]?.padStart(3, '0') || '000',
+    },
   };
 }
 
@@ -90,19 +98,19 @@ function parseInvoiceNumber(invoice: string): InvoiceNumber | null {
 function isSameInvoice(a: string, b: string): boolean {
   if (!a || !b) return false;
   if (a === b) return true;
-  
+
   const parsedA = parseInvoiceNumber(a);
   const parsedB = parseInvoiceNumber(b);
-  
+
   if (!parsedA || !parsedB) return false;
-  
+
   // Compare normalized versions first (fast path)
   if (parsedA.normalized === parsedB.normalized) return true;
-  
+
   // Compare individual components if available
   const partsA = parsedA.parts;
   const partsB = parsedB.parts;
-  
+
   return (
     partsA.prefix === partsB.prefix &&
     (!partsA.region || !partsB.region || partsA.region === partsB.region) &&
@@ -113,12 +121,12 @@ function isSameInvoice(a: string, b: string): boolean {
 }
 
 /**
- * Get a stable key for grouping invoices
+ * Get a stable key for grouping invoices (with user scoping)
  */
-function getInvoiceGroupKey(invoice: string): string {
+function getInvoiceGroupKey(invoice: string, userId?: string): string {
   const parsed = parseInvoiceNumber(invoice);
   if (!parsed) return invoice; // Fallback to original
-  
+
   // Create a key that groups similar invoices together
   const { parts } = parsed;
   const components = [
@@ -126,10 +134,13 @@ function getInvoiceGroupKey(invoice: string): string {
     parts.region,
     parts.year,
     parts.period,
-    parts.number
+    parts.number,
   ].filter(Boolean);
-  
-  return components.join('-');
+
+  const invoiceKey = components.join('-');
+
+  // If userId provided, create user-scoped key for isolation
+  return userId ? `${userId}:${invoiceKey}` : invoiceKey;
 }
 
 export { parseInvoiceNumber, isSameInvoice, getInvoiceGroupKey };

@@ -1,8 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Browser-side Supabase client for realtime subscriptions and reads
-// Requires NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to be set
-export function getSupabaseBrowser() {
+// Singleton Supabase client to prevent multiple instances
+let supabaseInstance: SupabaseClient | null = null;
+
+export function getSupabaseBrowser(): SupabaseClient {
+  // Return existing instance if already created
+  if (supabaseInstance) {
+    return supabaseInstance;
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -12,8 +18,19 @@ export function getSupabaseBrowser() {
     );
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false },
+  // Create and cache the instance
+  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true, // 👈 CHANGED: Enable session persistence
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
     realtime: { params: { eventsPerSecond: 10 } },
   });
+
+  console.log('🆕 [SUPABASE] Singleton client created');
+  return supabaseInstance;
 }
+
+// Export singleton instance directly
+export const supabase = getSupabaseBrowser();

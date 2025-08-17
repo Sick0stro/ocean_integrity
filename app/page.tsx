@@ -67,10 +67,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { VideoText } from '@/components/magicui/video-text';
-import { createClient, Session } from '@supabase/supabase-js';
+import { Session } from '@supabase/supabase-js';
 import { LoginForm } from '@/components/login-form';
 import { GalleryVerticalEnd } from 'lucide-react';
 import CSVDownloadBtn from '@/components/csv-download-btn';
+import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
+import { supabase } from '@/utils/supabase-browser';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
   ssr: false,
@@ -294,11 +296,6 @@ interface SubmitResult {
   message: string;
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 interface HomeContentProps {
   session: Session;
 }
@@ -325,13 +322,14 @@ function HomeContent({ session }: HomeContentProps) {
     Record<string, RecyclingDocument>
   >({});
   const [isGroupsLoading, setIsGroupsLoading] = useState(false);
+  const [hasInitializedGroups, setHasInitializedGroups] = useState(false);
 
   // 🚀 PERFORMANCE: Show loading immediately when switching to groups tab
   useEffect(() => {
-    if (activeTab === 'groups' && Object.keys(groups).length === 0) {
+    if (activeTab === 'groups' && !hasInitializedGroups) {
       setIsGroupsLoading(true);
     }
-  }, [activeTab, groups]);
+  }, [activeTab, hasInitializedGroups]);
   // Track all processed invoice numbers for validation
   const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<
     Set<string>
@@ -536,16 +534,7 @@ function HomeContent({ session }: HomeContentProps) {
   // Build/merge a single parsed_documents row into groups map
   const mergeRowIntoGroups = useCallback(
     (row: GroupDoc, map: Record<string, InvoiceGroup>) => {
-      // Inline the functions to avoid dependency issues
-      const normalize = (s: string) =>
-        s
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, '');
-      const isSameInvoice = (a: string, b: string) =>
-        a && b ? normalize(a) === normalize(b) : false;
-      const getInvoiceGroupKey = (invoiceNumber: string) =>
-        invoiceNumber ? normalize(invoiceNumber) : '';
+      // Use imported functions with user scoping for better isolation
 
       // Define isCompleteGroup inside useCallback to avoid dependency issues
       const isCompleteGroup = (
@@ -587,7 +576,8 @@ function HomeContent({ session }: HomeContentProps) {
             isSameInvoice(key, invoiceKey)
           );
 
-          const groupKey = existingKey || getInvoiceGroupKey(invoiceKey);
+          const groupKey =
+            existingKey || getInvoiceGroupKey(invoiceKey, session.user.id);
 
           if (!map[groupKey]) {
             console.log(`Creating new group for invoice: '${invoiceKey}'`);
@@ -677,7 +667,7 @@ function HomeContent({ session }: HomeContentProps) {
         console.groupEnd();
       }
     },
-    [trackProcessedInvoice, processedInvoiceNumbers] // Removed isSameInvoice and getInvoiceGroupKey as they're now imported inside
+    [trackProcessedInvoice, processedInvoiceNumbers, session.user.id] // Added session.user.id for user-scoped grouping
   );
 
   // 🚀 PERFORMANCE FIX: Lazy load recycling docs only when Push to Plastiks tab is active
@@ -740,7 +730,6 @@ function HomeContent({ session }: HomeContentProps) {
     // Only load groups data when the groups tab is active
     if (activeTab !== 'groups') return;
 
-    const supa = getSupabaseBrowser();
     let cancelled = false;
 
     const loadInitial = async () => {
@@ -749,24 +738,34 @@ function HomeContent({ session }: HomeContentProps) {
 
       try {
         console.log('📊 [PERFORMANCE] Loading parsed documents for groups...');
-        const { data, error } = await supa
+        console.log(
+          '📊 [PERFORMANCE] Loading parsed documents for current user:',
+          session.user.email
+        );
+        console.log('🔍 [DEBUG] User ID for filtering:', session.user.id);
+
+        const { data, error } = await supabase
           .from('parsed_documents')
           .select('id, document_type, file_url, created_at, raw_json')
+          .eq('user_id', session.user.id) // 👈 FILTER BY USER ID
           .order('created_at', { ascending: false })
-          .limit(500); // 🚀 PERFORMANCE: Reduced from 1000 to 500
+          .limit(500);
 
         if (error) {
-          console.error('Failed to load parsed_documents', error);
+          console.error('❌ [GROUPS] Failed to load parsed_documents:', error);
+          setIsGroupsLoading(false);
           return;
         }
 
         if (cancelled) return;
 
-        // Only process groups if we have data
-        if (data && data.length > 0) {
-          console.log(
-            `🔄 [PERFORMANCE] Processing ${data.length} documents...`
-          );
+        console.log(
+          `📊 [GROUPS] Loaded ${data?.length || 0} documents for user`
+        );
+
+        // Process groups even if data is empty
+        if (data) {
+          console.log(`🔄 [GROUPS] Processing ${data.length} documents...`);
           const map: Record<string, InvoiceGroup> = {};
 
           (data as unknown as GroupDoc[]).forEach((row) => {
@@ -796,13 +795,24 @@ function HomeContent({ session }: HomeContentProps) {
 
           // Update the groups state
           console.log(
-            `✅ [PERFORMANCE] Created ${Object.keys(map).length} groups`
+            `✅ [GROUPS] Created ${Object.keys(map).length} groups from ${
+              data.length
+            } documents`
           );
           setGroups(map);
           setIsDocumentsLoaded(true);
+          setHasInitializedGroups(true);
+        } else {
+          console.log('📭 [GROUPS] No documents found for user');
+          setGroups({});
+          setIsDocumentsLoaded(true);
+          setHasInitializedGroups(true);
         }
       } catch (error) {
-        console.error('Error loading initial data:', error);
+        console.error('❌ [GROUPS] Error loading initial data:', error);
+        setGroups({});
+        setIsDocumentsLoaded(true);
+        setHasInitializedGroups(true);
       } finally {
         if (!cancelled) {
           setIsGroupsLoading(false);
@@ -811,8 +821,8 @@ function HomeContent({ session }: HomeContentProps) {
       }
     };
 
-    // Only load if we don't already have groups data
-    if (Object.keys(groups).length === 0) {
+    // Only load if we haven't initialized groups yet
+    if (!hasInitializedGroups) {
       loadInitial();
     }
 
@@ -825,7 +835,7 @@ function HomeContent({ session }: HomeContentProps) {
       table: string;
     };
 
-    const channel = supa
+    const channel = supabase
       .channel('parsed_documents_changes')
       .on<PostgresChangePayload>(
         'postgres_changes',
@@ -877,9 +887,15 @@ function HomeContent({ session }: HomeContentProps) {
 
     return () => {
       cancelled = true;
-      supa.removeChannel(channel);
+      supabase.removeChannel(channel);
     };
-  }, [mergeRowIntoGroups, activeTab, groups]); // 🚀 Added activeTab dependency
+  }, [
+    mergeRowIntoGroups,
+    activeTab,
+    session.user.id,
+    session.user.email,
+    hasInitializedGroups,
+  ]); // 🚀 Added required dependencies without groups
 
   // computeGroupStatus is defined above with more comprehensive implementation
 
