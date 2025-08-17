@@ -26,6 +26,7 @@ export type RecyclingDocRow = {
   currency: string; // ISO currency, informational only
   upload_date?: string | null;
   uploaded_by?: string | null;
+  network_operator_company?: string;
 };
 
 export type PlastiksConfig = {
@@ -117,39 +118,35 @@ export async function getBlockchainConfig(
 export async function createPrgCollection(
   client: ReturnType<typeof createPlastiksClient>,
   params: {
-    name: string;
-    description: string;
-    plastik_type: string; // e.g., PET1
-    weightKg: number;
-    city?: string;
-    country?: string;
-    // NEW: Attachment URLs
+    // Essential fields only - as requested for production
+    recycler_company: string;
+    invoice_number: string;
     invoice_url?: string;
     eft_url?: string;
     ewaybill_url?: string;
+    plastic_type: string;
+    origin?: string;
+    currency?: string;
+    country?: string;
+    city?: string;
+    weightKg: number;
+    network_operator_company?: string;
   }
 ) {
-  const pricePerKg = 1.0; // 1 token per kg (staging default)
-  // Plastiks expects price as string; use minimal non-zero to avoid pricing errors
-  const totalPrice = Math.max(1, Math.round(params.weightKg * pricePerKg));
-  const noOfCopies = Math.max(1, Math.round(params.weightKg));
-
+  // 🎯 PRODUCTION PAYLOAD: Only essential fields as requested
   const body = {
-    name: params.name,
-    description: params.description,
-    plastik_type: params.plastik_type,
-    instant_sale_price: totalPrice.toString(),
-    no_of_copies: noOfCopies,
-    weight: params.weightKg,
-    guarantee_connected: params.weightKg,
-    city: params.city || '',
-    country: params.country || '',
-    // Disable auto-image generation to avoid staging dependency failures
-    use_autogen_image: 'false',
-    // 🔥 NEW: Include attachment URLs in Plastiks request
+    recycler_company: params.recycler_company,
+    invoice_number: params.invoice_number,
     invoice_url: params.invoice_url || '',
     eft_url: params.eft_url || '',
     ewaybill_url: params.ewaybill_url || '',
+    plastic_type: params.plastic_type,
+    origin: params.origin || '',
+    currency: params.currency || '',
+    country: params.country || '',
+    city: params.city || '',
+    weight_kg: params.weightKg,
+    network_operator_company: params.network_operator_company || '',
   };
 
   // 🔍 ADVANCED LOGGING: Log what's being sent to Plastiks
@@ -363,39 +360,90 @@ export async function signVoucher(
   }
 }
 
-export async function submitToPlastiks(row: RecyclingDocRow) {
+export async function submitToPlastiks(document: RecyclingDocRow) {
+  console.log('🚀 [PLASTIKS] =================================');
+  console.log('🚀 [PLASTIKS] STARTING SUBMISSION TO PLASTIKS');
+  console.log('🚀 [PLASTIKS] =================================');
+
+  // 📋 VALIDATION & TRACKING: Check document completeness
+  const validationResults = validateDocumentForSubmission(document);
+  console.log(
+    '🔍 [VALIDATION] Document validation results:',
+    validationResults
+  );
+
+  if (!validationResults.isValid) {
+    console.error(
+      '❌ [VALIDATION] Document failed validation:',
+      validationResults.errors
+    );
+    throw new Error(
+      `Document validation failed: ${validationResults.errors.join(', ')}`
+    );
+  }
+
+  console.log('✅ [VALIDATION] Document passed all validation checks');
+
+  // 🔧 CONFIGURATION: Initialize Plastiks connection
+  console.log('🔧 [CONFIG] Initializing Plastiks configuration...');
   const cfg = getPlastiksConfig();
   const client = createPlastiksClient(cfg);
   const chain = await getBlockchainConfig(client);
   const wallet = new ethers.Wallet(cfg.privateKey);
+  console.log('✅ [CONFIG] Plastiks configuration initialized successfully');
 
-  // 🔍 ADVANCED LOGGING: Log complete row data
-  console.log('🎯 [PLASTIKS_SUBMIT] Starting submission to Plastiks');
-  console.log('📄 [PLASTIKS_SUBMIT] Invoice:', row.invoice_number);
-  console.log('🏢 [PLASTIKS_SUBMIT] Company:', row.recycler_company);
-  console.log('📊 [PLASTIKS_SUBMIT] Weight:', row.tonnage_kg, 'kg');
+  // 📊 DOCUMENT SUMMARY: Log complete document data
+  console.log('📊 [DOCUMENT] =================================');
+  console.log('📊 [DOCUMENT] RECYCLING DOCUMENT SUMMARY');
+  console.log('📊 [DOCUMENT] =================================');
+  console.log('📄 [DOCUMENT] Invoice Number:', document.invoice_number);
+  console.log('🏢 [DOCUMENT] Recycler Company:', document.recycler_company);
+  console.log('🔬 [DOCUMENT] Plastic Type:', document.plastic_type);
+  console.log('⚖️ [DOCUMENT] Weight:', document.tonnage_kg, 'kg');
+  console.log('🌍 [DOCUMENT] Origin:', document.origin || 'Not specified');
+  console.log('🏙️ [DOCUMENT] City:', document.city || 'Not specified');
+  console.log('🌍 [DOCUMENT] Country:', document.country || 'Not specified');
+  console.log('💰 [DOCUMENT] Currency:', document.currency || 'Not specified');
   console.log(
-    '🌍 [PLASTIKS_SUBMIT] Location:',
-    row.city,
-    row.country || row.origin
+    '🏢 [DOCUMENT] Network Operator:',
+    document.network_operator_company || 'Not specified'
   );
 
-  // 🔥 ADVANCED LOGGING: Show available attachments that WILL NOW be sent
+  // 📎 ATTACHMENTS: Track all available attachments
+  console.log('📎 [ATTACHMENTS] =================================');
+  console.log('📎 [ATTACHMENTS] DOCUMENT ATTACHMENTS STATUS');
+  console.log('📎 [ATTACHMENTS] =================================');
   console.log(
-    '📎 [PLASTIKS_SUBMIT] Available Attachment URLs (NOW being sent to Plastiks):'
+    '📄 [ATTACHMENTS] Invoice URL:',
+    document.invoice_url ? '✅ PROVIDED' : '❌ MISSING'
   );
-  console.log('   📄 Invoice URL:', row.invoice_url);
-  console.log('   💳 EFT URL:', row.eft_url);
-  console.log('   🚛 E-way Bill URL:', row.ewaybill_url);
+  console.log('   └─ URL:', document.invoice_url || 'N/A');
   console.log(
-    '🔥 [PLASTIKS_SUBMIT] CRITICAL: Attachments ARE NOW included in Plastiks submission!'
+    '💳 [ATTACHMENTS] EFT URL:',
+    document.eft_url ? '✅ PROVIDED' : '❌ MISSING'
   );
+  console.log('   └─ URL:', document.eft_url || 'N/A');
+  console.log(
+    '🚛 [ATTACHMENTS] E-way Bill URL:',
+    document.ewaybill_url ? '✅ PROVIDED' : '❌ MISSING'
+  );
+  console.log('   └─ URL:', document.ewaybill_url || 'N/A');
 
-  // Build name/description from business data
-  const name = `${row.recycler_company} – ${row.invoice_number}`;
-  const description = `Recycling proof ${row.plastic_type} ${
-    row.tonnage_kg
-  }kg, ${row.city || ''} ${row.country || row.origin || ''}`.trim();
+  const attachmentCount = [
+    document.invoice_url,
+    document.eft_url,
+    document.ewaybill_url,
+  ].filter(Boolean).length;
+  console.log(`📊 [ATTACHMENTS] Total attachments: ${attachmentCount}/3`);
+
+  // 🎯 PREPARATION: Build submission payload
+  console.log('🎯 [PREPARATION] Building submission payload...');
+  const name = `${document.recycler_company} – ${document.invoice_number}`;
+  const description = `Recycling proof ${document.plastic_type} ${
+    document.tonnage_kg
+  }kg, ${document.city || ''} ${
+    document.country || document.origin || ''
+  }`.trim();
 
   // Map to Plastiks expected labels when possible
   const typeMap: Record<string, string> = {
@@ -404,47 +452,141 @@ export async function submitToPlastiks(row: RecyclingDocRow) {
     PVC: 'PVC 3',
     LDPE: 'LDPE 4',
   };
-  const normalizedType = row.plastic_type?.toUpperCase?.() || '';
-  const plastiksType = typeMap[normalizedType] || row.plastic_type;
+  const normalizedType = document.plastic_type?.toUpperCase?.() || '';
+  const plastiksType = typeMap[normalizedType] || document.plastic_type;
 
-  console.log('📝 [PLASTIKS_SUBMIT] Sending only metadata to Plastiks:');
-  console.log('   📛 Name:', name);
+  console.log('📝 [PREPARATION] Payload details:');
+  console.log('   📛 Collection Name:', name);
   console.log('   📖 Description:', description);
-  console.log('   🔬 Plastic Type:', plastiksType);
-  console.log('   ⚖️  Weight:', row.tonnage_kg, 'kg');
-  console.log('   🏙️  City:', row.city || '');
-  console.log('   🌍 Country:', row.country || row.origin || '');
+  console.log(
+    '   🔬 Mapped Plastic Type:',
+    `${document.plastic_type} → ${plastiksType}`
+  );
+  console.log('   ⚖️  Weight (kg):', document.tonnage_kg);
 
-  const prg = await createPrgCollection(client, {
-    name,
-    description,
-    plastik_type: plastiksType,
-    weightKg: row.tonnage_kg,
-    city: row.city || '',
-    country: row.country || row.origin || '',
-    // 🔥 NEW: Include attachment URLs
-    invoice_url: row.invoice_url,
-    eft_url: row.eft_url,
-    ewaybill_url: row.ewaybill_url,
-  });
+  // 🚀 SUBMISSION: Create PRG Collection
+  console.log('🚀 [SUBMISSION] Creating PRG Collection...');
+  const submissionPayload = {
+    recycler_company: document.recycler_company || '',
+    invoice_number: document.invoice_number || '',
+    invoice_url: document.invoice_url,
+    eft_url: document.eft_url,
+    ewaybill_url: document.ewaybill_url,
+    plastic_type: plastiksType,
+    origin: document.origin || '',
+    currency: document.currency || '',
+    country: document.country || '',
+    city: document.city || '',
+    weightKg: document.tonnage_kg,
+    network_operator_company: document.network_operator_company || '',
+  };
 
-  console.log('🔐 [PLASTIKS_SUBMIT] Starting blockchain signing process...');
-  await signMetadataHash(client, chain, wallet, prg.address);
-  console.log('✅ [PLASTIKS_SUBMIT] Metadata hash signed');
+  console.log(
+    '📤 [SUBMISSION] Final payload being sent:',
+    JSON.stringify(submissionPayload, null, 2)
+  );
 
-  await signFixedPrice(client, chain, wallet, prg);
-  console.log('✅ [PLASTIKS_SUBMIT] Fixed price signed');
+  const prg = await createPrgCollection(client, submissionPayload);
 
-  await signVoucher(client, chain, wallet, prg);
-  console.log('✅ [PLASTIKS_SUBMIT] Voucher signed');
-
-  console.log('🎉 [PLASTIKS_SUBMIT] Submission completed successfully');
-  console.log('📦 [PLASTIKS_SUBMIT] Final PRG Collection:', {
+  console.log('✅ [SUBMISSION] PRG Collection created successfully:', {
     id: prg.id,
     address: prg.address,
     weight: prg.weight,
-    metadata_hash: prg.metadata_hash,
   });
 
+  // 🔐 BLOCKCHAIN: Start signing process
+  console.log('🔐 [BLOCKCHAIN] =================================');
+  console.log('🔐 [BLOCKCHAIN] STARTING BLOCKCHAIN SIGNING');
+  console.log('🔐 [BLOCKCHAIN] =================================');
+
+  console.log('🔐 [BLOCKCHAIN] Step 1/3: Signing metadata hash...');
+  await signMetadataHash(client, chain, wallet, prg.address);
+  console.log('✅ [BLOCKCHAIN] Step 1/3: Metadata hash signed successfully');
+
+  console.log('🔐 [BLOCKCHAIN] Step 2/3: Signing fixed price...');
+  await signFixedPrice(client, chain, wallet, prg);
+  console.log('✅ [BLOCKCHAIN] Step 2/3: Fixed price signed successfully');
+
+  console.log('🔐 [BLOCKCHAIN] Step 3/3: Signing voucher...');
+  await signVoucher(client, chain, wallet, prg);
+  console.log('✅ [BLOCKCHAIN] Step 3/3: Voucher signed successfully');
+
+  // 🎉 SUCCESS: Final results
+  console.log('🎉 [SUCCESS] =================================');
+  console.log('🎉 [SUCCESS] SUBMISSION COMPLETED SUCCESSFULLY');
+  console.log('🎉 [SUCCESS] =================================');
+  console.log('📦 [SUCCESS] PRG Collection Details:');
+  console.log('   🆔 Collection ID:', prg.id);
+  console.log('   📍 Contract Address:', prg.address);
+  console.log('   ⚖️  Weight:', prg.weight, 'kg');
+  console.log('   🔗 Metadata Hash:', prg.metadata_hash || 'Pending');
+  console.log('   📊 Number of Copies:', prg.no_of_copies || 'Default');
+  console.log(
+    '💎 [SUCCESS] Document successfully submitted to Plastiks blockchain!'
+  );
+
   return prg;
+}
+
+// 🔍 VALIDATION: Helper function to validate document before submission
+function validateDocumentForSubmission(document: RecyclingDocRow): {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Required fields validation
+  if (!document.invoice_number?.trim()) {
+    errors.push('Invoice number is required');
+  }
+
+  if (!document.recycler_company?.trim()) {
+    errors.push('Recycler company is required');
+  }
+
+  if (!document.plastic_type?.trim()) {
+    errors.push('Plastic type is required');
+  }
+
+  if (!document.tonnage_kg || document.tonnage_kg <= 0) {
+    errors.push('Weight must be greater than 0');
+  }
+
+  // Optional but recommended fields
+  if (!document.invoice_url?.trim()) {
+    warnings.push(
+      'Invoice URL is missing - document may not have proper verification'
+    );
+  }
+
+  if (
+    !document.city?.trim() &&
+    !document.country?.trim() &&
+    !document.origin?.trim()
+  ) {
+    warnings.push(
+      'Location information is missing - no city, country, or origin specified'
+    );
+  }
+
+  if (!document.network_operator_company?.trim()) {
+    warnings.push('Network operator company is not specified');
+  }
+
+  // Business logic validation
+  if (document.tonnage_kg > 10000) {
+    warnings.push(
+      'Weight is very high (>10 tons) - please verify this is correct'
+    );
+  }
+
+  const isValid = errors.length === 0;
+
+  return {
+    isValid,
+    errors,
+    warnings,
+  };
 }
