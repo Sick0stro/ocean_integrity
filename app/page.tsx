@@ -746,13 +746,14 @@ function HomeContent({ session }: HomeContentProps) {
 
         const { data, error } = await supabase
           .from('parsed_documents')
-          .select('id, document_type, file_url, created_at, raw_json')
+          .select('id, document_type, file_url, created_at, raw_json, user_id')
           .eq('user_id', session.user.id) // 👈 FILTER BY USER ID
           .order('created_at', { ascending: false })
           .limit(500);
 
         if (error) {
           console.error('❌ [GROUPS] Failed to load parsed_documents:', error);
+          console.error('❌ [GROUPS] Error details:', error);
           setIsGroupsLoading(false);
           return;
         }
@@ -762,6 +763,17 @@ function HomeContent({ session }: HomeContentProps) {
         console.log(
           `📊 [GROUPS] Loaded ${data?.length || 0} documents for user`
         );
+        console.log('🔍 [GROUPS] Raw data sample:', data?.slice(0, 2));
+
+        // Check if documents have the correct user_id
+        if (data && data.length > 0) {
+          const userIds = [...new Set(data.map((d) => d.user_id))];
+          console.log('🔍 [GROUPS] User IDs in loaded documents:', userIds);
+          console.log('🔍 [GROUPS] Expected user ID:', session.user.id);
+          console.log('🔍 [GROUPS] Document types found:', [
+            ...new Set(data.map((d) => d.document_type)),
+          ]);
+        }
 
         // Process groups even if data is empty
         if (data) {
@@ -1039,57 +1051,85 @@ function HomeContent({ session }: HomeContentProps) {
       return;
     }
 
+    // 🚀 CRITICAL FIX: Only process files that haven't been processed yet
+    const newFilesToProcess = files.filter((_, index) => {
+      const doc = processedDocuments[index];
+      return !doc || doc.status === 'pending';
+    });
+
+    if (newFilesToProcess.length === 0) {
+      console.log(`⚠️ Frontend: All files already processed`);
+      return;
+    }
+
     console.log(`🚀 Frontend: === STARTING BATCH PROCESSING ===`);
-    console.log(`📊 Frontend: Processing ${files.length} files`);
+    console.log(
+      `📊 Frontend: Processing ${newFilesToProcess.length} NEW files out of ${files.length} total`
+    );
     console.log(`⏰ Frontend: Started at ${new Date().toISOString()}`);
 
     setIsProcessing(true);
     setCurrentProcessingIndex(0);
     setProcessingProgress(0);
 
-    // Initialize processed documents array
-    console.log(
-      `🔄 Frontend: Initializing document array with invoice templates`
-    );
-    const initialDocs: ProcessedDocument[] = files.map((file, index) => {
-      console.log(
-        `📝 Frontend: Creating initial doc ${index + 1}/${files.length} - ${
-          file.name
-        }`
-      );
-      return {
-        fileName: file.name,
-        documentType: '',
-        data: JSON.parse(
-          JSON.stringify(documentTemplates.invoice)
-        ) as AppDocument,
-        fileUrl: '',
-        status: 'pending',
-      };
+    // 🚀 CRITICAL FIX: Initialize missing document slots only
+    console.log(`🔄 Frontend: Ensuring all files have document slots`);
+    setProcessedDocuments((prev) => {
+      const updated = [...prev];
+      files.forEach((file, index) => {
+        if (!updated[index]) {
+          console.log(
+            `📝 Frontend: Creating doc slot ${index + 1} - ${file.name}`
+          );
+          updated[index] = {
+            fileName: file.name,
+            documentType: '',
+            data: JSON.parse(
+              JSON.stringify(documentTemplates.invoice)
+            ) as AppDocument,
+            fileUrl: '',
+            status: 'pending',
+          };
+        }
+      });
+      return updated;
     });
-    setProcessedDocuments(initialDocs);
 
     const batchStartTime = Date.now();
 
     try {
-      // Process files one by one
+      // 🚀 CRITICAL FIX: Process only new files, not all files
+      let processedCount = 0;
       for (let i = 0; i < files.length; i++) {
         const currentFile = files[i];
+        const doc = processedDocuments[i];
+
+        // Skip files that are already processed
+        if (doc && doc.status === 'completed') {
+          console.log(
+            `⏭️ Frontend: Skipping already processed file ${i + 1}: ${
+              currentFile.name
+            }`
+          );
+          continue;
+        }
+
+        processedCount++;
 
         // Add progressive delay between files to prevent Supabase rate limiting
-        if (i > 0) {
+        if (processedCount > 1) {
           // Delay increases every 4 files: 0ms, 1s, 1s, 1s, 2s, 2s, 2s, 2s, 3s...
-          const delay = Math.min(1000 * Math.ceil(i / 4), 3000);
+          const delay = Math.min(1000 * Math.ceil(processedCount / 4), 3000);
           console.log(
-            `⏳ Frontend: Waiting ${delay}ms before file ${
-              i + 1
-            } to prevent rate limiting`
+            `⏳ Frontend: Waiting ${delay}ms before processing file ${processedCount} to prevent rate limiting`
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
 
         console.log(
-          `\n🔄 Frontend: === PROCESSING FILE ${i + 1}/${files.length} ===`
+          `\n🔄 Frontend: === PROCESSING NEW FILE ${processedCount}/${
+            newFilesToProcess.length
+          } (File ${i + 1}/${files.length}) ===`
         );
         console.log(`📄 Frontend: File: ${currentFile.name}`);
         console.log(
@@ -1310,11 +1350,14 @@ function HomeContent({ session }: HomeContentProps) {
           );
         }
 
-        // Update progress
-        const progressPercent = ((i + 1) / files.length) * 100;
+        // Update progress based on new files processed
+        const progressPercent =
+          (processedCount / newFilesToProcess.length) * 100;
         setProcessingProgress(progressPercent);
         console.log(
-          `📈 Frontend: Progress updated to ${progressPercent.toFixed(1)}%`
+          `📈 Frontend: Progress updated to ${progressPercent.toFixed(
+            1
+          )}% (${processedCount}/${newFilesToProcess.length} new files)`
         );
       }
 
@@ -1322,9 +1365,9 @@ function HomeContent({ session }: HomeContentProps) {
       console.log(`🎉 Frontend: === BATCH PROCESSING COMPLETED ===`);
       console.log(`⏰ Frontend: Total batch time: ${totalBatchTime}ms`);
       console.log(
-        `📊 Frontend: Average time per file: ${(
-          totalBatchTime / files.length
-        ).toFixed(2)}ms`
+        `📊 Frontend: Average time per NEW file: ${
+          processedCount > 0 ? (totalBatchTime / processedCount).toFixed(2) : 0
+        }ms`
       );
 
       // ========== COMPREHENSIVE BATCH SUMMARY ==========
@@ -1454,6 +1497,16 @@ function HomeContent({ session }: HomeContentProps) {
 
       setActiveTab('results');
       console.log(`🔄 Frontend: Switched to results tab`);
+
+      // 🚀 CRITICAL FIX: Reset groups when new documents are processed
+      if (processedCount > 0) {
+        console.log(
+          `🔄 Frontend: Resetting groups due to ${processedCount} new documents`
+        );
+        setHasInitializedGroups(false);
+        setIsDocumentsLoaded(false);
+        setGroups({});
+      }
     } catch (batchError) {
       console.error(`💥 Frontend: Batch processing error:`, batchError);
     } finally {
@@ -2004,12 +2057,29 @@ function HomeContent({ session }: HomeContentProps) {
             <TabsContent value='groups' className='space-y-6'>
               <Card className='shadow-md border-slate-200'>
                 <CardHeader>
-                  <CardTitle>Group & Verify</CardTitle>
-                  <CardDescription>
-                    {isDocumentsLoaded
-                      ? 'Groups are built from parsed documents. Complete all three files to enable submission.'
-                      : 'Loading document groups...'}
-                  </CardDescription>
+                  <div className='flex justify-between items-start'>
+                    <div>
+                      <CardTitle>Group & Verify</CardTitle>
+                      <CardDescription>
+                        {isDocumentsLoaded
+                          ? 'Groups are built from parsed documents. Complete all three files to enable submission.'
+                          : 'Loading document groups...'}
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      onClick={() => {
+                        console.log('🔄 [MANUAL] Refreshing groups...');
+                        setHasInitializedGroups(false);
+                        setIsDocumentsLoaded(false);
+                        setGroups({});
+                      }}
+                      disabled={isGroupsLoading}
+                    >
+                      {isGroupsLoading ? 'Loading...' : 'Refresh Groups'}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className='p-6'>
                   {isGroupsLoading || !isDocumentsLoaded ? (
