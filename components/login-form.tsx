@@ -35,7 +35,7 @@ const supabase = createClient(
 console.log('✅ [SUPABASE] Client created successfully');
 
 export function LoginForm() {
-  const [isSignUp, setIsSignUp] = useState(true); // 👈 Default to sign-up for better first-time UX
+  const [isSignUp, setIsSignUp] = useState(false); // Default to login for better UX - will auto-adjust
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,6 +44,10 @@ export function LoginForm() {
     null
   );
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
+  const [checkingUser, setCheckingUser] = useState(false);
+  const [userDetected, setUserDetected] = useState<boolean | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
   // Check environment variables on component mount
   useEffect(() => {
@@ -73,50 +77,126 @@ export function LoginForm() {
     console.log('🔍 [ENV] Environment check completed');
   }, []);
 
-  // Smart email suggestions (simplified approach)
-  useEffect(() => {
-    if (!email || !email.includes('@')) {
-      setEmailSuggestion(null);
-      return;
-    }
+  // Check if user exists when email changes
+  const checkUserExists = async (emailToCheck: string) => {
+    if (!emailToCheck || !emailToCheck.includes('@')) return;
 
-    // Simple heuristic-based suggestions
-    const timeoutId = setTimeout(() => {
-      console.log('💡 [EMAIL_HINT] Providing smart suggestion for:', email);
+    setCheckingUser(true);
+    console.log('🔍 [USER_CHECK] Checking if user exists:', emailToCheck);
 
-      // For common email domains, suggest sign-up for first-time users
-      const commonDomains = [
-        'gmail.com',
-        'yahoo.com',
-        'hotmail.com',
-        'outlook.com',
-      ];
-      const emailDomain = email.split('@')[1]?.toLowerCase();
+    try {
+      // Try to sign in with a dummy password to check if user exists
+      // This is a safe way to check user existence without exposing user data
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailToCheck,
+        password: 'dummy_password_for_user_check',
+      });
 
-      if (commonDomains.includes(emailDomain || '')) {
-        if (isSignUp) {
+      if (error) {
+        console.log('🔍 [USER_CHECK] Sign-in error:', error.message);
+
+        if (error.message.includes('Invalid login credentials')) {
+          // User EXISTS but wrong password - switch to login!
+          console.log(
+            '👋 [USER_CHECK] Existing user detected - switching to login mode'
+          );
+          setUserDetected(true);
+          setIsSignUp(false);
+          setEmailSuggestion(
+            'Welcome back! This email is already registered. Please sign in.'
+          );
+        } else if (
+          error.message.includes('Email not confirmed') ||
+          error.message.includes('signup') ||
+          error.message.includes('confirmation')
+        ) {
+          // User exists but email not confirmed
+          console.log(
+            '📧 [USER_CHECK] Existing user with unconfirmed email - switching to login'
+          );
+          setUserDetected(true);
+          setIsSignUp(false);
+          setEmailSuggestion(
+            'Welcome back! This email is already registered. Please sign in.'
+          );
+        } else if (
+          error.message.includes('User not found') ||
+          error.message.includes('user_not_found') ||
+          error.message.includes('No user found')
+        ) {
+          // User doesn't exist
+          console.log(
+            '✨ [USER_CHECK] New user detected - staying in signup mode'
+          );
+          setUserDetected(false);
+          setIsSignUp(true);
           setEmailSuggestion(
             "Looking good! We'll create your account after you verify your email."
           );
         } else {
+          // Unknown error - default to existing user to be safe
+          console.log(
+            '🤷 [USER_CHECK] Unknown error, defaulting to login mode for safety'
+          );
+          setUserDetected(true);
+          setIsSignUp(false);
           setEmailSuggestion(
-            'If this is your first time, click "Sign up" below to create an account.'
+            'Please try signing in, or click "Sign up" if you need a new account.'
           );
         }
       } else {
-        // For business emails, be more neutral
-        if (isSignUp) {
-          setEmailSuggestion('Ready to create your account with this email.');
-        } else {
-          setEmailSuggestion(
-            'If you haven\'t created an account yet, click "Sign up" below.'
-          );
-        }
+        // This shouldn't happen with a dummy password, but handle it
+        console.log('🎉 [USER_CHECK] User exists and signed in (unexpected)');
+        setUserDetected(true);
+        setIsSignUp(false);
       }
-    }, 800); // Show suggestion after user stops typing
+    } catch (err) {
+      console.error('❌ [USER_CHECK] Error checking user:', err);
+      // On error, default to signup mode
+      setUserDetected(null);
+    } finally {
+      setCheckingUser(false);
+    }
+  };
+
+  // Auto-check user when email changes
+  useEffect(() => {
+    if (!email || !email.includes('@')) {
+      setUserDetected(null);
+      setEmailSuggestion(null);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      checkUserExists(email);
+    }, 1000); // Debounce for 1 second
 
     return () => clearTimeout(timeoutId);
-  }, [email, isSignUp]);
+  }, [email]);
+
+  // Smart email suggestions based on user detection
+  useEffect(() => {
+    if (!email || !email.includes('@') || checkingUser) {
+      if (!checkingUser) setEmailSuggestion(null);
+      return;
+    }
+
+    // If we've detected the user status, the suggestions are already set in checkUserExists
+    if (userDetected !== null) return;
+
+    // Fallback suggestions for when user detection hasn't completed yet
+    const timeoutId = setTimeout(() => {
+      if (userDetected === null && !checkingUser) {
+        console.log(
+          '💡 [EMAIL_HINT] Providing fallback suggestion for:',
+          email
+        );
+        setEmailSuggestion('Checking if this email is already registered...');
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [email, isSignUp, userDetected, checkingUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,6 +237,18 @@ export function LoginForm() {
 
     try {
       if (isSignUp) {
+        // Double-check: if user was detected as existing, redirect to login
+        if (userDetected === true) {
+          console.log('🔄 [AUTH] User exists, switching to login mode');
+          setIsSignUp(false);
+          setMessage(
+            'This email is already registered. Please sign in instead.'
+          );
+          setMessageType('error');
+          setLoading(false);
+          return;
+        }
+
         console.log('🚀 [AUTH] Attempting sign up...');
         const signUpData = {
           email,
@@ -182,7 +274,49 @@ export function LoginForm() {
             status: error.status,
             details: error,
           });
+
+          // Handle specific signup errors
+          if (
+            error.message.includes('already registered') ||
+            error.message.includes('already exists') ||
+            error.message.includes('User already registered')
+          ) {
+            console.log('👥 [AUTH] User already exists, switching to login');
+            setIsSignUp(false);
+            setUserDetected(true);
+            setMessage(
+              'This email is already registered. Please sign in instead.'
+            );
+            setMessageType('error');
+            setLoading(false);
+            return;
+          }
+
           throw error;
+        }
+
+        // Check if user already existed (Supabase returns user data even for existing users)
+        if (
+          data.user &&
+          !data.user.email_confirmed_at &&
+          data.user.created_at
+        ) {
+          const createdDate = new Date(data.user.created_at);
+          const now = new Date();
+          const timeDiff = now.getTime() - createdDate.getTime();
+
+          // If user was created more than 1 minute ago, they likely already existed
+          if (timeDiff > 60000) {
+            console.log('👥 [AUTH] Existing user detected via timestamp');
+            setIsSignUp(false);
+            setUserDetected(true);
+            setMessage(
+              'This email is already registered. Please sign in or check your email for a previous verification link.'
+            );
+            setMessageType('error');
+            setLoading(false);
+            return;
+          }
         }
 
         console.log('✅ [AUTH] Sign up successful');
@@ -245,16 +379,55 @@ export function LoginForm() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email || !email.includes('@')) {
+      setMessage('Please enter your email address first');
+      setMessageType('error');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    setMessageType(null);
+
+    try {
+      console.log('🔐 [RESET] Sending password reset email to:', email);
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        console.error('❌ [RESET] Password reset failed:', error);
+        throw error;
+      }
+
+      console.log('✅ [RESET] Password reset email sent');
+      setResetEmailSent(true);
+      setMessage(`📧 Password reset link sent to ${email}! Check your email.`);
+      setMessageType('success');
+      setShowForgotPassword(false);
+    } catch (error: unknown) {
+      console.error('💥 [RESET] Password reset error:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to send reset email';
+      setMessage(errorMessage);
+      setMessageType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Card className='w-full max-w-md'>
       <CardHeader className='space-y-1'>
         <CardTitle className='text-2xl font-bold'>
-          {isSignUp ? 'Create an account' : 'Sign in'}
+          {isSignUp ? 'Create an account' : 'Welcome back'}
         </CardTitle>
         <CardDescription>
           {isSignUp
             ? 'Enter your details to create your account'
-            : 'Enter your email and password to sign in'}
+            : 'Sign in to your account'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -272,7 +445,15 @@ export function LoginForm() {
               />
               {email && email.includes('@') && (
                 <div className='absolute right-2 top-1/2 transform -translate-y-1/2'>
-                  <div className='h-4 w-4 text-green-500'>✓</div>
+                  {checkingUser ? (
+                    <div className='h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin'></div>
+                  ) : userDetected === true ? (
+                    <div className='h-4 w-4 text-blue-500'>👋</div>
+                  ) : userDetected === false ? (
+                    <div className='h-4 w-4 text-green-500'>✨</div>
+                  ) : (
+                    <div className='h-4 w-4 text-green-500'>✓</div>
+                  )}
                 </div>
               )}
             </div>
@@ -321,6 +502,47 @@ export function LoginForm() {
           <Button type='submit' className='w-full' disabled={loading}>
             {loading ? 'Loading...' : isSignUp ? 'Create account' : 'Sign in'}
           </Button>
+
+          {!isSignUp && !resetEmailSent && (
+            <div className='text-center'>
+              <button
+                type='button'
+                onClick={() => setShowForgotPassword(!showForgotPassword)}
+                className='text-sm text-muted-foreground hover:text-primary underline'
+              >
+                Forgot your password?
+              </button>
+            </div>
+          )}
+
+          {showForgotPassword && !resetEmailSent && (
+            <div className='border rounded-lg p-4 bg-muted/20'>
+              <h4 className='text-sm font-medium mb-2'>Reset Password</h4>
+              <p className='text-xs text-muted-foreground mb-3'>
+                Enter your email address and we&apos;ll send you a link to reset
+                your password.
+              </p>
+              <div className='flex gap-2'>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  onClick={handleForgotPassword}
+                  disabled={loading || !email}
+                >
+                  {loading ? 'Sending...' : 'Send Reset Link'}
+                </Button>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='sm'
+                  onClick={() => setShowForgotPassword(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </form>
 
         <div className='mt-4 text-center text-sm'>
@@ -333,6 +555,9 @@ export function LoginForm() {
                   setEmailSuggestion(null);
                   setMessage('');
                   setMessageType(null);
+                  setUserDetected(null); // Reset user detection when manually switching
+                  setShowForgotPassword(false);
+                  setResetEmailSent(false);
                 }}
                 className='underline hover:text-primary font-medium'
               >
@@ -348,6 +573,9 @@ export function LoginForm() {
                   setEmailSuggestion(null);
                   setMessage('');
                   setMessageType(null);
+                  setUserDetected(null); // Reset user detection when manually switching
+                  setShowForgotPassword(false);
+                  setResetEmailSent(false);
                 }}
                 className='underline hover:text-primary font-medium'
               >
@@ -357,11 +585,18 @@ export function LoginForm() {
           )}
         </div>
 
-        {/* First-time user helper */}
-        {isSignUp && !email && (
+        {/* Smart user helper */}
+        {!email && (
           <div className='mt-2 text-center text-xs text-muted-foreground bg-muted/50 rounded-lg p-3'>
-            🌟 <strong>First time here?</strong> Just enter your email and
-            we&apos;ll guide you through the process!
+            🌟 <strong>Smart Authentication:</strong> Enter your email and
+            we&apos;ll automatically detect if you need to sign in or create an
+            account!
+          </div>
+        )}
+
+        {checkingUser && (
+          <div className='mt-2 text-center text-xs text-blue-600 bg-blue-50 dark:bg-blue-950 rounded-lg p-3'>
+            🔍 Checking if this email is already registered...
           </div>
         )}
       </CardContent>

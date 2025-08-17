@@ -67,7 +67,9 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { VideoText } from '@/components/magicui/video-text';
-import AuthWrapper, { useSession } from '@/components/AuthWrapper';
+import { createClient, Session } from '@supabase/supabase-js';
+import { LoginForm } from '@/components/login-form';
+import { GalleryVerticalEnd } from 'lucide-react';
 import CSVDownloadBtn from '@/components/csv-download-btn';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
@@ -292,8 +294,17 @@ interface SubmitResult {
   message: string;
 }
 
-function HomeContent() {
-  const session = useSession(); // 👈 Get session for auth token
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+interface HomeContentProps {
+  session: Session;
+}
+
+function HomeContent({ session }: HomeContentProps) {
+  // Session passed as prop instead of context
 
   // Document processing state
   const [files, setFiles] = useState<File[]>([]);
@@ -2491,11 +2502,78 @@ function HomeContent() {
   );
 }
 
-// Wrap with AuthWrapper
+// Main app with direct session management
 export default function Home() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    console.log('🔄 [HOME] Initializing session...');
+
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('📥 [HOME] Initial session:', !!session);
+      setSession(session);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('🔄 [HOME] Auth changed:', event, !!session);
+      setSession(session);
+      setLoading(false);
+    });
+
+    return () => {
+      console.log('🔚 [HOME] Cleaning up auth subscription');
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Show loading
+  if (loading) {
+    return (
+      <div className='min-h-screen flex items-center justify-center'>
+        <div className='text-lg'>Loading...</div>
+      </div>
+    );
+  }
+
+  // Show login if not authenticated
+  if (!session) {
+    return (
+      <div className='bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10'>
+        <div className='flex w-full max-w-sm flex-col gap-6'>
+          <div className='flex items-center gap-2 self-center font-medium'>
+            <div className='bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md'>
+              <GalleryVerticalEnd className='size-4' />
+            </div>
+            Ocean Integrity AI
+          </div>
+          <LoginForm />
+        </div>
+      </div>
+    );
+  }
+
+  // Show main app
   return (
-    <AuthWrapper>
-      <HomeContent />
-    </AuthWrapper>
+    <div>
+      {/* Sign out button */}
+      <div className='absolute top-4 right-4 z-[60]'>
+        <Button
+          onClick={() => supabase.auth.signOut()}
+          variant='outline'
+          size='sm'
+        >
+          Sign Out ({session.user?.email})
+        </Button>
+      </div>
+
+      {/* Main app content */}
+      <HomeContent session={session} />
+    </div>
   );
 }
