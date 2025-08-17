@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,6 @@ const supabase = createClient(
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,26 +34,81 @@ export default function ResetPasswordPage() {
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check if we have the necessary parameters
-    const accessToken = searchParams.get('access_token');
-    const refreshToken = searchParams.get('refresh_token');
+    // Check for Supabase reset tokens in URL fragment (after #)
+    const parseFragment = () => {
+      if (typeof window === 'undefined') return {};
 
-    if (accessToken && refreshToken) {
+      const fragment = window.location.hash.substring(1);
+
+      // Debug logging
+      console.log('🔍 [RESET] Full URL:', window.location.href);
+      console.log('🔍 [RESET] Hash fragment:', fragment);
+
+      const params = new URLSearchParams(fragment);
+
+      return {
+        access_token: params.get('access_token'),
+        refresh_token: params.get('refresh_token'),
+        type: params.get('type'),
+      };
+    };
+
+    const { access_token, refresh_token, type } = parseFragment();
+
+    console.log('🔍 [RESET] Checking URL fragment for tokens:', {
+      hasAccessToken: !!access_token,
+      hasRefreshToken: !!refresh_token,
+      type,
+    });
+
+    if (access_token && refresh_token && type === 'recovery') {
       console.log('🔐 [RESET] Valid reset tokens found');
       setIsValidToken(true);
 
       // Set the session with the tokens
-      supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
+      supabase.auth
+        .setSession({
+          access_token,
+          refresh_token,
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error('❌ [RESET] Session setting failed:', error);
+            setIsValidToken(false);
+            setMessage(
+              'Reset link is expired or invalid. Please request a new one.'
+            );
+            setMessageType('error');
+          } else {
+            console.log('✅ [RESET] Session set successfully');
+          }
+        });
     } else {
-      console.log('❌ [RESET] Missing reset tokens');
+      console.log('❌ [RESET] Missing or invalid reset tokens');
+      console.log('URL fragment:', window.location.hash);
+      console.log('Parsed tokens:', {
+        access_token: !!access_token,
+        refresh_token: !!refresh_token,
+        type,
+      });
+
       setIsValidToken(false);
-      setMessage('Invalid or expired reset link. Please request a new one.');
+
+      // More helpful error message
+      if (!access_token || !refresh_token) {
+        setMessage(
+          'Reset link is missing required tokens. Please request a new password reset.'
+        );
+      } else if (type !== 'recovery') {
+        setMessage(
+          'Invalid reset link type. Please request a new password reset.'
+        );
+      } else {
+        setMessage('Invalid or expired reset link. Please request a new one.');
+      }
       setMessageType('error');
     }
-  }, [searchParams]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
