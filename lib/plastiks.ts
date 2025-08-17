@@ -133,19 +133,27 @@ export async function createPrgCollection(
     network_operator_company?: string;
   }
 ) {
-  // 🎯 PRODUCTION PAYLOAD: Only essential fields as requested
+  // 🎯 COMPLETE PAYLOAD: Include all required Plastiks fields
   const body = {
+    // Required by Plastiks API
+    name: `${params.recycler_company} - ${params.invoice_number}`,
+    description: `Recycling collection for invoice ${params.invoice_number} from ${params.recycler_company}`,
+    plastik_type: params.plastic_type, // Note: plastik_type not plastic_type
+    instant_sale_price: 1000000000, // 1 Gwei minimum
+    no_of_copies: Math.max(1, Math.round(params.weightKg / 1000)), // 1 copy per ton
+    weight: params.weightKg,
+    use_autogen_image: true,
+
+    // Essential business fields
     recycler_company: params.recycler_company,
     invoice_number: params.invoice_number,
     invoice_url: params.invoice_url || '',
     eft_url: params.eft_url || '',
     ewaybill_url: params.ewaybill_url || '',
-    plastic_type: params.plastic_type,
     origin: params.origin || '',
     currency: params.currency || '',
     country: params.country || '',
     city: params.city || '',
-    weight_kg: params.weightKg,
     network_operator_company: params.network_operator_company || '',
   };
 

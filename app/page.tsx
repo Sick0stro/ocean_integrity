@@ -1,6 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react';
 import type { Document as AppDocument } from '@/types/document-types';
 import type { ProcessedDocument } from '@/types/processed-document';
 
@@ -354,16 +360,40 @@ function HomeContent({ session }: HomeContentProps) {
     Record<string, SubmitResult>
   >({});
 
+  // Track active polling intervals to prevent duplicates
+  const activePollingRef = useRef<NodeJS.Timeout | null>(null);
+
   // Poll for updated Plastiks submission details
   useEffect(() => {
     if (!submitResult || Object.keys(submitResult).length === 0) return;
+
+    // Clear any existing polling interval
+    if (activePollingRef.current) {
+      console.log('🧹 Clearing existing polling interval');
+      clearInterval(activePollingRef.current);
+      activePollingRef.current = null;
+    }
 
     // Find all invoice numbers that were just submitted successfully
     const submittedInvoices = Object.entries(submitResult)
       .filter(([, result]) => result?.ok)
       .map(([invoice]) => invoice);
 
-    if (submittedInvoices.length === 0) return;
+    if (submittedInvoices.length === 0) {
+      console.log('⏹️ No successful submissions to poll for');
+      return;
+    }
+
+    // 🚀 CRITICAL FIX: Don't poll for failed submissions
+    const hasAnyFailedSubmissions = submittedInvoices.some((invoice) => {
+      const doc = recyclingDocs[invoice];
+      return doc && doc.status === 'failed';
+    });
+
+    if (hasAnyFailedSubmissions) {
+      console.log('❌ Found failed submissions. Not starting polling.');
+      return;
+    }
 
     // Check if all submitted invoices already have complete Plastiks data
     const allHaveCompleteData = submittedInvoices.every((invoice) => {
@@ -459,15 +489,37 @@ function HomeContent({ session }: HomeContentProps) {
             console.log(
               '✅ All documents now have complete Plastiks data. Stopping polling.'
             );
-            clearInterval(intervalId);
+            if (activePollingRef.current) {
+              clearInterval(activePollingRef.current);
+              activePollingRef.current = null;
+            }
             return;
           }
+        }
+
+        // Stop polling for failed submissions
+        const hasFailedSubmissions = updatedDocs.some(
+          (doc) =>
+            doc.status === 'failed' &&
+            submittedInvoices.includes(doc.invoice_number)
+        );
+
+        if (hasFailedSubmissions) {
+          console.log('❌ Found failed submissions. Stopping polling.');
+          if (activePollingRef.current) {
+            clearInterval(activePollingRef.current);
+            activePollingRef.current = null;
+          }
+          return;
         }
 
         // Stop polling after max attempts
         if (pollCount >= maxPolls) {
           console.log('⚠️ Max polling attempts reached. Stopping polling.');
-          clearInterval(intervalId);
+          if (activePollingRef.current) {
+            clearInterval(activePollingRef.current);
+            activePollingRef.current = null;
+          }
         }
       } catch (err) {
         console.error('Error in polling function:', err);
@@ -478,11 +530,19 @@ function HomeContent({ session }: HomeContentProps) {
     fetchUpdatedDocs();
 
     // Set up polling interval (every 3 seconds)
-    const intervalId = setInterval(fetchUpdatedDocs, 3000);
+    activePollingRef.current = setInterval(fetchUpdatedDocs, 3000);
+    console.log('🔄 Started new polling interval');
 
     // Clean up interval on component unmount or when dependencies change
-    return () => clearInterval(intervalId);
-  }, [submitResult, recyclingDocs]); // Added recyclingDocs to dependencies
+    return () => {
+      if (activePollingRef.current) {
+        console.log('🧹 Cleaning up polling interval');
+        clearInterval(activePollingRef.current);
+        activePollingRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitResult]); // 🚀 CRITICAL FIX: Removed recyclingDocs to prevent infinite loop
 
   // Initialize submitting state for all groups
   useEffect(() => {
@@ -966,12 +1026,32 @@ function HomeContent({ session }: HomeContentProps) {
       const resp = await fetch(submitUrl, { method: 'POST' });
       const json = await resp.json().catch(() => ({}));
       console.log(`[UI] Submit response ok=${resp.ok}`, json);
+
       if (resp.ok) {
-        setSubmitResult((prev) => ({
-          ...prev,
-          [invoice]: { ok: true, message: 'Submitted' },
-        }));
-        console.log(`[UI] Submit succeeded for invoice='${invoice}'`);
+        // 🚀 CRITICAL FIX: Check individual result status, not just HTTP status
+        const individualResult = json?.results?.[0];
+        const isActuallySucceeded =
+          individualResult?.status !== 'failed' && !individualResult?.error;
+
+        if (isActuallySucceeded) {
+          setSubmitResult((prev) => ({
+            ...prev,
+            [invoice]: { ok: true, message: 'Submitted' },
+          }));
+          console.log(`[UI] Submit succeeded for invoice='${invoice}'`);
+        } else {
+          // HTTP 200 but internal failure
+          const errorMessage =
+            individualResult?.error || 'Plastiks submission failed';
+          setSubmitResult((prev) => ({
+            ...prev,
+            [invoice]: { ok: false, message: errorMessage },
+          }));
+          console.warn(
+            `[UI] Submit failed internally for invoice='${invoice}':`,
+            errorMessage
+          );
+        }
       } else {
         setSubmitResult((prev) => ({
           ...prev,
