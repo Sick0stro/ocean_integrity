@@ -35,6 +35,8 @@ import {
   CreditCard,
   Truck,
   UploadCloud,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -323,6 +325,17 @@ function HomeContent({ session }: HomeContentProps) {
   >({});
   const [isGroupsLoading, setIsGroupsLoading] = useState(false);
   const [hasInitializedGroups, setHasInitializedGroups] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  // Toggle group expansion
+  const toggleGroupExpansion = (invoiceKey: string) => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [invoiceKey]: !prev[invoiceKey], // Default to false (collapsed)
+    }));
+  };
 
   // 🚀 PERFORMANCE: Show loading immediately when switching to groups tab
   useEffect(() => {
@@ -2126,6 +2139,20 @@ function HomeContent({ session }: HomeContentProps) {
                                     Incomplete
                                   </Badge>
                                 )}
+                                <Button
+                                  variant='ghost'
+                                  size='sm'
+                                  onClick={() =>
+                                    toggleGroupExpansion(invoiceKey)
+                                  }
+                                  className='h-8 w-8 p-0'
+                                >
+                                  {expandedGroups[invoiceKey] ? (
+                                    <ChevronUp className='h-4 w-4' />
+                                  ) : (
+                                    <ChevronDown className='h-4 w-4' />
+                                  )}
+                                </Button>
                               </div>
                             </div>
 
@@ -2137,442 +2164,456 @@ function HomeContent({ session }: HomeContentProps) {
                               </div>
                             )}
 
-                            <div className='space-y-6 mt-6'>
-                              {(
-                                [
-                                  'invoice',
-                                  'eft_receipt',
-                                  'e-way-bill',
-                                ] as const
-                              ).map((t) => {
-                                const latest = group.docs?.[t]?.[0];
-                                const tTitle = documentTypes[t]?.title || t;
-                                const docType =
-                                  latest?.document_type as keyof typeof documentTypes;
-                                const DocIcon =
-                                  documentTypes[docType]?.icon || FileText;
-                                const iconColor =
-                                  documentTypes[docType]?.color ||
-                                  'text-slate-500';
+                            {/* Collapsible content - only show when expanded */}
+                            {expandedGroups[invoiceKey] && (
+                              <>
+                                <div className='space-y-6 mt-6'>
+                                  {(
+                                    [
+                                      'invoice',
+                                      'eft_receipt',
+                                      'e-way-bill',
+                                    ] as const
+                                  ).map((t) => {
+                                    const latest = group.docs?.[t]?.[0];
+                                    const tTitle = documentTypes[t]?.title || t;
+                                    const docType =
+                                      latest?.document_type as keyof typeof documentTypes;
+                                    const DocIcon =
+                                      documentTypes[docType]?.icon || FileText;
+                                    const iconColor =
+                                      documentTypes[docType]?.color ||
+                                      'text-slate-500';
 
-                                return (
-                                  <div
-                                    key={t}
-                                    className='border rounded-lg overflow-hidden bg-white'
-                                  >
-                                    <div className='bg-slate-50 px-4 py-2 border-b flex items-center gap-2'>
-                                      <DocIcon
-                                        className={`h-4 w-4 ${iconColor}`}
-                                      />
-                                      <h4 className='font-medium text-slate-800'>
-                                        {tTitle}
-                                      </h4>
-                                      {latest?.file_url && (
-                                        <a
-                                          href={latest.file_url}
-                                          target='_blank'
-                                          rel='noreferrer'
-                                          className='ml-auto text-xs text-blue-600 hover:underline'
-                                          title='View original PDF'
-                                        >
-                                          View PDF
-                                        </a>
-                                      )}
-                                    </div>
-                                    <div className='grid grid-cols-1 md:grid-cols-2 gap-0'>
-                                      <div className='p-4 border-r'>
-                                        {latest?.file_url ? (
-                                          <div className='h-[400px]'>
-                                            <PdfPreview
-                                              fileUrl={latest.file_url}
-                                              heightClass='h-full'
-                                            />
-                                          </div>
-                                        ) : (
-                                          <div className='h-[400px] flex items-center justify-center text-slate-400'>
-                                            No file uploaded
-                                          </div>
-                                        )}
-                                      </div>
+                                    return (
                                       <div
-                                        className='p-4 overflow-auto'
-                                        style={{ maxHeight: '500px' }}
+                                        key={t}
+                                        className='border rounded-lg overflow-hidden bg-white'
                                       >
-                                        {latest?.raw_json ? (
-                                          <div className='space-y-4'>
-                                            <h5 className='font-medium text-slate-800 border-b pb-2'>
-                                              Extracted Data
-                                            </h5>
-                                            <div className='space-y-2 text-sm'>
-                                              {latest.raw_json ? (
-                                                Object.entries(
-                                                  latest.raw_json as Record<
-                                                    string,
-                                                    unknown
-                                                  >
-                                                ).map(([key, value]) => {
-                                                  if (
-                                                    value === null ||
-                                                    value === undefined ||
-                                                    value === ''
-                                                  )
-                                                    return null;
-                                                  if (
-                                                    typeof value === 'object' &&
-                                                    !Array.isArray(value)
-                                                  )
-                                                    return null;
+                                        <div className='bg-slate-50 px-4 py-2 border-b flex items-center gap-2'>
+                                          <DocIcon
+                                            className={`h-4 w-4 ${iconColor}`}
+                                          />
+                                          <h4 className='font-medium text-slate-800'>
+                                            {tTitle}
+                                          </h4>
+                                          {latest?.file_url && (
+                                            <a
+                                              href={latest.file_url}
+                                              target='_blank'
+                                              rel='noreferrer'
+                                              className='ml-auto text-xs text-blue-600 hover:underline'
+                                              title='View original PDF'
+                                            >
+                                              View PDF
+                                            </a>
+                                          )}
+                                        </div>
+                                        <div className='grid grid-cols-1 md:grid-cols-2 gap-0'>
+                                          <div className='p-4 border-r'>
+                                            {latest?.file_url ? (
+                                              <div className='h-[400px]'>
+                                                <PdfPreview
+                                                  fileUrl={latest.file_url}
+                                                  heightClass='h-full'
+                                                />
+                                              </div>
+                                            ) : (
+                                              <div className='h-[400px] flex items-center justify-center text-slate-400'>
+                                                No file uploaded
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div
+                                            className='p-4 overflow-auto'
+                                            style={{ maxHeight: '500px' }}
+                                          >
+                                            {latest?.raw_json ? (
+                                              <div className='space-y-4'>
+                                                <h5 className='font-medium text-slate-800 border-b pb-2'>
+                                                  Extracted Data
+                                                </h5>
+                                                <div className='space-y-2 text-sm'>
+                                                  {latest.raw_json ? (
+                                                    Object.entries(
+                                                      latest.raw_json as Record<
+                                                        string,
+                                                        unknown
+                                                      >
+                                                    ).map(([key, value]) => {
+                                                      if (
+                                                        value === null ||
+                                                        value === undefined ||
+                                                        value === ''
+                                                      )
+                                                        return null;
+                                                      if (
+                                                        typeof value ===
+                                                          'object' &&
+                                                        !Array.isArray(value)
+                                                      )
+                                                        return null;
 
-                                                  const displayValue =
-                                                    Array.isArray(value)
-                                                      ? value
-                                                          .map(String)
-                                                          .join(', ')
-                                                      : String(value);
+                                                      const displayValue =
+                                                        Array.isArray(value)
+                                                          ? value
+                                                              .map(String)
+                                                              .join(', ')
+                                                          : String(value);
 
-                                                  return (
-                                                    <div
-                                                      key={key}
-                                                      className='grid grid-cols-3 gap-2'
-                                                    >
-                                                      <div className='text-slate-500 capitalize'>
-                                                        {key.replace(/_/g, ' ')}
-                                                        :
-                                                      </div>
-                                                      <div className='col-span-2 font-medium'>
-                                                        {displayValue}
-                                                      </div>
+                                                      return (
+                                                        <div
+                                                          key={key}
+                                                          className='grid grid-cols-3 gap-2'
+                                                        >
+                                                          <div className='text-slate-500 capitalize'>
+                                                            {key.replace(
+                                                              /_/g,
+                                                              ' '
+                                                            )}
+                                                            :
+                                                          </div>
+                                                          <div className='col-span-2 font-medium'>
+                                                            {displayValue}
+                                                          </div>
+                                                        </div>
+                                                      );
+                                                    })
+                                                  ) : (
+                                                    <div className='text-slate-400 text-center py-2'>
+                                                      No data available
                                                     </div>
-                                                  );
-                                                })
-                                              ) : (
-                                                <div className='text-slate-400 text-center py-2'>
-                                                  No data available
+                                                  )}
                                                 </div>
+                                              </div>
+                                            ) : (
+                                              <div className='text-slate-400 text-center py-8'>
+                                                No data extracted yet
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className='mt-6 pt-4 border-t border-slate-100'>
+                                  {recyclingDocs[group.invoice]
+                                    ?.plastiks_submitted_at ? (
+                                    <div className='mb-4 space-y-2 text-sm'>
+                                      <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
+                                        <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
+                                          <CheckCircle2 className='h-4 w-4' />
+                                          Successfully Submitted to Plastiks
+                                        </h4>
+                                        <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Invoice #
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {recyclingDocs[
+                                                group.invoice
+                                              ]?.invoice_number?.toString() ||
+                                                'N/A'}
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Recycler Company
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {recyclingDocs[
+                                                group.invoice
+                                              ]?.recycler_company?.toString() ||
+                                                'N/A'}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Network Operator Company
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {recyclingDocs[
+                                                group.invoice
+                                              ]?.network_operator_company?.toString() ||
+                                                'N/A'}
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Plastic Type
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {recyclingDocs[
+                                                group.invoice
+                                              ]?.plastic_type?.toString() ||
+                                                'N/A'}
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Weight
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {recyclingDocs[group.invoice]
+                                                ?.tonnage_tons !== undefined
+                                                ? `${
+                                                    recyclingDocs[
+                                                      group.invoice
+                                                    ]?.tonnage_tons?.toString() ||
+                                                    '0'
+                                                  } tons`
+                                                : 'N/A'}
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Country
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {recyclingDocs[
+                                                group.invoice
+                                              ]?.country?.toString() || 'N/A'}
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Collection ID
+                                            </div>
+                                            <div className='font-mono text-xs text-slate-600 break-all'>
+                                              {recyclingDocs[
+                                                group.invoice
+                                              ]?.plastiks_collection_id?.toString() ||
+                                                'N/A'}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Metadata Hash
+                                            </div>
+                                            <div className='font-mono text-xs text-slate-600 break-all'>
+                                              {recyclingDocs[
+                                                group.invoice
+                                              ]?.plastiks_metadata_hash?.toString() ||
+                                                'N/A'}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Collection Address
+                                            </div>
+                                            <div className='font-mono text-xs text-slate-600 break-all'>
+                                              {recyclingDocs[
+                                                group.invoice
+                                              ]?.plastiks_collection_address?.toString() ||
+                                                'N/A'}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Submitted At
+                                            </div>
+                                            <div className='text-sm text-slate-700'>
+                                              {recyclingDocs[group.invoice]
+                                                ?.plastiks_submitted_at
+                                                ? new Date(
+                                                    recyclingDocs[group.invoice]
+                                                      ?.plastiks_submitted_at ??
+                                                      ''
+                                                  ).toLocaleString()
+                                                : 'N/A'}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className='mb-4 space-y-4'>
+                                      <h4 className='font-medium text-slate-800'>
+                                        Data to be sent to Plastiks:
+                                      </h4>
+                                      <div className='bg-blue-50 p-4 rounded-lg border border-blue-100'>
+                                        <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Invoice #
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {String(
+                                                latestByType.invoice?.raw_json
+                                                  ?.invoice_number ||
+                                                  latestByType.invoice?.raw_json
+                                                    ?.invoice ||
+                                                  'N/A'
                                               )}
                                             </div>
                                           </div>
-                                        ) : (
-                                          <div className='text-slate-400 text-center py-8'>
-                                            No data extracted yet
+
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Company
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {String(
+                                                latestByType.invoice?.raw_json
+                                                  ?.bill_to_company_name ||
+                                                  latestByType['e-way-bill']
+                                                    ?.raw_json
+                                                    ?.ship_to_company_name ||
+                                                  'N/A'
+                                              )}
+                                            </div>
                                           </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <div className='mt-6 pt-4 border-t border-slate-100'>
-                              {recyclingDocs[group.invoice]
-                                ?.plastiks_submitted_at ? (
-                                <div className='mb-4 space-y-2 text-sm'>
-                                  <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
-                                    <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
-                                      <CheckCircle2 className='h-4 w-4' />
-                                      Successfully Submitted to Plastiks
-                                    </h4>
-                                    <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Invoice #
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[
-                                            group.invoice
-                                          ]?.invoice_number?.toString() ||
-                                            'N/A'}
-                                        </div>
-                                      </div>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Network Operator
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {String(
+                                                latestByType.invoice?.raw_json
+                                                  ?.bill_from_company_name ||
+                                                  latestByType['e-way-bill']
+                                                    ?.raw_json
+                                                    ?.ship_from_company_name ||
+                                                  'N/A'
+                                              )}
+                                            </div>
+                                          </div>
 
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Recycler Company
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[
-                                            group.invoice
-                                          ]?.recycler_company?.toString() ||
-                                            'N/A'}
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Network Operator Company
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[
-                                            group.invoice
-                                          ]?.network_operator_company?.toString() ||
-                                            'N/A'}
-                                        </div>
-                                      </div>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Plastic Type
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {String(
+                                                latestByType.invoice?.raw_json
+                                                  ?.plastic_type ||
+                                                  latestByType['e-way-bill']
+                                                    ?.raw_json?.plastic_type ||
+                                                  'N/A'
+                                              )}
+                                            </div>
+                                          </div>
 
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Plastic Type
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[
-                                            group.invoice
-                                          ]?.plastic_type?.toString() || 'N/A'}
-                                        </div>
-                                      </div>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Weight
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {latestByType.invoice?.raw_json
+                                                ?.weight
+                                                ? `${String(
+                                                    latestByType.invoice
+                                                      .raw_json.weight
+                                                  )} ${String(
+                                                    latestByType.invoice
+                                                      .raw_json.weight_unit ||
+                                                      'kg'
+                                                  )}`
+                                                : 'N/A'}
+                                            </div>
+                                          </div>
 
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Weight
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[group.invoice]
-                                            ?.tonnage_tons !== undefined
-                                            ? `${
-                                                recyclingDocs[
-                                                  group.invoice
-                                                ]?.tonnage_tons?.toString() ||
-                                                '0'
-                                              } tons`
-                                            : 'N/A'}
-                                        </div>
-                                      </div>
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              City
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {String(
+                                                latestByType['e-way-bill']
+                                                  ?.raw_json?.from_location ||
+                                                  latestByType['e-way-bill']
+                                                    ?.raw_json?.city ||
+                                                  latestByType.invoice?.raw_json
+                                                    ?.city ||
+                                                  'N/A'
+                                              )}
+                                            </div>
+                                          </div>
 
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Country
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {recyclingDocs[
-                                            group.invoice
-                                          ]?.country?.toString() || 'N/A'}
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Collection ID
-                                        </div>
-                                        <div className='font-mono text-xs text-slate-600 break-all'>
-                                          {recyclingDocs[
-                                            group.invoice
-                                          ]?.plastiks_collection_id?.toString() ||
-                                            'N/A'}
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Metadata Hash
-                                        </div>
-                                        <div className='font-mono text-xs text-slate-600 break-all'>
-                                          {recyclingDocs[
-                                            group.invoice
-                                          ]?.plastiks_metadata_hash?.toString() ||
-                                            'N/A'}
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Collection Address
-                                        </div>
-                                        <div className='font-mono text-xs text-slate-600 break-all'>
-                                          {recyclingDocs[
-                                            group.invoice
-                                          ]?.plastiks_collection_address?.toString() ||
-                                            'N/A'}
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Submitted At
-                                        </div>
-                                        <div className='text-sm text-slate-700'>
-                                          {recyclingDocs[group.invoice]
-                                            ?.plastiks_submitted_at
-                                            ? new Date(
-                                                recyclingDocs[group.invoice]
-                                                  ?.plastiks_submitted_at ?? ''
-                                              ).toLocaleString()
-                                            : 'N/A'}
+                                          <div>
+                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                              Country
+                                            </div>
+                                            <div className='font-medium text-slate-800'>
+                                              {String(
+                                                latestByType['e-way-bill']
+                                                  ?.raw_json
+                                                  ?.ship_to_country_code ||
+                                                  latestByType['e-way-bill']
+                                                    ?.raw_json
+                                                    ?.origin_country ||
+                                                  latestByType['e-way-bill']
+                                                    ?.raw_json?.country ||
+                                                  latestByType.invoice?.raw_json
+                                                    ?.country ||
+                                                  'N/A'
+                                              )}
+                                            </div>
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
-                                  </div>
+                                  )}
+                                  <Button
+                                    size='sm'
+                                    disabled={
+                                      !status.complete ||
+                                      submitting[group.invoice] ||
+                                      submitResult[group.invoice]?.ok ||
+                                      !!recyclingDocs[group.invoice]
+                                        ?.plastiks_submitted_at
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSubmitGroup(group.invoice);
+                                    }}
+                                    className={`w-full gap-2 mt-2 ${
+                                      submitResult[group.invoice]?.ok ||
+                                      recyclingDocs[group.invoice]
+                                        ?.plastiks_submitted_at
+                                        ? 'bg-green-600 hover:bg-green-600 text-white'
+                                        : submitResult[group.invoice] &&
+                                          !submitResult[group.invoice]?.ok
+                                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                                        : ''
+                                    }`}
+                                  >
+                                    {submitting[group.invoice] ? (
+                                      <span className='flex items-center gap-2'>
+                                        <Loader2 className='h-3 w-3 animate-spin' />
+                                        Submitting to Plastiks...
+                                      </span>
+                                    ) : submitResult[group.invoice]?.ok ||
+                                      recyclingDocs[group.invoice]
+                                        ?.plastiks_submitted_at ? (
+                                      <span className='flex items-center gap-2'>
+                                        <CheckCircle2 className='h-3 w-3' />
+                                        Successfully Submitted
+                                      </span>
+                                    ) : submitResult[group.invoice] &&
+                                      !submitResult[group.invoice]?.ok ? (
+                                      <span className='flex items-center gap-2'>
+                                        <AlertCircle className='h-3 w-3' />
+                                        Retry Submission
+                                      </span>
+                                    ) : (
+                                      <span className='flex items-center gap-2'>
+                                        <UploadCloud className='h-3 w-3' />
+                                        Push to Plastiks
+                                        <ArrowRight className='h-3 w-3' />
+                                      </span>
+                                    )}
+                                  </Button>
                                 </div>
-                              ) : (
-                                <div className='mb-4 space-y-4'>
-                                  <h4 className='font-medium text-slate-800'>
-                                    Data to be sent to Plastiks:
-                                  </h4>
-                                  <div className='bg-blue-50 p-4 rounded-lg border border-blue-100'>
-                                    <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Invoice #
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(
-                                            latestByType.invoice?.raw_json
-                                              ?.invoice_number ||
-                                              latestByType.invoice?.raw_json
-                                                ?.invoice ||
-                                              'N/A'
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Company
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(
-                                            latestByType.invoice?.raw_json
-                                              ?.bill_to_company_name ||
-                                              latestByType['e-way-bill']
-                                                ?.raw_json
-                                                ?.ship_to_company_name ||
-                                              'N/A'
-                                          )}
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Network Operator
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(
-                                            latestByType.invoice?.raw_json
-                                              ?.bill_from_company_name ||
-                                              latestByType['e-way-bill']
-                                                ?.raw_json
-                                                ?.ship_from_company_name ||
-                                              'N/A'
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Plastic Type
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(
-                                            latestByType.invoice?.raw_json
-                                              ?.plastic_type ||
-                                              latestByType['e-way-bill']
-                                                ?.raw_json?.plastic_type ||
-                                              'N/A'
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Weight
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {latestByType.invoice?.raw_json
-                                            ?.weight
-                                            ? `${String(
-                                                latestByType.invoice.raw_json
-                                                  .weight
-                                              )} ${String(
-                                                latestByType.invoice.raw_json
-                                                  .weight_unit || 'kg'
-                                              )}`
-                                            : 'N/A'}
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          City
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(
-                                            latestByType['e-way-bill']?.raw_json
-                                              ?.from_location ||
-                                              latestByType['e-way-bill']
-                                                ?.raw_json?.city ||
-                                              latestByType.invoice?.raw_json
-                                                ?.city ||
-                                              'N/A'
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <div className='text-slate-500 text-xs font-medium mb-1'>
-                                          Country
-                                        </div>
-                                        <div className='font-medium text-slate-800'>
-                                          {String(
-                                            latestByType['e-way-bill']?.raw_json
-                                              ?.ship_to_country_code ||
-                                              latestByType['e-way-bill']
-                                                ?.raw_json?.origin_country ||
-                                              latestByType['e-way-bill']
-                                                ?.raw_json?.country ||
-                                              latestByType.invoice?.raw_json
-                                                ?.country ||
-                                              'N/A'
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                              <Button
-                                size='sm'
-                                disabled={
-                                  !status.complete ||
-                                  submitting[group.invoice] ||
-                                  submitResult[group.invoice]?.ok ||
-                                  !!recyclingDocs[group.invoice]
-                                    ?.plastiks_submitted_at
-                                }
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSubmitGroup(group.invoice);
-                                }}
-                                className={`w-full gap-2 mt-2 ${
-                                  submitResult[group.invoice]?.ok ||
-                                  recyclingDocs[group.invoice]
-                                    ?.plastiks_submitted_at
-                                    ? 'bg-green-600 hover:bg-green-600 text-white'
-                                    : submitResult[group.invoice] &&
-                                      !submitResult[group.invoice]?.ok
-                                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                                    : ''
-                                }`}
-                              >
-                                {submitting[group.invoice] ? (
-                                  <span className='flex items-center gap-2'>
-                                    <Loader2 className='h-3 w-3 animate-spin' />
-                                    Submitting to Plastiks...
-                                  </span>
-                                ) : submitResult[group.invoice]?.ok ||
-                                  recyclingDocs[group.invoice]
-                                    ?.plastiks_submitted_at ? (
-                                  <span className='flex items-center gap-2'>
-                                    <CheckCircle2 className='h-3 w-3' />
-                                    Successfully Submitted
-                                  </span>
-                                ) : submitResult[group.invoice] &&
-                                  !submitResult[group.invoice]?.ok ? (
-                                  <span className='flex items-center gap-2'>
-                                    <AlertCircle className='h-3 w-3' />
-                                    Retry Submission
-                                  </span>
-                                ) : (
-                                  <span className='flex items-center gap-2'>
-                                    <UploadCloud className='h-3 w-3' />
-                                    Push to Plastiks
-                                    <ArrowRight className='h-3 w-3' />
-                                  </span>
-                                )}
-                              </Button>
-                            </div>
+                              </>
+                            )}
                           </div>
                         );
                       })}
