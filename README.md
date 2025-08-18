@@ -210,6 +210,20 @@ All API endpoints now require valid JWT authentication tokens passed via `Author
 - `POST /api/cron/recycling-docs` - Ingest recycling document data (with authentication)
   - **Authentication**: Via cron secrets (`x-cron-secret` header or `?secret=` query param)
 
+### Debug & Testing
+
+- `GET /api/debug/payload` - Debug endpoint to verify exact Plastiks payload structure
+  - **Purpose**: Shows exactly what data gets sent to Plastiks API without authentication
+  - **No Authentication**: Simple debug endpoint for payload verification
+  - **Response**: Returns the exact payload structure that would be sent to Plastiks
+  - **Usage**: `curl -X GET "http://localhost:3000/api/debug/payload"`
+  - **Key Features**:
+    - ✅ **100% Identical Payload**: Uses exact same logic as real Plastiks submission
+    - ✅ **URL Verification**: Confirms all attachment URLs (invoice, EFT, e-way bill) are included
+    - ✅ **Mock Data Testing**: Uses realistic test data matching production structure
+    - ✅ **Debugging Support**: Helps verify payload structure for Plastiks team communication
+  - **Use Case**: When Plastiks team claims they're not receiving attachment URLs, use this to prove the URLs are definitely included in your requests
+
 ## Development
 
 ### Tech Stack
