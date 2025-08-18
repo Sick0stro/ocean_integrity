@@ -2718,7 +2718,18 @@ export default function Home() {
     console.log('🔄 [HOME] Initializing session...');
 
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('❌ [HOME] Session error:', error);
+        // Clear invalid session data
+        if (
+          error.message.includes('refresh_token_not_found') ||
+          error.message.includes('Invalid Refresh Token')
+        ) {
+          console.log('🧹 [HOME] Clearing invalid tokens...');
+          supabase.auth.signOut();
+        }
+      }
       console.log('📥 [HOME] Initial session:', !!session);
       setSession(session);
       setLoading(false);
@@ -2729,6 +2740,13 @@ export default function Home() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('🔄 [HOME] Auth changed:', event, !!session);
+
+      // Handle token refresh errors
+      if (event === 'TOKEN_REFRESHED' && !session) {
+        console.log('⚠️ [HOME] Token refresh failed, signing out...');
+        supabase.auth.signOut();
+      }
+
       setSession(session);
       setLoading(false);
     });
