@@ -42,4 +42,3 @@ next-env.d.ts
 
 .vercel
 
-/app/api/debug/payload/route.ts
