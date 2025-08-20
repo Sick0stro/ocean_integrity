@@ -2278,12 +2278,15 @@ function HomeContent({ session }: HomeContentProps) {
                                 </div>
                               </div>
                               <div className='flex items-center gap-2'>
-                                {status.complete ? (
-                                  <Badge className='bg-green-100 text-green-700 border-0'>
-                                    Complete
+                                {recyclingDocs[group.invoice]
+                                  ?.human_verified ? (
+                                  <Badge className='bg-green-100 text-green-700 border-0 flex items-center gap-1'>
+                                    <CheckCircle2 className='h-3 w-3' />
+                                    Verified
                                   </Badge>
                                 ) : (
-                                  <Badge className='bg-red-100 text-red-700 border-0'>
+                                  <Badge className='bg-red-100 text-red-700 border-0 flex items-center gap-1'>
+                                    <AlertCircle className='h-3 w-3' />
                                     Incomplete
                                   </Badge>
                                 )}
@@ -2709,6 +2712,52 @@ function HomeContent({ session }: HomeContentProps) {
                                       </div>
                                     </div>
                                   )}
+
+                                  {/* Verification Status Section */}
+                                  <div
+                                    className={`p-6 border rounded-lg mt-4 ${
+                                      recyclingDocs[group.invoice]
+                                        ?.human_verified
+                                        ? 'border-green-200 bg-green-50'
+                                        : 'border-gray-200 bg-gray-50'
+                                    }`}
+                                  >
+                                    {recyclingDocs[group.invoice]
+                                      ?.human_verified ? (
+                                      <div>
+                                        <p className='text-sm text-green-800 mb-3 font-semibold flex items-center gap-2'>
+                                          <CheckCircle2 className='h-4 w-4 text-green-600' />
+                                          Human Verification Complete
+                                        </p>
+                                        <div className='text-sm text-green-700 space-y-1'>
+                                          <p>
+                                            <strong>Verified by:</strong>{' '}
+                                            {session.user?.email || 'Unknown'}
+                                          </p>
+                                          <p>
+                                            <strong>Verified at:</strong>{' '}
+                                            {recyclingDocs[group.invoice]
+                                              ?.verified_at
+                                              ? new Date(
+                                                  recyclingDocs[
+                                                    group.invoice
+                                                  ].verified_at!
+                                                ).toLocaleString()
+                                              : 'Unknown'}
+                                          </p>
+                                          <p className='mt-2 font-medium text-green-800'>
+                                            ✅ Ready for blockchain submission
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className='text-sm text-gray-600'>
+                                        Data needs to be human-verified before
+                                        it gets sent to the blockchain.
+                                      </p>
+                                    )}
+                                  </div>
+
                                   <Button
                                     size='sm'
                                     disabled={
