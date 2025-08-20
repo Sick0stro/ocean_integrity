@@ -111,7 +111,7 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 ### 📊 Real-Time Dashboard & Analytics
 
 - **Sticky Header Dashboard**: Live statistics remain visible when scrolling for constant progress monitoring
-- **Three Key Metrics**: 
+- **Three Key Metrics**:
   - **Total Tons**: Cumulative weight from verified documents only
   - **Processed Docs**: Count of all AI-processed documents from `parsed_documents` table
   - **Verified Credits**: Count of human-verified documents from `recycling_docs` table
@@ -512,7 +512,7 @@ Notes:
 
   - **Issue**: Dashboard shows "Loading..." or zero values for all statistics
   - **Solution**: Check browser console for authentication errors or database connection issues
-  - **Common Causes**: 
+  - **Common Causes**:
     - Invalid session token (sign out and sign back in)
     - Database column mismatch (ensure `human_verified` and `verified_at` columns exist)
     - Network connectivity issues
@@ -636,16 +636,19 @@ Ensure your Supabase project has email authentication enabled:
 ## Current Workflow Summary
 
 ### 1. Upload & Process Tab
+
 - Upload PDF documents (invoices, EFT receipts, e-way bills)
 - AI processes documents using Google Gemini 2.0 Flash
 - Real-time processing status with progress indicators
 
-### 2. Review & Export Tab  
+### 2. Review & Export Tab
+
 - Review extracted data from AI processing
 - Preview PDF documents alongside extracted information
 - Export processed data to CSV
 
 ### 3. Group & Verify Tab
+
 - Documents automatically grouped by invoice number
 - Status badges: Incomplete → Complete → Verified
 - Human verification button for quality control
@@ -653,6 +656,7 @@ Ensure your Supabase project has email authentication enabled:
 - CSV export for verified documents only
 
 ### 4. Dashboard Analytics
+
 - **Sticky Header**: Always visible statistics during scrolling
 - **Real-Time Updates**: Refreshes every 30 seconds automatically
 - **Date Range Filtering**: Filter by document processing date
@@ -660,9 +664,9 @@ Ensure your Supabase project has email authentication enabled:
 
 ### Change Log
 
-- **v4.0 (January 2025)**: 🚀 **HUMAN VERIFICATION WORKFLOW** - Replaced Plastiks with human verification, added real-time dashboard with sticky header, date range analytics, CSV export for verified docs, and streamlined 3-tab UI
-- **v3.1 (August 2025)**: 🚀 **PRODUCTION READY** - Fixed all critical Plastiks submission issues, eliminated infinite loops, added password reset, collapsible groups, smart file processing, and comprehensive error handling
-- **v3.0 (January 2025)**: Complete authentication system with user isolation, smart UX, and security features
-- **v2.1 (January 2025)**: Performance optimizations, Plastiks attachment support, UI/UX improvements
+- **v4.0 **: 🚀 **HUMAN VERIFICATION WORKFLOW** - Replaced Plastiks with human verification, added real-time dashboard with sticky header, date range analytics, CSV export for verified docs, and streamlined 3-tab UI
+- **v3.1 **: 🚀 **PRODUCTION READY** - Fixed all critical Plastiks submission issues, eliminated infinite loops, added password reset, collapsible groups, smart file processing, and comprehensive error handling
+- **v3.0 **: Complete authentication system with user isolation, smart UX, and security features
+- **v2.1 **: Performance optimizations, Plastiks attachment support, UI/UX improvements
 - **v2.0**: Initial Plastiks integration with Web3 signing
 - **v1.0**: Core document processing with Google Gemini AI
