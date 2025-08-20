@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 
 // Load Inter font with Turbopack compatibility
@@ -9,16 +9,14 @@ const inter = Inter({
   // Add fallback font to prevent layout shifts
   fallback: ['system-ui', 'Arial', 'sans-serif'],
 });
-import "./globals.css";
-import { Analytics } from "@vercel/analytics/next";
-import { SiteHeader } from "@/components/site-header";
+import './globals.css';
+import { Analytics } from '@vercel/analytics/next';
+import { SiteHeader } from '@/components/site-header';
 
 export const metadata: Metadata = {
-  title: "Ocean Integrity AI Accounting",
-  description: "AI-powered PDF data extraction for accounting",
+  title: 'Ocean Integrity AI Accounting',
+  description: 'AI-powered PDF data extraction for accounting',
 };
-
-
 
 export default function RootLayout({
   children,
@@ -26,17 +24,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang='en' suppressHydrationWarning>
       <head />
       <body className={`${inter.variable} font-sans`}>
-        <div data-wrapper="" className="border-grid flex flex-1 flex-col min-h-screen">
+        <div
+          data-wrapper=''
+          className='border-grid flex flex-1 flex-col min-h-screen'
+        >
           <SiteHeader />
-          <main className="flex flex-1 flex-col">{children}</main>
+          <main className='flex flex-1 flex-col'>{children}</main>
         </div>
         <Analytics />
       </body>
     </html>
   );
 }
-
-

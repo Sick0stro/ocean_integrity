@@ -83,7 +83,6 @@ import { GalleryVerticalEnd } from 'lucide-react';
 import CSVDownloadBtn from '@/components/csv-download-btn';
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
-import { DashboardWidget } from '@/components/dashboard-widget';
 import { VerifiedCsvDownload } from '@/components/verified-csv-download';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
@@ -2933,27 +2932,5 @@ export default function Home() {
   }
 
   // Show main app
-  return (
-    <div>
-      {/* Header with Dashboard and Sign out button */}
-      {/* Stats in left corner */}
-      <div className='absolute top-4 left-4 z-[60]'>
-        <DashboardWidget session={session} />
-      </div>
-
-      {/* Sign out in right corner */}
-      <div className='absolute top-4 right-4 z-[60] flex items-center gap-2'>
-        <Button
-          onClick={() => supabase.auth.signOut()}
-          variant='outline'
-          size='sm'
-        >
-          Sign Out ({session.user?.email})
-        </Button>
-      </div>
-
-      {/* Main app content */}
-      <HomeContent session={session} />
-    </div>
-  );
+  return <HomeContent session={session} />;
 }
