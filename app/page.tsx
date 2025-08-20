@@ -82,6 +82,7 @@ import CSVDownloadBtn from '@/components/csv-download-btn';
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
 import { DashboardWidget } from '@/components/dashboard-widget';
+import { VerifiedCsvDownload } from '@/components/verified-csv-download';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
   ssr: false,
@@ -2221,19 +2222,22 @@ function HomeContent({ session }: HomeContentProps) {
                           : 'Loading document groups...'}
                       </CardDescription>
                     </div>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => {
-                        console.log('🔄 [MANUAL] Refreshing groups...');
-                        setHasInitializedGroups(false);
-                        setIsDocumentsLoaded(false);
-                        setGroups({});
-                      }}
-                      disabled={isGroupsLoading}
-                    >
-                      {isGroupsLoading ? 'Loading...' : 'Refresh Groups'}
-                    </Button>
+                    <div className='flex items-center gap-2'>
+                      <VerifiedCsvDownload session={session} />
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={() => {
+                          console.log('🔄 [MANUAL] Refreshing groups...');
+                          setHasInitializedGroups(false);
+                          setIsDocumentsLoaded(false);
+                          setGroups({});
+                        }}
+                        disabled={isGroupsLoading}
+                      >
+                        {isGroupsLoading ? 'Loading...' : 'Refresh Groups'}
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className='p-6'>

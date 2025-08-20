@@ -5,13 +5,11 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart3, FileText, CheckCircle, Scale } from 'lucide-react';
 import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import { Session } from '@supabase/supabase-js';
@@ -44,7 +42,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
       // Get stats from recycling_docs for current user
       const { data, error } = await supabase
         .from('recycling_docs')
-        .select('tonnage_kg, human_verified')
+        .select('tonnage_tons, human_verified')
         .eq('user_id', session.user.id);
 
       if (error) {
@@ -57,7 +55,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         const verifiedCount = data.filter((doc) => doc.human_verified).length;
         const totalTons = data
           .filter((doc) => doc.human_verified) // Only verified documents
-          .reduce((sum, doc) => sum + (Number(doc.tonnage_kg) / 1000 || 0), 0); // Convert kg to tons
+          .reduce((sum, doc) => sum + (Number(doc.tonnage_tons) || 0), 0); // Already in tons
 
         setStats({
           totalTons: Math.round(totalTons * 100) / 100, // Round to 2 decimal places
@@ -96,84 +94,56 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         <Button variant='outline' size='sm' className='flex items-center gap-2'>
           <BarChart3 className='h-4 w-4' />
           Dashboard
-          <Badge variant='secondary' className='ml-1'>
-            {stats.totalTons}t
-          </Badge>
         </Button>
       </DialogTrigger>
-      <DialogContent className='max-w-2xl'>
+      <DialogContent className='max-w-md'>
         <DialogHeader>
-          <DialogTitle className='flex items-center gap-2'>
+          <DialogTitle className='flex items-center gap-2 text-center justify-center'>
             <BarChart3 className='h-5 w-5' />
-            Dashboard Overview
+            Dashboard
           </DialogTitle>
-          <DialogDescription>
-            Your document processing and verification statistics
-          </DialogDescription>
         </DialogHeader>
 
-        <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mt-4'>
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>Total Tons</CardTitle>
-              <Scale className='h-4 w-4 text-muted-foreground' />
-            </CardHeader>
-            <CardContent>
-              <div className='text-2xl font-bold text-blue-600'>
-                {stats.totalTons}t
-              </div>
-              <p className='text-xs text-muted-foreground'>
-                From verified documents
-              </p>
-            </CardContent>
-          </Card>
+        <div className='space-y-6 py-4'>
+          {/* Total Tons - Large Display */}
+          <div className='text-center'>
+            <div className='flex items-center justify-center gap-2 mb-2'>
+              <Scale className='h-6 w-6 text-blue-600' />
+            </div>
+            <div className='text-4xl font-bold text-blue-600 mb-1'>
+              {stats.totalTons}t
+            </div>
+            <div className='text-sm text-muted-foreground'>verified</div>
+          </div>
 
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>
-                Processed Docs
-              </CardTitle>
-              <FileText className='h-4 w-4 text-muted-foreground' />
-            </CardHeader>
-            <CardContent>
+          {/* Stats Row */}
+          <div className='flex justify-center gap-8'>
+            {/* Processed */}
+            <div className='text-center'>
+              <div className='flex items-center justify-center gap-1 mb-1'>
+                <FileText className='h-5 w-5 text-green-600' />
+              </div>
               <div className='text-2xl font-bold text-green-600'>
                 {stats.processedCount}
               </div>
-              <p className='text-xs text-muted-foreground'>
-                Total documents processed
-              </p>
-            </CardContent>
-          </Card>
+              <div className='text-xs text-muted-foreground'>processed</div>
+            </div>
 
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-              <CardTitle className='text-sm font-medium'>
-                Verified Docs
-              </CardTitle>
-              <CheckCircle className='h-4 w-4 text-muted-foreground' />
-            </CardHeader>
-            <CardContent>
+            {/* Verified */}
+            <div className='text-center'>
+              <div className='flex items-center justify-center gap-1 mb-1'>
+                <CheckCircle className='h-5 w-5 text-purple-600' />
+              </div>
               <div className='text-2xl font-bold text-purple-600'>
                 {stats.verifiedCount}
               </div>
-              <p className='text-xs text-muted-foreground'>
-                Human verified documents
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className='mt-6 p-4 bg-muted/50 rounded-lg'>
-          <h4 className='font-medium text-sm mb-2'>Summary</h4>
-          <div className='text-sm text-muted-foreground'>
-            You have processed <strong>{stats.processedCount}</strong>{' '}
-            documents, of which <strong>{stats.verifiedCount}</strong> have been
-            human verified, representing a total of{' '}
-            <strong>{stats.totalTons} tons</strong> of recycled material.
+              <div className='text-xs text-muted-foreground'>verified</div>
+            </div>
           </div>
 
-          {stats.verifiedCount > 0 && (
-            <div className='mt-2 text-sm'>
+          {/* Verification Rate */}
+          {stats.processedCount > 0 && (
+            <div className='text-center pt-4 border-t'>
               <Badge
                 variant='outline'
                 className='text-green-700 border-green-200 bg-green-50'
