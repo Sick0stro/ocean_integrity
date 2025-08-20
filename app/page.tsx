@@ -83,7 +83,6 @@ import { GalleryVerticalEnd } from 'lucide-react';
 import CSVDownloadBtn from '@/components/csv-download-btn';
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
-import { DashboardWidget } from '@/components/dashboard-widget';
 import { VerifiedCsvDownload } from '@/components/verified-csv-download';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
@@ -1831,7 +1830,7 @@ function HomeContent({ session }: HomeContentProps) {
                   disabled={completedCount === 0}
                   className='text-base py-1'
                 >
-                  Review & Export
+                  Review
                 </TabsTrigger>
                 <TabsTrigger value='groups' className='text-base py-1'>
                   Human Verify
@@ -2151,41 +2150,6 @@ function HomeContent({ session }: HomeContentProps) {
                           {completedCount} completed • {errorCount} failed •{' '}
                           {files.length} total
                         </p>
-                      </div>
-                      <div className='flex gap-3'>
-                        <CSVDownloadBtn
-                          processedDocuments={processedDocuments}
-                          handleDownloadCSV={handleDownloadCSV}
-                        />
-                        <Button
-                          variant='secondary'
-                          className='gap-2'
-                          onClick={() => setActiveTab('groups')}
-                        >
-                          Go to Group & Verify{' '}
-                          <ArrowRight className='h-4 w-4' />
-                        </Button>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                className='gap-2'
-                                disabled
-                                variant='secondary'
-                                title='Coming soon'
-                              >
-                                Push Data to Portal{' '}
-                                <ArrowRight className='h-4 w-4' />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                Coming soon - Send extracted data to accounting
-                                portal
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
                       </div>
                     </div>
                   </Card>
@@ -2584,7 +2548,7 @@ function HomeContent({ session }: HomeContentProps) {
                                   ) : (
                                     <div className='mb-4 space-y-4'>
                                       <h4 className='font-medium text-slate-800'>
-                                        Data to be sent to Plastiks:
+                                      Data needs to be human-verified before it gets sent to the Plastiks blockchain.
                                       </h4>
                                       <div className='bg-blue-50 p-4 rounded-lg border border-blue-100'>
                                         <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
@@ -2851,18 +2815,6 @@ export default function Home() {
   // Show main app
   return (
     <div>
-      {/* Header with Dashboard and Sign out button */}
-      <div className='absolute top-4 right-4 z-[60] flex items-center gap-2'>
-        <DashboardWidget session={session} />
-        <Button
-          onClick={() => supabase.auth.signOut()}
-          variant='outline'
-          size='sm'
-        >
-          Sign Out ({session.user?.email})
-        </Button>
-      </div>
-
       {/* Main app content */}
       <HomeContent session={session} />
     </div>
