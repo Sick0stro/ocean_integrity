@@ -2852,8 +2852,13 @@ export default function Home() {
   return (
     <div>
       {/* Header with Dashboard and Sign out button */}
-      <div className='absolute top-4 right-4 z-[60] flex items-center gap-2'>
+      {/* Stats in left corner */}
+      <div className='absolute top-4 left-4 z-[60]'>
         <DashboardWidget session={session} />
+      </div>
+
+      {/* Sign out in right corner */}
+      <div className='absolute top-4 right-4 z-[60] flex items-center gap-2'>
         <Button
           onClick={() => supabase.auth.signOut()}
           variant='outline'
