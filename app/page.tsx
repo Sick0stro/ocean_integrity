@@ -28,6 +28,8 @@ interface RecyclingDocument {
   plastiks_metadata_hash?: string | null;
   plastiks_collection_address?: string | null;
   plastiks_submitted_at?: string | null;
+  human_verified?: boolean;
+  verified_at?: string | null;
 }
 
 import {
@@ -2712,19 +2714,17 @@ function HomeContent({ session }: HomeContentProps) {
                                     disabled={
                                       !status.complete ||
                                       submitting[group.invoice] ||
-                                      submitResult[group.invoice]?.ok ||
-                                      !!recyclingDocs[group.invoice]
-                                        ?.plastiks_submitted_at
+                                      recyclingDocs[group.invoice]
+                                        ?.human_verified
                                     }
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleSubmitGroup(group.invoice);
                                     }}
                                     className={`w-full gap-2 mt-2 ${
-                                      submitResult[group.invoice]?.ok ||
                                       recyclingDocs[group.invoice]
-                                        ?.plastiks_submitted_at
-                                        ? 'bg-green-600 hover:bg-green-600 text-white'
+                                        ?.human_verified
+                                        ? 'bg-green-600 hover:bg-green-700 text-white'
                                         : submitResult[group.invoice] &&
                                           !submitResult[group.invoice]?.ok
                                         ? 'bg-red-600 hover:bg-red-700 text-white'
@@ -2736,18 +2736,17 @@ function HomeContent({ session }: HomeContentProps) {
                                         <Loader2 className='h-3 w-3 animate-spin' />
                                         Verifying...
                                       </span>
-                                    ) : submitResult[group.invoice]?.ok ||
-                                      recyclingDocs[group.invoice]
-                                        ?.plastiks_submitted_at ? (
+                                    ) : recyclingDocs[group.invoice]
+                                        ?.human_verified ? (
                                       <span className='flex items-center gap-2'>
                                         <CheckCircle2 className='h-3 w-3' />
-                                        Successfully Submitted
+                                        Human Verified
                                       </span>
                                     ) : submitResult[group.invoice] &&
                                       !submitResult[group.invoice]?.ok ? (
                                       <span className='flex items-center gap-2'>
                                         <AlertCircle className='h-3 w-3' />
-                                        Retry Submission
+                                        Retry Verification
                                       </span>
                                     ) : (
                                       <span className='flex items-center gap-2'>
