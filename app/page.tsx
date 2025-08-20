@@ -2284,6 +2284,11 @@ function HomeContent({ session }: HomeContentProps) {
                                     <CheckCircle2 className='h-3 w-3' />
                                     Verified
                                   </Badge>
+                                ) : status.complete ? (
+                                  <Badge className='bg-blue-100 text-blue-700 border-0 flex items-center gap-1'>
+                                    <FileCheck className='h-3 w-3' />
+                                    Complete
+                                  </Badge>
                                 ) : (
                                   <Badge className='bg-red-100 text-red-700 border-0 flex items-center gap-1'>
                                     <AlertCircle className='h-3 w-3' />
@@ -2431,9 +2436,7 @@ function HomeContent({ session }: HomeContentProps) {
                                                       );
                                                     })
                                                   ) : (
-                                                    <div className='text-slate-400 text-center py-2'>
-                                                      No data available
-                                                    </div>
+                                                    <div className='text-slate-400 text-center py-2'></div>
                                                   )}
                                                 </div>
                                               </div>
@@ -2585,177 +2588,209 @@ function HomeContent({ session }: HomeContentProps) {
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className='mb-4 space-y-4'>
-                                      <h4 className='font-medium text-slate-800'>
-                                        Data to be sent to Plastiks:
-                                      </h4>
-                                      <div className='bg-blue-50 p-4 rounded-lg border border-blue-100'>
-                                        <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Invoice #
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType.invoice?.raw_json
-                                                  ?.invoice_number ||
-                                                  latestByType.invoice?.raw_json
-                                                    ?.invoice ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Company
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType.invoice?.raw_json
-                                                  ?.bill_to_company_name ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json
-                                                    ?.ship_to_company_name ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Network Operator
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType.invoice?.raw_json
-                                                  ?.bill_from_company_name ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json
-                                                    ?.ship_from_company_name ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Plastic Type
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType.invoice?.raw_json
-                                                  ?.plastic_type ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json?.plastic_type ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Weight
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {latestByType.invoice?.raw_json
-                                                ?.weight
-                                                ? `${String(
-                                                    latestByType.invoice
-                                                      .raw_json.weight
-                                                  )} ${String(
-                                                    latestByType.invoice
-                                                      .raw_json.weight_unit ||
-                                                      'kg'
-                                                  )}`
-                                                : 'N/A'}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              City
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType['e-way-bill']
-                                                  ?.raw_json?.from_location ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json?.city ||
-                                                  latestByType.invoice?.raw_json
-                                                    ?.city ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Country
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType['e-way-bill']
-                                                  ?.raw_json
-                                                  ?.ship_to_country_code ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json
-                                                    ?.origin_country ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json?.country ||
-                                                  latestByType.invoice?.raw_json
-                                                    ?.country ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
+                                    <div className='text-sm text-slate-600'>
+                                      No data available
                                     </div>
                                   )}
 
-                                  {/* Verification Status Section */}
+                                  {/* Combined Data & Verification Section */}
                                   <div
                                     className={`p-6 border rounded-lg mt-4 ${
                                       recyclingDocs[group.invoice]
                                         ?.human_verified
                                         ? 'border-green-200 bg-green-50'
-                                        : 'border-gray-200 bg-gray-50'
+                                        : 'border-blue-200 bg-blue-50'
                                     }`}
                                   >
-                                    {recyclingDocs[group.invoice]
-                                      ?.human_verified ? (
-                                      <div>
-                                        <p className='text-sm text-green-800 mb-3 font-semibold flex items-center gap-2'>
-                                          <CheckCircle2 className='h-4 w-4 text-green-600' />
-                                          Human Verification Complete
-                                        </p>
-                                        <div className='text-sm text-green-700 space-y-1'>
-                                          <p>
-                                            <strong>Verified by:</strong>{' '}
-                                            {session.user?.email || 'Unknown'}
-                                          </p>
-                                          <p>
-                                            <strong>Verified at:</strong>{' '}
-                                            {recyclingDocs[group.invoice]
-                                              ?.verified_at
-                                              ? new Date(
-                                                  recyclingDocs[
-                                                    group.invoice
-                                                  ].verified_at!
-                                                ).toLocaleString()
-                                              : 'Unknown'}
-                                          </p>
-                                          <p className='mt-2 font-medium text-green-800'>
-                                            ✅ Ready for blockchain submission
-                                          </p>
+                                    <div className='space-y-4'>
+                                      {/* Header */}
+                                      <div className='flex items-center justify-between'>
+                                        <h4 className='font-medium text-slate-800'>
+                                          {recyclingDocs[group.invoice]
+                                            ?.human_verified
+                                            ? 'Verified Document Data'
+                                            : 'Document Data for Verification'}
+                                        </h4>
+                                        {recyclingDocs[group.invoice]
+                                          ?.human_verified && (
+                                          <div className='flex items-center gap-2 text-green-800'>
+                                            <CheckCircle2 className='h-4 w-4' />
+                                            <span className='text-sm font-semibold'>
+                                              Human Verified
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Data Grid */}
+                                      <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
+                                        <div>
+                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            Invoice #
+                                          </div>
+                                          <div className='font-medium text-slate-800'>
+                                            {String(
+                                              latestByType.invoice?.raw_json
+                                                ?.invoice_number ||
+                                                latestByType.invoice?.raw_json
+                                                  ?.invoice ||
+                                                'N/A'
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            Company
+                                          </div>
+                                          <div className='font-medium text-slate-800'>
+                                            {String(
+                                              latestByType.invoice?.raw_json
+                                                ?.bill_to_company_name ||
+                                                latestByType['e-way-bill']
+                                                  ?.raw_json
+                                                  ?.ship_to_company_name ||
+                                                'N/A'
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            Network Operator
+                                          </div>
+                                          <div className='font-medium text-slate-800'>
+                                            {String(
+                                              latestByType.invoice?.raw_json
+                                                ?.bill_from_company_name ||
+                                                latestByType['e-way-bill']
+                                                  ?.raw_json
+                                                  ?.ship_from_company_name ||
+                                                'N/A'
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            Plastic Type
+                                          </div>
+                                          <div className='font-medium text-slate-800'>
+                                            {String(
+                                              latestByType.invoice?.raw_json
+                                                ?.plastic_type ||
+                                                latestByType['e-way-bill']
+                                                  ?.raw_json?.plastic_type ||
+                                                'N/A'
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            Weight
+                                          </div>
+                                          <div className='font-medium text-slate-800'>
+                                            {latestByType.invoice?.raw_json
+                                              ?.weight
+                                              ? `${String(
+                                                  latestByType.invoice.raw_json
+                                                    .weight
+                                                )} ${String(
+                                                  latestByType.invoice.raw_json
+                                                    .weight_unit || 'kg'
+                                                )}`
+                                              : 'N/A'}
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            City
+                                          </div>
+                                          <div className='font-medium text-slate-800'>
+                                            {String(
+                                              latestByType['e-way-bill']
+                                                ?.raw_json?.from_location ||
+                                                latestByType['e-way-bill']
+                                                  ?.raw_json?.city ||
+                                                latestByType.invoice?.raw_json
+                                                  ?.city ||
+                                                'N/A'
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            Country
+                                          </div>
+                                          <div className='font-medium text-slate-800'>
+                                            {String(
+                                              latestByType['e-way-bill']
+                                                ?.raw_json
+                                                ?.ship_to_country_code ||
+                                                latestByType['e-way-bill']
+                                                  ?.raw_json?.origin_country ||
+                                                latestByType['e-way-bill']
+                                                  ?.raw_json?.country ||
+                                                latestByType.invoice?.raw_json
+                                                  ?.country ||
+                                                'N/A'
+                                            )}
+                                          </div>
                                         </div>
                                       </div>
-                                    ) : (
-                                      <p className='text-sm text-gray-600'>
-                                        Data needs to be human-verified before
-                                        it gets sent to the blockchain.
-                                      </p>
-                                    )}
+
+                                      {/* Verification Details (if verified) */}
+                                      {recyclingDocs[group.invoice]
+                                        ?.human_verified ? (
+                                        <div className='pt-3 border-t border-green-200'>
+                                          <div className='grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-green-700'>
+                                            <div>
+                                              <div className='text-green-600 text-xs font-medium mb-1'>
+                                                Verified by
+                                              </div>
+                                              <div className='font-medium'>
+                                                {session.user?.email ||
+                                                  'Unknown'}
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <div className='text-green-600 text-xs font-medium mb-1'>
+                                                Verified at
+                                              </div>
+                                              <div className='font-medium'>
+                                                {recyclingDocs[group.invoice]
+                                                  ?.verified_at
+                                                  ? new Date(
+                                                      recyclingDocs[
+                                                        group.invoice
+                                                      ].verified_at!
+                                                    ).toLocaleString()
+                                                  : 'Unknown'}
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <div className='text-green-600 text-xs font-medium mb-1'>
+                                                Status
+                                              </div>
+                                              <div className='font-medium'>
+                                                ✅ Ready for blockchain
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className='pt-3 border-t border-blue-200'>
+                                          <p className='text-sm text-slate-600'>
+                                            Data needs to be human-verified
+                                            before it gets sent to the
+                                            blockchain.
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
 
                                   <Button
