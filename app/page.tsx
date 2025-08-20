@@ -81,6 +81,7 @@ import { GalleryVerticalEnd } from 'lucide-react';
 import CSVDownloadBtn from '@/components/csv-download-btn';
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
+import { DashboardWidget } from '@/components/dashboard-widget';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
   ssr: false,
@@ -1016,6 +1017,66 @@ function HomeContent({ session }: HomeContentProps) {
         return;
       }
 
+      // Step 2: Human Verification (Replaced Plastiks submission)
+      console.log(`[UI] Human verification starting for invoice='${invoice}'`);
+
+      // Get auth token from session
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const verifyUrl = `/api/human-verify?invoice=${encodeURIComponent(
+        invoice
+      )}`;
+      const resp = await fetch(verifyUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const json = await resp.json().catch(() => ({}));
+      console.log(`[UI] Human verification response ok=${resp.ok}`, json);
+
+      if (resp.ok) {
+        const individualResult = json?.results?.[0];
+        const isActuallySucceeded = individualResult?.status === 'verified';
+
+        if (isActuallySucceeded) {
+          setSubmitResult((prev) => ({
+            ...prev,
+            [invoice]: { ok: true, message: 'Human Verified' },
+          }));
+          console.log(
+            `[UI] Human verification succeeded for invoice='${invoice}'`
+          );
+        } else {
+          // HTTP 200 but internal failure
+          const errorMessage =
+            individualResult?.error || 'Human verification failed';
+          setSubmitResult((prev) => ({
+            ...prev,
+            [invoice]: { ok: false, message: errorMessage },
+          }));
+          console.warn(
+            `[UI] Human verification failed internally for invoice='${invoice}':`,
+            errorMessage
+          );
+        }
+      } else {
+        setSubmitResult((prev) => ({
+          ...prev,
+          [invoice]: {
+            ok: false,
+            message: json?.error || 'Verification failed',
+          },
+        }));
+        console.warn(`[UI] Human verification failed for invoice='${invoice}'`);
+      }
+
+      /* COMMENTED OUT - PLASTIKS SUBMISSION CODE
       // Step 2: Submit to Plastiks
       console.log(`[UI] Submit starting for invoice='${invoice}'`);
       const submitUrl = devSecret
@@ -1059,6 +1120,7 @@ function HomeContent({ session }: HomeContentProps) {
         }));
         console.warn(`[UI] Submit failed for invoice='${invoice}'`);
       }
+      */
     } catch (e) {
       setSubmitResult((prev) => ({
         ...prev,
@@ -1769,7 +1831,7 @@ function HomeContent({ session }: HomeContentProps) {
                   Review & Export
                 </TabsTrigger>
                 <TabsTrigger value='groups' className='text-base py-1'>
-                  Push to Plastiks
+                  Human Verify
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -2384,7 +2446,7 @@ function HomeContent({ session }: HomeContentProps) {
                                       <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
                                         <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
                                           <CheckCircle2 className='h-4 w-4' />
-                                          Successfully Submitted to Plastiks
+                                          Successfully Human Verified
                                         </h4>
                                         <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
                                           <div>
@@ -2668,7 +2730,7 @@ function HomeContent({ session }: HomeContentProps) {
                                     {submitting[group.invoice] ? (
                                       <span className='flex items-center gap-2'>
                                         <Loader2 className='h-3 w-3 animate-spin' />
-                                        Submitting to Plastiks...
+                                        Verifying...
                                       </span>
                                     ) : submitResult[group.invoice]?.ok ||
                                       recyclingDocs[group.invoice]
@@ -2686,7 +2748,7 @@ function HomeContent({ session }: HomeContentProps) {
                                     ) : (
                                       <span className='flex items-center gap-2'>
                                         <UploadCloud className='h-3 w-3' />
-                                        Push to Plastiks
+                                        Human Verify
                                         <ArrowRight className='h-3 w-3' />
                                       </span>
                                     )}
@@ -2786,8 +2848,9 @@ export default function Home() {
   // Show main app
   return (
     <div>
-      {/* Sign out button */}
-      <div className='absolute top-4 right-4 z-[60]'>
+      {/* Header with Dashboard and Sign out button */}
+      <div className='absolute top-4 right-4 z-[60] flex items-center gap-2'>
+        <DashboardWidget session={session} />
         <Button
           onClick={() => supabase.auth.signOut()}
           variant='outline'
