@@ -10,7 +10,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { BarChart3, FileText, CheckCircle, Scale } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  BarChart3,
+  FileText,
+  CheckCircle,
+  Scale,
+  Calendar,
+} from 'lucide-react';
 import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import { Session } from '@supabase/supabase-js';
 
@@ -19,6 +26,11 @@ interface DashboardStats {
   processedCount: number;
   verifiedCount: number;
   loading: boolean;
+}
+
+interface DateRange {
+  from: string;
+  to: string;
 }
 
 interface DashboardWidgetProps {
@@ -33,17 +45,27 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
     loading: true,
   });
 
+  // Default to last 30 days
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split('T')[0],
+    to: new Date().toISOString().split('T')[0],
+  });
+
   const fetchStats = useCallback(async () => {
     if (!session?.user?.id) return;
 
     try {
       const supabase = getSupabaseBrowser();
 
-      // Get stats from recycling_docs for current user
+      // Get stats from recycling_docs for current user within date range
       const { data, error } = await supabase
         .from('recycling_docs')
-        .select('tonnage_tons, human_verified')
-        .eq('user_id', session.user.id);
+        .select('tonnage_tons, human_verified, created_at')
+        .eq('user_id', session.user.id)
+        .gte('created_at', dateRange.from + 'T00:00:00.000Z')
+        .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
       if (error) {
         console.error('Error fetching dashboard stats:', error);
@@ -68,7 +90,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
       console.error('Error fetching stats:', error);
       setStats((prev) => ({ ...prev, loading: false }));
     }
-  }, [session?.user?.id]);
+  }, [session?.user?.id, dateRange]);
 
   useEffect(() => {
     fetchStats();
@@ -96,54 +118,105 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
           Dashboard
         </Button>
       </DialogTrigger>
-      <DialogContent className='max-w-md'>
+      <DialogContent className='max-w-2xl'>
         <DialogHeader>
-          <DialogTitle className='flex items-center gap-2 text-center justify-center'>
+          <DialogTitle className='flex items-center gap-2'>
             <BarChart3 className='h-5 w-5' />
-            Dashboard
+            Dashboard Overview
           </DialogTitle>
         </DialogHeader>
 
-        <div className='space-y-6 py-4'>
-          {/* Total Tons - Large Display */}
-          <div className='text-center'>
-            <div className='flex items-center justify-center gap-2 mb-2'>
-              <Scale className='h-6 w-6 text-blue-600' />
-            </div>
-            <div className='text-4xl font-bold text-blue-600 mb-1'>
-              {stats.totalTons}t
-            </div>
-            <div className='text-sm text-muted-foreground'>verified</div>
+        {/* Date Range Filter */}
+        <div className='flex items-center gap-4 p-4 bg-muted/50 rounded-lg'>
+          <Calendar className='h-4 w-4 text-muted-foreground' />
+          <div className='flex items-center gap-2'>
+            <label className='text-sm font-medium'>From:</label>
+            <input
+              type='date'
+              value={dateRange.from}
+              onChange={(e) =>
+                setDateRange((prev) => ({ ...prev, from: e.target.value }))
+              }
+              className='px-2 py-1 border rounded text-sm'
+            />
           </div>
+          <div className='flex items-center gap-2'>
+            <label className='text-sm font-medium'>To:</label>
+            <input
+              type='date'
+              value={dateRange.to}
+              onChange={(e) =>
+                setDateRange((prev) => ({ ...prev, to: e.target.value }))
+              }
+              className='px-2 py-1 border rounded text-sm'
+            />
+          </div>
+        </div>
 
-          {/* Stats Row */}
-          <div className='flex justify-center gap-8'>
-            {/* Processed */}
-            <div className='text-center'>
-              <div className='flex items-center justify-center gap-1 mb-1'>
-                <FileText className='h-5 w-5 text-green-600' />
+        {/* Stats Cards */}
+        <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mt-4'>
+          <Card>
+            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+              <CardTitle className='text-sm font-medium'>Total Tons</CardTitle>
+              <Scale className='h-4 w-4 text-muted-foreground' />
+            </CardHeader>
+            <CardContent>
+              <div className='text-2xl font-bold text-blue-600'>
+                {stats.totalTons}t
               </div>
+              <p className='text-xs text-muted-foreground'>
+                From verified documents
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+              <CardTitle className='text-sm font-medium'>
+                Processed Docs
+              </CardTitle>
+              <FileText className='h-4 w-4 text-muted-foreground' />
+            </CardHeader>
+            <CardContent>
               <div className='text-2xl font-bold text-green-600'>
                 {stats.processedCount}
               </div>
-              <div className='text-xs text-muted-foreground'>processed</div>
-            </div>
+              <p className='text-xs text-muted-foreground'>
+                Total documents processed
+              </p>
+            </CardContent>
+          </Card>
 
-            {/* Verified */}
-            <div className='text-center'>
-              <div className='flex items-center justify-center gap-1 mb-1'>
-                <CheckCircle className='h-5 w-5 text-purple-600' />
-              </div>
+          <Card>
+            <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+              <CardTitle className='text-sm font-medium'>
+                Verified Docs
+              </CardTitle>
+              <CheckCircle className='h-4 w-4 text-muted-foreground' />
+            </CardHeader>
+            <CardContent>
               <div className='text-2xl font-bold text-purple-600'>
                 {stats.verifiedCount}
               </div>
-              <div className='text-xs text-muted-foreground'>verified</div>
-            </div>
+              <p className='text-xs text-muted-foreground'>
+                Human verified documents
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Summary */}
+        <div className='mt-6 p-4 bg-muted/50 rounded-lg'>
+          <h4 className='font-medium text-sm mb-2'>Summary</h4>
+          <div className='text-sm text-muted-foreground'>
+            You have processed <strong>{stats.processedCount}</strong>{' '}
+            documents, of which <strong>{stats.verifiedCount}</strong> have been
+            human verified, representing a total of{' '}
+            <strong>{stats.totalTons} tons</strong> of recycled material.
           </div>
 
-          {/* Verification Rate */}
           {stats.processedCount > 0 && (
-            <div className='text-center pt-4 border-t'>
+            <div className='mt-2 text-sm'>
               <Badge
                 variant='outline'
                 className='text-green-700 border-green-200 bg-green-50'
