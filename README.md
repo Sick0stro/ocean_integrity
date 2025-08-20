@@ -1,17 +1,26 @@
 # Ocean Integrity
 
-A comprehensive document processing and management system for handling invoices, EFT receipts, and e-way bills with Plastiks integration.
+A comprehensive document processing and management system for handling invoices, EFT receipts, and e-way bills with human verification workflow and real-time dashboard analytics.
 
 ## Recent Updates
 
-### 🚀 Major Stability & Production Fixes
+### 🚀 Major Workflow Update: Human Verification System (January 2025)
 
-- **✅ Plastiks Submission Fixed**: Resolved critical 400 errors by adding missing required fields (`name`, `description`, `plastik_type`, `instant_sale_price`, `no_of_copies`, `weight`, `use_autogen_image`)
-- **✅ Accurate UI Feedback**: Fixed confusing "Submit succeeded" messages when Plastiks actually failed internally - now shows real status
-- **✅ Password Reset**: Added complete forgot password functionality with secure token handling
-- **✅ Infinite Loop Fixes**: Eliminated infinite polling loops and re-render issues for dramatically improved performance
+- **✅ Human Verification Workflow**: Replaced Plastiks submission with human verification process for document quality control
+- **✅ Real-Time Dashboard**: Added sticky header with live stats (Total Tons, Processed Docs, Verified Credits) that stay visible when scrolling
+- **✅ Date Range Filtering**: Dashboard stats can be filtered by date range based on document processing date
+- **✅ Verified CSV Export**: New CSV export feature specifically for human-verified documents
+- **✅ Smart Badge System**: Updated status badges to show Incomplete → Complete → Verified workflow
+- **✅ Combined Verification UI**: Streamlined verification status display with dynamic visual feedback
+- **✅ Database Enhancements**: Added `human_verified` and `verified_at` columns for tracking verification status
+- **✅ New API Endpoint**: `/api/human-verify` for secure human verification with user authentication
+
+### 🚀 Performance & Stability Improvements
+
+- **✅ Sticky Header Navigation**: Dashboard stats remain visible during scrolling for better user experience
 - **✅ Smart File Processing**: Prevents re-processing of already completed files when new files are uploaded
 - **✅ Collapsible Groups**: Groups are now collapsible and collapsed by default for better UX and performance
+- **✅ Infinite Loop Fixes**: Eliminated infinite polling loops and re-render issues for dramatically improved performance
 - **✅ Production Ready**: All critical bugs resolved - system is now stable for production use
 
 ### 🔐 Authentication System (January 2025)
@@ -41,38 +50,42 @@ A comprehensive document processing and management system for handling invoices,
 - **Optimized State Management**: Singleton Supabase client and proper dependency management prevent multiple instances and loops
 - **Efficient Grouping**: User-scoped document grouping with collapsible UI reduces render overhead
 
-### 🔧 Plastiks Integration Fixes
+### 🔧 Human Verification Implementation
 
-- **✅ Critical 400 Error Fix**: Added all missing required Plastiks API fields (`name`, `description`, `plastik_type`, `instant_sale_price`, `no_of_copies`, `weight`, `use_autogen_image`)
-- **✅ Accurate Status Reporting**: Fixed UI showing "succeeded" when Plastiks actually failed - now checks individual result status, not just HTTP response
-- **✅ Complete Blockchain Integration**: Full 3-step signing process (metadata hash, fixed price, voucher) with proper error handling
-- **✅ Smart Polling**: Polling now stops correctly for both successful and failed submissions, eliminating infinite loops
-- **Backend Attachment Support**: Fixed critical issue where backend submissions to Plastiks were missing attachment URLs (invoice_url, eft_url, ewaybill_url)
-- **Advanced Logging**: Added comprehensive logging throughout the Plastiks submission pipeline for better debugging and monitoring
-- **Database Schema Alignment**: Fixed tonnage_kg vs weight_kg column mismatch that was causing submission failures
-- **User-Scoped Submissions**: Plastiks submissions now respect user ownership and isolation
+- **✅ Manual Verification Workflow**: Replaced automated Plastiks submission with human verification for quality control
+- **✅ Real-Time Dashboard**: Added live statistics showing verified tonnage, document counts, and processing metrics
+- **✅ Date Range Analytics**: Dashboard can filter data by processing date with real-time updates every 30 seconds
+- **✅ Verification API**: Secure `/api/human-verify` endpoint with user authentication and audit trails
+- **✅ Status Badge System**: Updated UI to show Incomplete → Complete → Verified workflow progression
+- **✅ CSV Export**: Export verified documents with all data fields for external system integration
+- **✅ Sticky Navigation**: Dashboard stats remain visible in header when scrolling for better user experience
+- **✅ Combined UI**: Streamlined verification status display with dynamic visual feedback based on verification state
 
-### 🎨 UI/UX Improvements
+### 🎨 UI/UX Improvements & Dashboard Features
 
+- **✅ Real-Time Dashboard**: Sticky header with live statistics (Total Tons, Processed Docs, Verified Credits) that stay visible when scrolling
+- **✅ Date Range Filtering**: Dashboard analytics can be filtered by processing date with intuitive date picker interface
+- **✅ Smart Status Badges**: Three-state badge system showing Incomplete (missing files) → Complete (all files present) → Verified (human verified)
+- **✅ Combined Verification Display**: Single dynamic box showing document data with color-coded verification status
 - **✅ Collapsible Groups**: Groups are now collapsible with toggle buttons and collapsed by default for better performance and cleaner UI
-- **✅ Real-Time Status Updates**: Accurate button states (processing/success/failed) with proper error messages
+- **✅ CSV Export Integration**: "Download CSV" button for verified documents placed strategically in the Group & Verify tab header
+- **✅ Enhanced Button States**: Human Verify button shows appropriate state (disabled for incomplete, enabled for complete, success for verified)
 - **✅ Smart Document Processing**: Status indicators show which files are new vs already processed
-- **Enhanced Button States**: Push to Plastiks button now remains visible but changes state (disabled/loading/success/error) instead of disappearing
-- **Removed Problematic UI**: Eliminated confusing success card that briefly appeared with "N/A" values after submission
-- **Fixed Polling Loop**: Resolved infinite polling that was causing continuous console logs and poor performance
-- **Tab Layout Fix**: Corrected 3-tab layout that was previously using 4-column grid
-- **Smart Login Experience**: First-time users get guided sign-up flow, returning users get streamlined sign-in with forgot password option
+- **✅ Tab Layout**: Clean 3-tab layout (Upload & Process → Review & Export → Group & Verify) for logical workflow progression
+- **✅ Smart Login Experience**: First-time users get guided sign-up flow, returning users get streamlined sign-in with forgot password option
 
 ## Overview
 
-Ocean Integrity is a **production-ready** modern web application that streamlines the processing and management of financial documents. **All critical bugs have been resolved** and the system is now stable for production use. It provides:
+Ocean Integrity is a **production-ready** modern web application that streamlines the processing and management of financial documents with human verification workflow. **All critical bugs have been resolved** and the system is now stable for production use. It provides:
 
 - **🔐 User Authentication**: Secure sign-up/sign-in with email verification, password reset, and complete user isolation
 - **📄 Document Processing**: Upload and process invoices, EFT receipts, and e-way bills using Google Gemini 2.0 Flash
 - **📊 Smart Grouping**: Automatically groups related documents by invoice number with collapsible UI and real-time updates
 - **🛡️ User Data Isolation**: Each user only sees and manages their own documents with strict privacy controls
-- **✅ Validation**: Ensures document integrity and completeness before processing
-- **🔗 Plastiks Integration**: **Fully functional** submission to Plastiks for blockchain-backed PRG (Plastic Recovery Guarantee) registration with complete attachment support
+- **✅ Human Verification**: Manual verification workflow to ensure document accuracy before final processing
+- **📈 Real-Time Dashboard**: Live statistics in sticky header showing total tonnage, processed documents, and verified credits
+- **📅 Date Range Analytics**: Filter dashboard statistics by processing date with real-time updates
+- **📊 CSV Export**: Export verified documents to CSV for external systems integration
 - **💾 Secure Storage**: All documents are securely stored in Supabase Storage with user-specific access controls
 - **🚀 Performance Optimized**: Eliminated infinite loops, smart file processing, and optimized state management
 
@@ -92,21 +105,36 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 - **Multi-Document Support**: Handles invoices, EFT receipts, and e-way bills
 - **AI-Powered Parsing**: Extracts key information using Google Gemini 2.0 Flash
 - **User-Scoped Processing**: Documents are automatically associated with the authenticated user
-- **Validation**: Ensures all required documents are present before submission
+- **Validation**: Ensures all required documents are present before human verification
 - **Duplicate Prevention**: Prevents processing of duplicate or invalid documents
 
-### 📊 Invoice Management
+### 📊 Real-Time Dashboard & Analytics
+
+- **Sticky Header Dashboard**: Live statistics remain visible when scrolling for constant progress monitoring
+- **Three Key Metrics**: 
+  - **Total Tons**: Cumulative weight from verified documents only
+  - **Processed Docs**: Count of all AI-processed documents from `parsed_documents` table
+  - **Verified Credits**: Count of human-verified documents from `recycling_docs` table
+- **Date Range Filtering**: Filter all statistics by processing date (created_at) with intuitive date picker
+- **Real-Time Updates**: Statistics refresh automatically every 30 seconds without page reload
+- **User-Specific Data**: All statistics are scoped to the logged-in user only
+- **Color-Coded Display**: Orange (Total Tons), Green (Processed Docs), Blue (Verified Credits) for easy identification
+
+### 📊 Invoice Management & Verification
 
 - **Automatic Grouping**: Groups related documents by invoice number within user's data
 - **Reference Validation**: Validates invoice references in EFT receipts
-- **Status Tracking**: Tracks processing status of each document group
-- **User-Specific Views**: Each user only sees their own document groups
+- **Status Tracking**: Tracks processing status of each document group (Incomplete → Complete → Verified)
+- **Human Verification**: Manual verification process to ensure data accuracy and completeness
+- **Real-Time Analytics**: Dashboard shows verified tonnage, processed documents, and verification counts
+- **User-Specific Views**: Each user only sees their own document groups and statistics
 
-### 🔗 Integration
+### 🔗 Integration & Analytics
 
 - **Supabase Backend**: Secure storage and database operations with user authentication
-- **Plastiks API**: Blockchain integration for document verification with user-scoped submissions
-- **Web3 Support**: Secure transaction signing for blockchain operations
+- **Real-Time Dashboard**: Live statistics with date range filtering and automatic updates
+- **CSV Export**: Export verified documents for integration with external systems
+- **Human Verification API**: Secure verification workflow with user authentication and audit trails
 
 ## Getting Started
 
@@ -157,15 +185,15 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 # Google AI (for document processing)
 GOOGLE_API_KEY=your_google_gemini_api_key
 
-# Plastiks Integration
-NEXT_PUBLIC_PLASTIKS_BASE_URL=https://staging.plastiks.io
-NEXT_PUBLIC_API_TOKEN_CALL=your_plastiks_api_token
-NEXT_PUBLIC_USER_ADDRESS=your_ethereum_address
-PRIVATE_KEY=your_private_key
-
 # Security
 CRON_INGEST_SECRET=your_ingest_secret
 CRON_SUBMIT_SECRET=your_submit_secret
+
+# Optional: Plastiks Integration (commented out - replaced with human verification)
+# NEXT_PUBLIC_PLASTIKS_BASE_URL=https://staging.plastiks.io
+# NEXT_PUBLIC_API_TOKEN_CALL=your_plastiks_api_token
+# NEXT_PUBLIC_USER_ADDRESS=your_ethereum_address
+# PRIVATE_KEY=your_private_key
 ```
 
 ## Document Processing Flow
@@ -174,8 +202,10 @@ CRON_SUBMIT_SECRET=your_submit_secret
 2. **Upload**: Authenticated users upload documents through the web interface
 3. **Processing**: Documents are processed to extract key information and associated with the user
 4. **Grouping**: Related documents are grouped by invoice number within the user's data
-5. **Validation**: Each group is validated for completeness
-6. **Submission**: Valid groups can be submitted to Plastiks for blockchain verification (user-scoped)
+5. **Validation**: Each group is validated for completeness (3 files required: invoice, EFT receipt, e-way bill)
+6. **Human Verification**: Users manually verify document data accuracy and completeness
+7. **Analytics**: Real-time dashboard tracks verified tonnage and document counts
+8. **Export**: Verified documents can be exported to CSV for external system integration
 
 ## API Endpoints
 
@@ -192,18 +222,19 @@ All API endpoints now require valid JWT authentication tokens passed via `Author
 
 ### Document Promotion
 
-- `POST /api/recycling-docs/promote` - Promote parsed documents to recycling_docs table for Plastiks submission
+- `POST /api/recycling-docs/promote` - Promote parsed documents to recycling_docs table for verification workflow
   - **Authentication**: Via cron secrets for automated processing
   - **User Isolation**: Ensures all documents in a group belong to the same user
   - **Data Integrity**: Validates user ownership before promotion
 
-### Plastiks Integration
+### Human Verification
 
-- `POST /api/plastiks/submit` - Submit documents to Plastiks with full attachment support
-  - **Authentication**: Via cron secrets for automated processing
-  - **User Filtering**: Optional `?user_id=<uuid>` parameter to process specific user's documents
-  - **User Isolation**: Respects user ownership when processing submissions
-  - **Full Attachment Support**: Includes invoice, EFT, and e-way bill URLs
+- `POST /api/human-verify` - Mark documents as human-verified
+  - **Authentication**: Required - JWT token via `Authorization: Bearer <token>` header
+  - **User Isolation**: Users can only verify their own documents
+  - **Audit Trail**: Records verification timestamp and user ID
+  - **Parameters**: `?invoice=<invoice_number>` to specify which invoice to verify
+  - **Response**: Returns verification status and details for the specified invoice
 
 ### Data Ingestion
 
@@ -229,13 +260,13 @@ All API endpoints now require valid JWT authentication tokens passed via `Author
 ### Tech Stack
 
 - **Frontend**: Next.js 15 with React 19 and TypeScript
-- **UI**: Radix UI, Tailwind CSS with optimized lazy loading
+- **UI**: Radix UI, Tailwind CSS with optimized lazy loading and sticky navigation
 - **AI Processing**: Google Gemini 2.0 Flash (experimental) for document extraction
-- **State Management**: React hooks with real-time subscriptions
-- **Backend**: Next.js API Routes
-- **Database**: Supabase (PostgreSQL) with optimized queries
+- **State Management**: React hooks with real-time subscriptions and analytics
+- **Backend**: Next.js API Routes with human verification workflow
+- **Database**: Supabase (PostgreSQL) with optimized queries and verification tracking
 - **Storage**: Supabase Storage with public URL access
-- **Blockchain**: Ethereum (via Plastiks API) with Web3 signing
+- **Analytics**: Real-time dashboard with date range filtering and CSV export
 
 ### Scripts
 
@@ -282,13 +313,14 @@ create policy "users_own_parsed_documents" on public.parsed_documents
 One row per `invoice_number` per user. You can safely run this to add any missing columns.
 
 ```sql
--- Add all required columns including user ownership
+-- Add all required columns including user ownership and human verification
 alter table public.recycling_docs
   add column if not exists invoice_number text,
   add column if not exists invoice_url text,
   add column if not exists eft_url text,
   add column if not exists ewaybill_url text,
   add column if not exists recycler_company text,
+  add column if not exists network_operator_company text,
   add column if not exists plastic_type text,
   add column if not exists tonnage_tons numeric(18,3),     -- canonical unit
   add column if not exists weight_kg numeric(18,3),        -- back-compat (derived)
@@ -299,6 +331,8 @@ alter table public.recycling_docs
   add column if not exists upload_date date,
   add column if not exists uploaded_by text,
   add column if not exists status text default 'new',
+  add column if not exists human_verified boolean default false,  -- HUMAN VERIFICATION
+  add column if not exists verified_at timestamptz,               -- VERIFICATION TIMESTAMP
   add column if not exists plastiks_collection_id bigint,
   add column if not exists plastiks_collection_address text,
   add column if not exists plastiks_metadata_hash text,
@@ -326,6 +360,9 @@ Notes:
 
 - We store `tonnage_tons` as the source of truth (you send tonnes). We also fill `weight_kg` for deployments where the column is NOT NULL.
 - `status` transitions: `new|updated` → `submitted` or `failed`.
+- `human_verified` tracks manual verification status for quality control workflow.
+- `verified_at` records the timestamp when human verification was completed.
+- Dashboard analytics are calculated from verified documents only (`human_verified = true`).
 
 ### API endpoints (server)
 
@@ -471,22 +508,26 @@ Notes:
 
 ### Troubleshooting
 
-- **✅ Plastiks 400 "Missing required parameters" - FIXED**
+- **✅ Dashboard Stats Not Loading - COMMON ISSUE**
 
-  - **Issue**: `Missing required parameters: name, description, plastik_type, instant_sale_price, no_of_copies, weight, use_autogen_image`
-  - **Solution**: This is now fixed! All required Plastiks fields are automatically included in submissions.
-  - **Status**: ✅ Resolved in latest version
+  - **Issue**: Dashboard shows "Loading..." or zero values for all statistics
+  - **Solution**: Check browser console for authentication errors or database connection issues
+  - **Common Causes**: 
+    - Invalid session token (sign out and sign back in)
+    - Database column mismatch (ensure `human_verified` and `verified_at` columns exist)
+    - Network connectivity issues
+  - **Status**: ✅ User authentication required for all dashboard queries
 
-- **✅ Confusing "Submit succeeded" for failed submissions - FIXED**
+- **✅ Human Verification Not Working - FIXED**
 
-  - **Issue**: UI showed "Submit succeeded" even when Plastiks failed internally
-  - **Solution**: Now properly checks individual result status, not just HTTP 200 response
-  - **Status**: ✅ Resolved in latest version
+  - **Issue**: "Human Verify" button shows errors or doesn't update status
+  - **Solution**: Ensure proper authentication headers and database schema
+  - **Status**: ✅ Resolved in latest version with proper JWT token handling
 
 - **✅ Infinite polling loops - FIXED**
 
-  - **Issue**: Console showed endless "Polling for updated Plastiks details..." messages
-  - **Solution**: Polling now stops correctly for both successful and failed submissions
+  - **Issue**: Console showed endless polling messages
+  - **Solution**: Polling now stops correctly, replaced Plastiks polling with dashboard stats refresh
   - **Status**: ✅ Resolved in latest version
 
 - **401 Unauthorized**
@@ -592,8 +633,34 @@ Ensure your Supabase project has email authentication enabled:
 4. **Upload Documents**: Test that documents are user-specific
 5. **Sign Out/In**: Verify session persistence
 
+## Current Workflow Summary
+
+### 1. Upload & Process Tab
+- Upload PDF documents (invoices, EFT receipts, e-way bills)
+- AI processes documents using Google Gemini 2.0 Flash
+- Real-time processing status with progress indicators
+
+### 2. Review & Export Tab  
+- Review extracted data from AI processing
+- Preview PDF documents alongside extracted information
+- Export processed data to CSV
+
+### 3. Group & Verify Tab
+- Documents automatically grouped by invoice number
+- Status badges: Incomplete → Complete → Verified
+- Human verification button for quality control
+- Combined verification status display with dynamic visual feedback
+- CSV export for verified documents only
+
+### 4. Dashboard Analytics
+- **Sticky Header**: Always visible statistics during scrolling
+- **Real-Time Updates**: Refreshes every 30 seconds automatically
+- **Date Range Filtering**: Filter by document processing date
+- **Three Key Metrics**: Total verified tons, processed document count, verified document count
+
 ### Change Log
 
+- **v4.0 (January 2025)**: 🚀 **HUMAN VERIFICATION WORKFLOW** - Replaced Plastiks with human verification, added real-time dashboard with sticky header, date range analytics, CSV export for verified docs, and streamlined 3-tab UI
 - **v3.1 (August 2025)**: 🚀 **PRODUCTION READY** - Fixed all critical Plastiks submission issues, eliminated infinite loops, added password reset, collapsible groups, smart file processing, and comprehensive error handling
 - **v3.0 (January 2025)**: Complete authentication system with user isolation, smart UX, and security features
 - **v2.1 (January 2025)**: Performance optimizations, Plastiks attachment support, UI/UX improvements
