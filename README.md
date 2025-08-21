@@ -129,6 +129,44 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 - **Real-Time Analytics**: Dashboard shows verified tonnage, processed documents, and verification counts
 - **User-Specific Views**: Each user only sees their own document groups and statistics
 
+### 🔮 Upcoming Features
+
+- **⏳ Blockchain Integration** *(Coming Soon)*  
+  Verified credits will be pushed to the blockchain for immutable, transparent tracking.
+
+- **📈 Advanced Analytics Dashboard**  
+  Material breakdown, regional insights, time-based trends, and impact scoring.
+
+- **🎯 Goal Tracking & Smart Insights**  
+  Set plastic credit goals, monitor progress, and highlight top contributors.
+
+- **📊 Interactive Visuals**  
+  Dynamic charts, filters, drill-downs, and exportable reports (PDF/CSV).
+
+- **🧾 Digital Certificate Issuance**  
+  Generate tamper-proof certificates for verified credits.
+
+- **🌍 Geo-Tagged Verification**  
+  Link recycling actions to specific locations for enhanced traceability.
+
+- **🔄 API Access for Partners**  
+  Seamless integration with ERP and supply chain platforms.
+
+- **🗣️ Multilingual Document Support**  
+  Upload and process documents in multiple languages.
+
+- **🧠 AI-Powered Fraud Detection**  
+  Detect anomalies and flag suspicious entries.
+
+- **🪙 Tokenized Plastic Credits** *(Future-Ready)*  
+  Convert verified credits into tradable tokens for carbon markets.
+
+### 💡 Use Cases  
+- **Recyclers**: Automate credit validation and reporting.  
+- **Manufacturers**: Track product lifecycle and earn credits.  
+- **Auditors**: Access tamper-proof records for ESG compliance.  
+- **NGOs**: Monitor impact and ensure accountability.
+
 ### 🔗 Integration & Analytics
 
 - **Supabase Backend**: Secure storage and database operations with user authentication

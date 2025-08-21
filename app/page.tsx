@@ -1895,13 +1895,64 @@ function HomeContent({ session }: HomeContentProps) {
               OCEAN/AI
             </VideoText>
           </div>
-          <h1 className='text-3xl font-bold text-slate-800'>
-            Ocean Integrity AI Accounting
-          </h1>
-          <p className='text-slate-600 mt-2 max-w-2xl mx-auto'>
-            Upload your documents and let our AI identify and extract data from
-            invoices, EFT receipts, and e-way bills
+
+          <h2 className='text-2xl font-semibold text-slate-700 mt-2'>
+            Automated Plastic Credit Verification
+          </h2>
+          <p className='text-slate-600 mt-4 max-w-3xl mx-auto'>
+            Streamline your sustainability reporting with intelligent document
+            processing and blockchain-backed transparency.
           </p>
+
+          <div className='mt-6 text-left max-w-3xl mx-auto space-y-4'>
+            <h3 className='text-xl font-semibold text-slate-800'>
+              🚀 What It Does
+            </h3>
+            <p>
+              Upload your documents—
+              <strong>invoices, EFT receipts, and e-way bills</strong>—and let
+              our AI do the heavy lifting:
+            </p>
+
+            <ul className='space-y-3 list-disc pl-5'>
+              <li className='flex items-start'>
+                <span className='mr-2'>🔍</span>
+                <span>
+                  <strong>Automatic Data Extraction</strong>
+                  <br />
+                  Our AI identifies and extracts key data points from uploaded
+                  documents with high accuracy.
+                </span>
+              </li>
+              <li className='flex items-start'>
+                <span className='mr-2'>📁</span>
+                <span>
+                  <strong>Smart Grouping</strong>
+                  <br />
+                  Documents are intelligently grouped by transaction to
+                  accelerate verification.
+                </span>
+              </li>
+              <li className='flex items-start'>
+                <span className='mr-2'>✅</span>
+                <span>
+                  <strong>Plastic Credit Verification</strong>
+                  <br />
+                  Extracted data is matched against recycling actions to
+                  validate plastic credits. Incomplete or missing credits are
+                  automatically flagged to be uploaded.
+                </span>
+              </li>
+              <li className='flex items-start'>
+                <span className='mr-2'>📊</span>
+                <span>
+                  <strong>Simple Analytics</strong>
+                  <br />
+                  Total Tons data, Processed Docs, Verified Credits.
+                </span>
+              </li>
+            </ul>
+          </div>
         </header>
 
         <div className='max-w-4xl mx-auto'>
@@ -1922,10 +1973,10 @@ function HomeContent({ session }: HomeContentProps) {
                   disabled={completedCount === 0}
                   className='text-base py-1'
                 >
-                  Review
+                  Review Documents Review
                 </TabsTrigger>
                 <TabsTrigger value='groups' className='text-base py-1'>
-                  Human Verify
+                  Verify & Submit
                 </TabsTrigger>
               </TabsList>
             </div>
