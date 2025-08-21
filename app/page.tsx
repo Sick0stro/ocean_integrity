@@ -1973,7 +1973,7 @@ function HomeContent({ session }: HomeContentProps) {
                   disabled={completedCount === 0}
                   className='text-base py-1'
                 >
-                  Review Documents Review
+                  Review Documents
                 </TabsTrigger>
                 <TabsTrigger value='groups' className='text-base py-1'>
                   Verify & Submit
