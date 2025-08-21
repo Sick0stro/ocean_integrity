@@ -2,6 +2,10 @@
 import { NextResponse } from 'next/server';
 import fetch from 'node-fetch';
 import { getSupabaseAdmin, getSupabaseClient } from '@/utils/supabase';
+import {
+  generateBusinessFingerprint,
+  parseFingerprintForDisplay,
+} from '@/lib/duplicateDetection';
 
 // Diagnostics removed
 
@@ -573,12 +577,91 @@ You are an expert document processing AI. Your task is to analyze the provided d
           `⚠️ [${requestId}] Skipping DB insert due to storage failure`
         );
       } else {
+        // ========== STEP 8.5: CHECK FOR DUPLICATES ==========
+        console.log(`🔍 [${requestId}] Step 8.5: Checking for duplicates...`);
+
+        try {
+          if (parsedJSON && parsedJSON.document_type === 'invoice') {
+            // Assuming 'invoice' is the type we want to check for duplicates
+            // Generate business fingerprint
+            const businessFingerprint = generateBusinessFingerprint(parsedJSON);
+            const fingerprintDisplay =
+              parseFingerprintForDisplay(businessFingerprint);
+
+            console.log(
+              `🔍 [${requestId}] Generated business fingerprint:`,
+              fingerprintDisplay
+            );
+
+            // Check for existing documents with same fingerprint (across ALL users)
+            const { data: existingDocs, error: duplicateError } = await db
+              .from('parsed_documents')
+              .select(
+                'id, anchor_key, user_id, created_at, business_fingerprint'
+              )
+              .eq('business_fingerprint', businessFingerprint)
+              .limit(5);
+
+            if (duplicateError) {
+              console.warn(
+                `⚠️ [${requestId}] Error checking for duplicates:`,
+                duplicateError
+              );
+            } else if (existingDocs && existingDocs.length > 0) {
+              const duplicateInfo = existingDocs.map((doc) => ({
+                id: doc.id,
+                anchor_key: doc.anchor_key,
+                user_id: doc.user_id,
+                created_at: doc.created_at,
+                is_same_user: doc.user_id === user.id,
+              }));
+
+              console.log(`🚨 [${requestId}] DUPLICATE DETECTED!`, {
+                fingerprint: businessFingerprint,
+                fingerprintDisplay,
+                existingDocuments: duplicateInfo,
+                totalDuplicates: existingDocs.length,
+              });
+
+              // Return error response for duplicate
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: 'Duplicate document detected',
+                  details: {
+                    message:
+                      'This document appears to be a duplicate of an existing document',
+                    fingerprint: fingerprintDisplay,
+                    existingDocuments: duplicateInfo.length,
+                    sameUser: duplicateInfo.some((d) => d.is_same_user),
+                    requestId,
+                  },
+                },
+                { status: 409 }
+              ); // 409 Conflict status
+            } else {
+              console.log(
+                `✅ [${requestId}] No duplicates found, proceeding with save`
+              );
+            }
+          }
+        } catch (duplicateCheckError) {
+          console.warn(
+            `⚠️ [${requestId}] Exception during duplicate check:`,
+            duplicateCheckError
+          );
+          // Continue processing on duplicate check failure
+        }
+
         const insertPayload = {
           anchor_key: anchorKey,
           document_type: parsedJSON?.document_type ?? null,
           raw_json: parsedJSON ?? null,
           file_url: storageResult.publicUrl,
-          user_id: user.id, // 👈 ADD USER OWNERSHIP
+          user_id: user.id,
+          business_fingerprint: parsedJSON
+            ? generateBusinessFingerprint(parsedJSON)
+            : null, // 👈 ADD THIS
         } as const;
 
         console.log(`💾 [${requestId}] Inserting document into database:`, {

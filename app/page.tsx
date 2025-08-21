@@ -342,6 +342,10 @@ function HomeContent({ session }: HomeContentProps) {
     {}
   );
 
+  // Alert state for user notifications
+  const [showAlreadyProcessedAlert, setShowAlreadyProcessedAlert] =
+    useState(false);
+
   // Toggle group expansion
   const toggleGroupExpansion = (invoiceKey: string) => {
     setExpandedGroups((prev) => ({
@@ -1283,6 +1287,15 @@ function HomeContent({ session }: HomeContentProps) {
 
     if (newFilesToProcess.length === 0) {
       console.log(`⚠️ Frontend: All files already processed`);
+
+      // Show user-facing WARNING alert
+      setShowAlreadyProcessedAlert(true);
+
+      // Auto-hide alert after 8 seconds (longer for warnings)
+      setTimeout(() => {
+        setShowAlreadyProcessedAlert(false);
+      }, 8000);
+
       return;
     }
 
@@ -2145,6 +2158,28 @@ function HomeContent({ session }: HomeContentProps) {
                           Click the &quot;Review &amp; Export&quot; tab to see
                           the extracted data.
                         </p>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {showAlreadyProcessedAlert && (
+                    <Alert
+                      className='mt-6 bg-amber-50 border-amber-400 border-2 shadow-lg'
+                      variant='destructive'
+                    >
+                      <AlertCircle className='h-6 w-6 text-amber-600 animate-pulse' />
+                      <AlertTitle className='text-amber-800 font-bold text-lg'>
+                        ⚠️ WARNING: Documents Already Processed!
+                      </AlertTitle>
+                      <AlertDescription className='text-amber-700 font-semibold text-base'>
+                        🚫 All uploaded documents have already been processed!
+                        <br />
+                        <br />
+                        💡 <strong>What to do:</strong>
+                        <br />
+                        • Upload NEW documents to process them
+                        <br />• Check the &quot;Review&quot; tab to see your
+                        existing processed documents
                       </AlertDescription>
                     </Alert>
                   )}
