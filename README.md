@@ -641,7 +641,7 @@ Ensure your Supabase project has email authentication enabled:
 - AI processes documents using Google Gemini 2.0 Flash
 - Real-time processing status with progress indicators
 
-### 2. Review & Export Tab
+### 2. Review
 
 - Review extracted data from AI processing
 - Preview PDF documents alongside extracted information

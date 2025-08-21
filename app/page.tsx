@@ -8,7 +8,11 @@ import React, {
   useRef,
 } from 'react';
 import type { Document as AppDocument } from '@/types/document-types';
-import type { ProcessedDocument } from '@/types/processed-document';
+import type {
+  ProcessedDocument,
+  ProcessingStatus,
+} from '@/types/processed-document';
+import type { DocumentTypeKey } from '@/constants/document-types';
 
 interface RecyclingDocument {
   id: string;
@@ -70,12 +74,12 @@ import DocumentTypeCard from '@/components/document-type-card';
 import { documentTypes } from '@/constants/document-types';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+// import {
+//   Tooltip,
+//   TooltipContent,
+//   TooltipProvider,
+//   TooltipTrigger,
+// } from '@/components/ui/tooltip';
 import { VideoText } from '@/components/magicui/video-text';
 import { Session } from '@supabase/supabase-js';
 import { LoginForm } from '@/components/login-form';
@@ -801,6 +805,69 @@ function HomeContent({ session }: HomeContentProps) {
     };
   }, [isDocumentsLoaded, activeTab]);
 
+  // 🚀 Load processed documents from database on component mount
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProcessedDocuments = async () => {
+      try {
+        console.log(
+          '📄 [REVIEW] Loading ALL processed documents from database...'
+        );
+
+        const { data, error } = await supabase
+          .from('parsed_documents')
+          .select(
+            'id, document_type, file_url, created_at, raw_json, anchor_key'
+          )
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          console.error('❌ [REVIEW] Failed to load parsed_documents:', error);
+          return;
+        }
+
+        if (cancelled) return;
+
+        console.log(
+          `📄 [REVIEW] Loaded ${
+            data?.length || 0
+          } documents from database for current user`
+        );
+
+        // Convert database records to ProcessedDocument format
+        const convertedDocs: ProcessedDocument[] = (data || []).map(
+          (dbDoc) => ({
+            fileName: dbDoc.anchor_key || `document-${dbDoc.id}`,
+            documentType: dbDoc.document_type as DocumentTypeKey,
+            data: dbDoc.raw_json as AppDocument,
+            databaseId: dbDoc.id,
+            storageType: 'database' as const,
+            status: 'completed' as ProcessingStatus,
+            fileUrl: dbDoc.file_url || undefined,
+          })
+        );
+
+        // Set the documents directly - these are the processed documents that should ALWAYS be in Review
+        setProcessedDocuments(convertedDocs);
+        console.log(
+          `✅ [REVIEW] Set ${convertedDocs.length} documents from database to Review tab`
+        );
+      } catch (error) {
+        console.error('💥 [REVIEW] Error loading processed documents:', error);
+      }
+    };
+
+    // Load immediately on component mount
+    loadProcessedDocuments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session.user.id]); // Only depend on user ID, load on mount
+
   // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
   useEffect(() => {
     // Only load groups data when the groups tab is active
@@ -1229,16 +1296,26 @@ function HomeContent({ session }: HomeContentProps) {
     setCurrentProcessingIndex(0);
     setProcessingProgress(0);
 
-    // 🚀 CRITICAL FIX: Initialize missing document slots only
-    console.log(`🔄 Frontend: Ensuring all files have document slots`);
+    // 🚀 Initialize document slots for new files being processed
+    console.log(
+      `🔄 Frontend: Preparing slots for ${files.length} files to process`
+    );
     setProcessedDocuments((prev) => {
       const updated = [...prev];
-      files.forEach((file, index) => {
-        if (!updated[index]) {
+
+      // Add slots for new files at the end
+      files.forEach((file) => {
+        // Check if we already have this file (by name) in our processed documents
+        const existingIndex = updated.findIndex(
+          (doc) => doc.fileName === file.name
+        );
+
+        if (existingIndex === -1) {
+          // File not found, add a new slot
           console.log(
-            `📝 Frontend: Creating doc slot ${index + 1} - ${file.name}`
+            `📝 Frontend: Creating doc slot for NEW file - ${file.name}`
           );
-          updated[index] = {
+          updated.push({
             fileName: file.name,
             documentType: '',
             data: JSON.parse(
@@ -1246,9 +1323,14 @@ function HomeContent({ session }: HomeContentProps) {
             ) as AppDocument,
             fileUrl: '',
             status: 'pending',
-          };
+          });
+        } else {
+          console.log(
+            `♻️ Frontend: File ${file.name} already exists in processed documents`
+          );
         }
       });
+
       return updated;
     });
 
@@ -1259,14 +1341,19 @@ function HomeContent({ session }: HomeContentProps) {
       let processedCount = 0;
       for (let i = 0; i < files.length; i++) {
         const currentFile = files[i];
-        const doc = processedDocuments[i];
+
+        // Find the document in our processed documents array by fileName
+        const docIndex = processedDocuments.findIndex(
+          (doc) => doc.fileName === currentFile.name
+        );
+        const doc = docIndex >= 0 ? processedDocuments[docIndex] : null;
 
         // Skip files that are already processed
         if (doc && doc.status === 'completed') {
           console.log(
             `⏭️ Frontend: Skipping already processed file ${i + 1}: ${
               currentFile.name
-            }`
+            } (found at index ${docIndex})`
           );
           continue;
         }
@@ -1297,11 +1384,15 @@ function HomeContent({ session }: HomeContentProps) {
 
         // Update status to processing
         console.log(
-          `🔄 Frontend: Setting status to 'processing' for file ${i + 1}`
+          `🔄 Frontend: Setting status to 'processing' for file ${i + 1}: ${
+            currentFile.name
+          }`
         );
         setProcessedDocuments((prev) =>
-          prev.map((doc, index) =>
-            index === i ? { ...doc, status: 'processing' } : doc
+          prev.map((doc) =>
+            doc.fileName === currentFile.name
+              ? { ...doc, status: 'processing' }
+              : doc
           )
         );
 
@@ -1432,38 +1523,40 @@ function HomeContent({ session }: HomeContentProps) {
             );
 
             setProcessedDocuments((prev) => {
-              const updated = prev.map((doc, index) =>
-                index === i
-                  ? {
-                      ...doc,
-                      documentType: result.data.document_type,
-                      data: result.data,
-                      status: 'completed' as const,
-                      fileUrl: result.fileUrl,
-                      databaseId: result.databaseId, // Store database ID for PDF preview
-                      storageType: result.storageType, // Track storage type
-                    }
-                  : doc
+              // Create a new processed document from the result
+              const newDoc: ProcessedDocument = {
+                fileName: currentFile.name,
+                documentType: result.data.document_type,
+                data: result.data,
+                status: 'completed' as const,
+                fileUrl: result.fileUrl,
+                databaseId: result.databaseId,
+                storageType: result.storageType,
+              };
+
+              // Find the document by fileName and update it, or add if not found
+              const updated = [...prev];
+              const existingIndex = updated.findIndex(
+                (doc) => doc.fileName === currentFile.name
               );
 
-              // ===== DEBUGGING: Verify state update =====
-              const updatedDoc = updated[i];
-              if (updatedDoc) {
+              if (existingIndex >= 0) {
+                // Update the existing document
+                updated[existingIndex] = newDoc;
                 console.log(
-                  `🔍 Frontend: State updated. Document ${i} now has:`,
-                  {
-                    fileUrl: updatedDoc.fileUrl,
-                    databaseId: updatedDoc.databaseId,
-                    storageType: updatedDoc.storageType,
-                    fileName: updatedDoc.fileName,
-                  }
+                  `✅ Frontend: Updated existing document: ${currentFile.name} at index ${existingIndex}`
                 );
               } else {
-                console.error(
-                  `❌ Frontend: Could not find updated document at index ${i}`
+                // Add new document
+                updated.push(newDoc);
+                console.log(
+                  `✅ Frontend: Added new document: ${currentFile.name}`
                 );
               }
 
+              console.log(
+                `📊 Frontend: Total documents in state: ${updated.length}`
+              );
               return updated;
             });
           } else {
@@ -1475,8 +1568,8 @@ function HomeContent({ session }: HomeContentProps) {
 
             // Update with error
             setProcessedDocuments((prev) =>
-              prev.map((doc, index) =>
-                index === i
+              prev.map((doc) =>
+                doc.fileName === currentFile.name
                   ? {
                       ...doc,
                       status: 'error' as const,
@@ -1495,8 +1588,8 @@ function HomeContent({ session }: HomeContentProps) {
 
           // Update with network error
           setProcessedDocuments((prev) =>
-            prev.map((doc, index) =>
-              index === i
+            prev.map((doc) =>
+              doc.fileName === currentFile.name
                 ? {
                     ...doc,
                     status: 'error' as const,
@@ -1655,13 +1748,12 @@ function HomeContent({ session }: HomeContentProps) {
       setActiveTab('results');
       console.log(`🔄 Frontend: Switched to results tab`);
 
-      // 🚀 CRITICAL FIX: Reset groups when new documents are processed
+      // 🚀 Reset groups when new documents are processed (but keep documents loaded)
       if (processedCount > 0) {
         console.log(
           `🔄 Frontend: Resetting groups due to ${processedCount} new documents`
         );
         setHasInitializedGroups(false);
-        setIsDocumentsLoaded(false);
         setGroups({});
       }
     } catch (batchError) {
@@ -1830,7 +1922,7 @@ function HomeContent({ session }: HomeContentProps) {
                   disabled={completedCount === 0}
                   className='text-base py-1'
                 >
-                  Review & Export
+                  Review
                 </TabsTrigger>
                 <TabsTrigger value='groups' className='text-base py-1'>
                   Human Verify
@@ -2156,15 +2248,7 @@ function HomeContent({ session }: HomeContentProps) {
                           processedDocuments={processedDocuments}
                           handleDownloadCSV={handleDownloadCSV}
                         />
-                        <Button
-                          variant='secondary'
-                          className='gap-2'
-                          onClick={() => setActiveTab('groups')}
-                        >
-                          Go to Group & Verify{' '}
-                          <ArrowRight className='h-4 w-4' />
-                        </Button>
-                        <TooltipProvider>
+                        {/* <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -2184,7 +2268,7 @@ function HomeContent({ session }: HomeContentProps) {
                               </p>
                             </TooltipContent>
                           </Tooltip>
-                        </TooltipProvider>
+                        </TooltipProvider> */}
                       </div>
                     </div>
                   </Card>
