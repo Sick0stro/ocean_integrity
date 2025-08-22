@@ -1,3 +1,4 @@
+// dublication detection
 interface DocumentData {
   invoice_number?: string;
   invoice?: string;
