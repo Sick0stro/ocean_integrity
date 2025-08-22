@@ -221,53 +221,30 @@ export function LoginForm() {
         setMessageType('success');
       } else {
         console.log('🚀 [AUTH] Attempting sign in...');
-        const signInData = {
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
-        };
-        console.log('📤 [AUTH] Sign in payload:', {
-          email: signInData.email,
-          passwordLength: signInData.password.length,
         });
 
-        const { data, error } = await supabase.auth.signInWithPassword(
-          signInData
-        );
+        console.log('📤 [AUTH] Sign in payload:', {
+          email,
+          passwordLength: password.length,
+        });
 
-        console.log('📥 [AUTH] Sign in response data:', data);
-        console.log('❌ [AUTH] Sign in error:', error);
-
-        if (error) {
-          console.error('🚨 [AUTH] Sign in failed:', {
-            message: error.message,
-            status: error.status,
-            details: error,
+        if (signInError) {
+          console.error('❌ [AUTH] Sign in failed:', {
+            message: signInError.message,
+            status: signInError.status,
+            details: signInError,
           });
-          throw error;
+          throw signInError;
         }
 
-        console.log('✅ [AUTH] Sign in successful');
+        console.log('✅ [AUTH] Sign in successful:', { user: data.user });
+        
+        // Force a page reload to ensure all components get the new session
+        window.location.href = '/';
       }
-    } catch (error: unknown) {
-      console.error('💥 [AUTH] Authentication error caught:', error);
-
-      if (error && typeof error === 'object') {
-        const errorObj = error as Record<string, unknown>;
-        console.error('🔍 [AUTH] Error details:', {
-          message: errorObj.message,
-          status: errorObj.status,
-          code: errorObj.code,
-          details: errorObj.details,
-          hint: errorObj.hint,
-          fullError: error,
-        });
-      }
-
-      const errorMessage =
-        error instanceof Error ? error.message : 'An error occurred';
-      console.error('📝 [AUTH] Setting error message:', errorMessage);
-      setMessage(errorMessage);
-      setMessageType('error');
     } finally {
       setLoading(false);
       console.log('🏁 [AUTH] Authentication process completed');

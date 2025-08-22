@@ -120,7 +120,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
           <div className='flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 rounded-md border border-orange-200'>
             <Scale className='h-4 w-4 text-orange-600' />
             <span className='font-semibold text-orange-700'>
-              Total Tons: {stats.totalTons}
+              Total Processed Tons: {stats.totalTons}
             </span>
           </div>
 
