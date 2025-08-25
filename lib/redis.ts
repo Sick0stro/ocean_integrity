@@ -28,6 +28,8 @@ export const redis = createClient({
   socket: {
     host: redisConnection.host,
     port: redisConnection.port,
+    reconnectStrategy: (retries) => Math.min(retries * 50, 500), // Retry with backoff
+    connectTimeout: 10000, // 10 second timeout
   },
   username: redisConnection.username,
   password: redisConnection.password,
@@ -35,12 +37,24 @@ export const redis = createClient({
 
 redis.on("error", (error) => console.log("❌ Redis Client Error", error));
 redis.on("connect", () => console.log("✅ Redis connected successfully"));
+redis.on("reconnecting", () => console.log("🔄 Redis reconnecting..."));
 
 export const documentProcessingQueue = new Queue("document-processing", {
   connection: redisConnection,
 });
 
-// Auto-connect with error handling
-redis.connect().catch((error) => {
-  console.error("❌ Redis connection failed:", error);
-});
+// Connect only when needed, not on import
+let isConnecting = false;
+export async function ensureRedisConnection() {
+  if (redis.isReady) return;
+  if (isConnecting) return;
+
+  isConnecting = true;
+  try {
+    await redis.connect();
+  } catch (error) {
+    console.error("❌ Redis connection failed:", error);
+  } finally {
+    isConnecting = false;
+  }
+}

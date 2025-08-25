@@ -1,11 +1,11 @@
 // route.ts - Enhanced version with comprehensive diagnostics and logging
-import { NextResponse } from 'next/server';
-import fetch from 'node-fetch';
-import { getSupabaseAdmin, getSupabaseClient } from '@/utils/supabase';
+import { NextResponse } from "next/server";
+import fetch from "node-fetch";
+import { getSupabaseAdmin, getSupabaseClient } from "@/utils/supabase";
 import {
   generateBusinessFingerprint,
   parseFingerprintForDisplay,
-} from '@/lib/duplicateDetection';
+} from "@/lib/duplicateDetection";
 
 // Diagnostics removed
 
@@ -40,37 +40,37 @@ export async function POST(req: Request) {
 
   // Log all headers for debugging
   console.log(`📋 [${requestId}] Request headers:`, {
-    authorization: req.headers.get('Authorization')
-      ? 'Bearer [PRESENT]'
-      : 'MISSING',
-    contentType: req.headers.get('Content-Type'),
-    userAgent: req.headers.get('User-Agent'),
-    origin: req.headers.get('Origin'),
-    referer: req.headers.get('Referer'),
+    authorization: req.headers.get("Authorization")
+      ? "Bearer [PRESENT]"
+      : "MISSING",
+    contentType: req.headers.get("Content-Type"),
+    userAgent: req.headers.get("User-Agent"),
+    origin: req.headers.get("Origin"),
+    referer: req.headers.get("Referer"),
   });
 
   // Get auth header
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     console.error(`❌ [${requestId}] ERROR: No authorization header`);
     console.error(`🔍 [${requestId}] Auth header details:`, {
       hasHeader: !!authHeader,
-      headerValue: authHeader ? `${authHeader.substring(0, 20)}...` : 'null',
-      startsWithBearer: authHeader?.startsWith('Bearer '),
+      headerValue: authHeader ? `${authHeader.substring(0, 20)}...` : "null",
+      startsWithBearer: authHeader?.startsWith("Bearer "),
     });
     return NextResponse.json(
-      { success: false, error: 'Unauthorized - No token provided' },
+      { success: false, error: "Unauthorized - No token provided" },
       { status: 401 }
     );
   }
 
-  const token = authHeader.replace('Bearer ', '');
+  const token = authHeader.replace("Bearer ", "");
   console.log(`🔑 [${requestId}] Token extracted:`, {
     tokenLength: token.length,
     tokenPreview: `${token.substring(0, 20)}...${token.substring(
       token.length - 10
     )}`,
-    tokenType: token.startsWith('eyJ') ? 'JWT-like' : 'Other',
+    tokenType: token.startsWith("eyJ") ? "JWT-like" : "Other",
   });
 
   // Verify user with Supabase
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
       fullError: authError,
     });
     return NextResponse.json(
-      { success: false, error: 'Unauthorized - Invalid token' },
+      { success: false, error: "Unauthorized - Invalid token" },
       { status: 401 }
     );
   }
@@ -118,12 +118,12 @@ export async function POST(req: Request) {
     // ========== STEP 1: EXTRACT & VALIDATE FILE ==========
     console.log(`📁 [${requestId}] Step 1: Extracting form data...`);
     const formData = await req.formData();
-    const file = formData.get('file') as File | null;
+    const file = formData.get("file") as File | null;
 
     if (!file) {
       console.error(`❌ [${requestId}] ERROR: No PDF file provided`);
       return NextResponse.json(
-        { success: false, error: 'No PDF file provided' },
+        { success: false, error: "No PDF file provided" },
         { status: 400 }
       );
     }
@@ -134,12 +134,12 @@ export async function POST(req: Request) {
     console.log(`   📊 Size: ${fileSizeMB} MB`);
     console.log(`   🔖 Type: ${file.type}`);
 
-    if (file.type !== 'application/pdf') {
+    if (file.type !== "application/pdf") {
       console.error(
         `❌ [${requestId}] ERROR: Invalid file type - ${file.type}`
       );
       return NextResponse.json(
-        { success: false, error: 'Invalid file format. PDF only' },
+        { success: false, error: "Invalid file format. PDF only" },
         { status: 400 }
       );
     }
@@ -155,7 +155,7 @@ export async function POST(req: Request) {
     const conversionStart = Date.now();
 
     const arrayBuffer = await file.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
 
     const conversionTime = Date.now() - conversionStart;
     console.log(
@@ -172,7 +172,7 @@ export async function POST(req: Request) {
         `❌ [${requestId}] ERROR: GOOGLE_API_KEY environment variable not set`
       );
       return NextResponse.json(
-        { success: false, error: 'GOOGLE_API_KEY is not set' },
+        { success: false, error: "GOOGLE_API_KEY is not set" },
         { status: 500 }
       );
     }
@@ -243,7 +243,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
       contents: [
         {
           parts: [
-            { inline_data: { mime_type: 'application/pdf', data: base64 } },
+            { inline_data: { mime_type: "application/pdf", data: base64 } },
             { text: PROMPT },
           ],
         },
@@ -257,8 +257,8 @@ You are an expert document processing AI. Your task is to analyze the provided d
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(geminiPayload),
       }
     );
@@ -272,7 +272,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
       const errorText = await geminiResponse.text();
       console.error(`❌ [${requestId}] Gemini API Error:`, errorText);
       return NextResponse.json(
-        { success: false, error: 'Gemini API Error', details: errorText },
+        { success: false, error: "Gemini API Error", details: errorText },
         { status: 500 }
       );
     }
@@ -290,7 +290,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
     let parsedResponse =
       geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (parsedResponse) {
-      parsedResponse = parsedResponse.replace(/^```json|^```|```$/g, '').trim();
+      parsedResponse = parsedResponse.replace(/^```json|^```|```$/g, "").trim();
     }
 
     // ========== STEP 7: PARSE JSON ==========
@@ -298,7 +298,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
     let parsedJSON = null;
 
     try {
-      parsedJSON = JSON.parse(parsedResponse ?? '');
+      parsedJSON = JSON.parse(parsedResponse ?? "");
       console.log(`✅ [${requestId}] JSON parsing successful!`);
       console.log(
         `📊 [${requestId}] Document type: ${parsedJSON.document_type}`
@@ -306,7 +306,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
     } catch (parseError) {
       console.error(`❌ [${requestId}] JSON parsing failed!`, parseError);
       return NextResponse.json(
-        { success: false, error: 'JSON parsing failed!', raw: parsedResponse },
+        { success: false, error: "JSON parsing failed!", raw: parsedResponse },
         { status: 500 }
       );
     }
@@ -318,7 +318,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
     let storageResult = {
       success: false,
       publicUrl: null as string | null,
-      storageType: 'none' as 'storage' | 'database' | 'hybrid' | 'none',
+      storageType: "none" as "storage" | "database" | "hybrid" | "none",
       databaseId: null as string | null,
     };
 
@@ -333,32 +333,32 @@ You are an expert document processing AI. Your task is to analyze the provided d
     // Prepare different data formats to test (ordered by reliability based on logs)
     const uploadFormats = [
       {
-        name: 'ArrayBuffer (Reliable)',
+        name: "ArrayBuffer (Reliable)",
         data: arrayBuffer,
-        options: { contentType: 'application/pdf', upsert: true },
+        options: { contentType: "application/pdf", upsert: true },
       },
       {
-        name: 'File Object',
+        name: "File Object",
         data: file,
-        options: { contentType: 'application/pdf', upsert: true },
+        options: { contentType: "application/pdf", upsert: true },
       },
       {
-        name: 'Buffer',
+        name: "Buffer",
         data: Buffer.from(arrayBuffer),
-        options: { contentType: 'application/pdf', upsert: true },
+        options: { contentType: "application/pdf", upsert: true },
       },
       {
-        name: 'Blob',
-        data: new Blob([arrayBuffer], { type: 'application/pdf' }),
-        options: { contentType: 'application/pdf', upsert: true },
+        name: "Blob",
+        data: new Blob([arrayBuffer], { type: "application/pdf" }),
+        options: { contentType: "application/pdf", upsert: true },
       },
       {
-        name: 'ArrayBuffer (With Duplex)',
+        name: "ArrayBuffer (With Duplex)",
         data: arrayBuffer,
         options: {
-          contentType: 'application/pdf',
+          contentType: "application/pdf",
           upsert: true,
-          duplex: 'half' as const,
+          duplex: "half" as const,
         },
       },
     ];
@@ -366,8 +366,8 @@ You are an expert document processing AI. Your task is to analyze the provided d
     // Try with admin client as well
     const adminClient = getSupabaseAdmin();
     const clients = [
-      { name: 'Anon Client', client: supabase },
-      { name: 'Admin Client', client: adminClient },
+      { name: "Anon Client", client: supabase },
+      { name: "Admin Client", client: adminClient },
     ];
 
     let uploadError = null as unknown;
@@ -409,7 +409,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
             ? format.data.length
             : format.data instanceof Blob
             ? format.data.size
-            : 'unknown'
+            : "unknown"
         );
 
         try {
@@ -419,7 +419,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
               const uploadStart = Date.now();
               const { error, data: uploadData } =
                 await clientTest.client.storage
-                  .from('documents')
+                  .from("documents")
                   .upload(currentFilePath, format.data, format.options);
               const uploadDuration = Date.now() - uploadStart;
               console.log(
@@ -434,7 +434,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
                 );
                 console.log(`   📄 [${requestId}] Upload result:`, uploadData);
                 const { data: urlData } = clientTest.client.storage
-                  .from('documents')
+                  .from("documents")
                   .getPublicUrl(currentFilePath);
                 console.log(
                   `   🔗 [${requestId}] Public URL generated:`,
@@ -443,7 +443,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
                 storageResult = {
                   success: true,
                   publicUrl: urlData.publicUrl,
-                  storageType: 'storage',
+                  storageType: "storage",
                   databaseId: null,
                 };
                 successfulMethod = `${clientTest.name} + ${format.name}`;
@@ -489,31 +489,31 @@ You are an expert document processing AI. Your task is to analyze the provided d
         let signedAttempt = 0;
         while (!storageResult.success && signedAttempt < maxRetriesPerAttempt) {
           const { data: signed, error: signErr } = await admin.storage
-            .from('documents')
+            .from("documents")
             .createSignedUploadUrl(signedPath);
           if (signErr || !signed?.signedUrl) {
-            uploadError = signErr || new Error('createSignedUploadUrl failed');
+            uploadError = signErr || new Error("createSignedUploadUrl failed");
             signedAttempt += 1;
             await sleep(300 * (signedAttempt + 1));
             continue;
           }
-          const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+          const blob = new Blob([arrayBuffer], { type: "application/pdf" });
           const { error: uploadSignedErr } = await admin.storage
-            .from('documents')
+            .from("documents")
             .uploadToSignedUrl(signedPath, signed.signedUrl, blob, {
-              contentType: 'application/pdf',
+              contentType: "application/pdf",
               upsert: true,
-              cacheControl: '3600',
-              duplex: 'half',
+              cacheControl: "3600",
+              duplex: "half",
             });
           if (!uploadSignedErr) {
             const { data: urlData } = admin.storage
-              .from('documents')
+              .from("documents")
               .getPublicUrl(signedPath);
             storageResult = {
               success: true,
               publicUrl: urlData.publicUrl,
-              storageType: 'storage',
+              storageType: "storage",
               databaseId: null,
             };
             successfulMethod = `Admin + SignedUrl`;
@@ -541,14 +541,14 @@ You are an expert document processing AI. Your task is to analyze the provided d
         storageResult = {
           success: false,
           publicUrl: null,
-          storageType: 'none',
+          storageType: "none",
           databaseId: null,
         };
-        if (uploadError && typeof uploadError === 'object') {
+        if (uploadError && typeof uploadError === "object") {
           const errorObj = uploadError as {
             originalError?: { cause?: { code?: string } };
           };
-          if (errorObj.originalError?.cause?.code === 'UND_ERR_SOCKET') {
+          if (errorObj.originalError?.cause?.code === "UND_ERR_SOCKET") {
             console.error(
               `🔌 [${requestId}] Socket error detected - network connection dropped`
             );
@@ -568,7 +568,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
       const db = getSupabaseAdmin();
       // Align with existing schema: anchor_key, document_type, raw_json, file_url
       const anchorKey =
-        (parsedJSON?.anchor_key || parsedJSON?.invoice || '')
+        (parsedJSON?.anchor_key || parsedJSON?.invoice || "")
           .toString()
           .trim() || null;
       // Only insert when storage succeeded to keep strict consistency
@@ -581,7 +581,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
         console.log(`🔍 [${requestId}] Step 8.5: Checking for duplicates...`);
 
         try {
-          if (parsedJSON && parsedJSON.document_type === 'invoice') {
+          if (parsedJSON && parsedJSON.document_type === "invoice") {
             // Assuming 'invoice' is the type we want to check for duplicates
             // Generate business fingerprint
             const businessFingerprint = generateBusinessFingerprint(parsedJSON);
@@ -595,11 +595,11 @@ You are an expert document processing AI. Your task is to analyze the provided d
 
             // Check for existing documents with same fingerprint (across ALL users)
             const { data: existingDocs, error: duplicateError } = await db
-              .from('parsed_documents')
+              .from("parsed_documents")
               .select(
-                'id, anchor_key, user_id, created_at, business_fingerprint'
+                "id, anchor_key, user_id, created_at, business_fingerprint"
               )
-              .eq('business_fingerprint', businessFingerprint)
+              .eq("business_fingerprint", businessFingerprint)
               .limit(5);
 
             if (duplicateError) {
@@ -627,10 +627,10 @@ You are an expert document processing AI. Your task is to analyze the provided d
               return NextResponse.json(
                 {
                   success: false,
-                  error: 'Duplicate document detected',
+                  error: "Duplicate document detected",
                   details: {
                     message:
-                      'This document appears to be a duplicate of an existing document',
+                      "This document appears to be a duplicate of an existing document",
                     fingerprint: fingerprintDisplay,
                     existingDocuments: duplicateInfo.length,
                     sameUser: duplicateInfo.some((d) => d.is_same_user),
@@ -674,7 +674,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
         });
 
         const { error: insertError } = await db
-          .from('parsed_documents')
+          .from("parsed_documents")
           .insert(insertPayload);
 
         console.log(`📝 [${requestId}] Database insert result:`, {
@@ -718,10 +718,10 @@ You are an expert document processing AI. Your task is to analyze the provided d
     console.log(`   📦 Storage type: ${storageResult.storageType}`);
     console.log(`   ✅ Storage success: ${storageResult.success}`);
     console.log(
-      `   🔗 File URL: ${storageResult.publicUrl || 'None (using database)'}`
+      `   🔗 File URL: ${storageResult.publicUrl || "None (using database)"}`
     );
     console.log(
-      `   🆔 Database ID: ${storageResult.databaseId || 'None (using storage)'}`
+      `   🆔 Database ID: ${storageResult.databaseId || "None (using storage)"}`
     );
 
     // Ensure we're returning the correct response structure
@@ -736,7 +736,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
       error: !storageResult.success
         ? `Storage failed: All upload attempts failed. ${
             (uploadError as { message?: string })?.message ||
-            'Network connectivity issue'
+            "Network connectivity issue"
           }`
         : undefined,
       meta: {
@@ -779,7 +779,7 @@ You are an expert document processing AI. Your task is to analyze the provided d
     return NextResponse.json(
       {
         success: false,
-        error: 'Server Error',
+        error: "Server Error",
         details: String(error),
         meta: {
           requestId,
@@ -795,25 +795,25 @@ You are an expert document processing AI. Your task is to analyze the provided d
 export async function GET(req: Request) {
   const supabase = getSupabaseClient();
   const { searchParams } = new URL(req.url);
-  const databaseId = searchParams.get('id');
+  const databaseId = searchParams.get("id");
 
   if (!databaseId) {
     return NextResponse.json(
-      { error: 'Database ID required' },
+      { error: "Database ID required" },
       { status: 400 }
     );
   }
 
   try {
     const { data, error } = await supabase
-      .from('document_storage')
-      .select('file_base64, file_name, extracted_data')
-      .eq('id', databaseId)
+      .from("document_storage")
+      .select("file_base64, file_name, extracted_data")
+      .eq("id", databaseId)
       .single();
 
     if (error || !data) {
       return NextResponse.json(
-        { error: 'Document not found' },
+        { error: "Document not found" },
         { status: 404 }
       );
     }
@@ -828,7 +828,7 @@ export async function GET(req: Request) {
   } catch (error) {
     console.error(error);
     return NextResponse.json(
-      { error: 'Failed to retrieve document' },
+      { error: "Failed to retrieve document" },
       { status: 500 }
     );
   }
