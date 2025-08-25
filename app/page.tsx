@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, {
   useState,
@@ -6,17 +6,17 @@ import React, {
   useCallback,
   useEffect,
   useRef,
-} from 'react';
-import type { Document as AppDocument } from '@/types/document-types';
+} from "react";
+import type { Document as AppDocument } from "@/types/document-types";
 import type {
   ProcessedDocument,
   ProcessingStatus,
-} from '@/types/processed-document';
-import type { DocumentTypeKey } from '@/constants/document-types';
+} from "@/types/processed-document";
+import type { DocumentTypeKey } from "@/constants/document-types";
 
 interface RecyclingDocument {
   id: string;
-  document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
+  document_type: "invoice" | "eft_receipt" | "e-way-bill";
   file_url: string | null;
   created_at: string;
   raw_json: Record<string, unknown>;
@@ -49,9 +49,9 @@ import {
   UploadCloud,
   ChevronDown,
   ChevronUp,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -60,36 +60,38 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getSupabaseBrowser } from '@/utils/supabase-browser';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import FileUploader from '@/components/file-uploader';
-import dynamic from 'next/dynamic';
-import DataSheet from '@/components/data-sheet';
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getSupabaseBrowser } from "@/utils/supabase-browser";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import FileUploader from "@/components/file-uploader";
+import dynamic from "next/dynamic";
+import DataSheet from "@/components/data-sheet";
 // Import documentTemplates for default document structure
-import { documentTemplates } from '@/constants/document-templates';
+import { documentTemplates } from "@/constants/document-templates";
 // import { setDocumentField, documentEntries } from "@/types/document-types-util"; // Removed unused imports
-import DocumentTypeCard from '@/components/document-type-card';
-import { documentTypes } from '@/constants/document-types';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import DocumentTypeCard from "@/components/document-type-card";
+import { documentTypes } from "@/constants/document-types";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 // import {
 //   Tooltip,
 //   TooltipContent,
 //   TooltipProvider,
 //   TooltipTrigger,
 // } from '@/components/ui/tooltip';
-import { VideoText } from '@/components/magicui/video-text';
-import { Session } from '@supabase/supabase-js';
-import { LoginForm } from '@/components/login-form';
-import { GalleryVerticalEnd } from 'lucide-react';
-import CSVDownloadBtn from '@/components/csv-download-btn';
-import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
-import { supabase } from '@/utils/supabase-browser';
-import { VerifiedCsvDownload } from '@/components/verified-csv-download';
+import { VideoText } from "@/components/magicui/video-text";
+import { Session } from "@supabase/supabase-js";
+import { LoginForm } from "@/components/login-form";
+import { GalleryVerticalEnd } from "lucide-react";
+import CSVDownloadBtn from "@/components/csv-download-btn";
+import { isSameInvoice, getInvoiceGroupKey } from "@/lib/invoiceUtils";
+import { supabase } from "@/utils/supabase-browser";
+import { VerifiedCsvDownload } from "@/components/verified-csv-download";
+// Add these imports after your existing imports (around line 90)
+// import { redis, documentProcessingQueue, progressQueue } from "@/lib/redis";
 
-const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
+const PdfPreview = dynamic(() => import("@/components/pdf-preview"), {
   ssr: false,
 });
 
@@ -169,7 +171,7 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
           console.log(`✅ Frontend: Cached blob URL for ${doc.fileName}`);
           return blobUrl;
         } else {
-          setBlobError('Failed to create preview');
+          setBlobError("Failed to create preview");
           return null;
         }
       } catch (error) {
@@ -177,7 +179,7 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
           `💥 Frontend: Error creating blob URL for ${doc.fileName}:`,
           error
         );
-        setBlobError('Error loading preview');
+        setBlobError("Error loading preview");
         return null;
       } finally {
         setIsLoadingBlob(false);
@@ -221,13 +223,13 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
   // Render the appropriate state
   if (isLoadingBlob) {
     return (
-      <div className='flex flex-col'>
-        <h4 className='font-medium text-slate-800 mb-2 text-sm'>
+      <div className="flex flex-col">
+        <h4 className="font-medium text-slate-800 mb-2 text-sm">
           Document Preview
         </h4>
-        <div className='flex items-center justify-center p-8 bg-slate-50 rounded-lg'>
-          <Loader2 className='h-6 w-6 animate-spin text-blue-500' />
-          <span className='ml-2 text-slate-600'>Loading preview...</span>
+        <div className="flex items-center justify-center p-8 bg-slate-50 rounded-lg">
+          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+          <span className="ml-2 text-slate-600">Loading preview...</span>
         </div>
       </div>
     );
@@ -235,13 +237,13 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
 
   if (blobError) {
     return (
-      <div className='flex flex-col'>
-        <h4 className='font-medium text-slate-800 mb-2 text-sm'>
+      <div className="flex flex-col">
+        <h4 className="font-medium text-slate-800 mb-2 text-sm">
           Document Preview
         </h4>
-        <div className='flex items-center justify-center p-8 bg-red-50 rounded-lg'>
-          <AlertCircle className='h-6 w-6 text-red-500' />
-          <span className='ml-2 text-red-600'>{blobError}</span>
+        <div className="flex items-center justify-center p-8 bg-red-50 rounded-lg">
+          <AlertCircle className="h-6 w-6 text-red-500" />
+          <span className="ml-2 text-red-600">{blobError}</span>
         </div>
       </div>
     );
@@ -249,11 +251,11 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
 
   if (pdfUrl) {
     return (
-      <div className='flex flex-col'>
-        <h4 className='font-medium text-slate-800 mb-2 text-sm'>
+      <div className="flex flex-col">
+        <h4 className="font-medium text-slate-800 mb-2 text-sm">
           Document Preview
-          {doc.storageType === 'database' && (
-            <Badge variant='outline' className='ml-2 text-xs'>
+          {doc.storageType === "database" && (
+            <Badge variant="outline" className="ml-2 text-xs">
               Database
             </Badge>
           )}
@@ -265,19 +267,19 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
 
   // No preview available
   return (
-    <div className='flex flex-col'>
-      <h4 className='font-medium text-slate-800 mb-2 text-sm'>
+    <div className="flex flex-col">
+      <h4 className="font-medium text-slate-800 mb-2 text-sm">
         Document Preview
       </h4>
-      <div className='flex items-center justify-center p-8 bg-slate-50 rounded-lg'>
-        <FileText className='h-6 w-6 text-slate-400' />
-        <span className='ml-2 text-slate-500'>
+      <div className="flex items-center justify-center p-8 bg-slate-50 rounded-lg">
+        <FileText className="h-6 w-6 text-slate-400" />
+        <span className="ml-2 text-slate-500">
           Preview not available
           {doc.databaseId && (
-            <div className='mt-2 text-xs'>
+            <div className="mt-2 text-xs">
               <p>Database ID: {doc.databaseId}</p>
               <p>Storage Type: {doc.storageType}</p>
-              <p>Has fileUrl: {doc.fileUrl ? 'Yes' : 'No'}</p>
+              <p>Has fileUrl: {doc.fileUrl ? "Yes" : "No"}</p>
             </div>
           )}
         </span>
@@ -288,13 +290,13 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
 
 interface GroupDoc {
   id: string;
-  document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
+  document_type: "invoice" | "eft_receipt" | "e-way-bill";
   file_url: string | null;
   created_at: string;
   raw_json: Record<string, unknown>;
   docs?: {
     id: string;
-    document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
+    document_type: "invoice" | "eft_receipt" | "e-way-bill";
     created_at: string;
     raw_json: Record<string, unknown>;
   };
@@ -302,7 +304,7 @@ interface GroupDoc {
 
 type InvoiceGroup = {
   invoice: string;
-  docs: Partial<Record<'invoice' | 'eft_receipt' | 'e-way-bill', GroupDoc[]>>;
+  docs: Partial<Record<"invoice" | "eft_receipt" | "e-way-bill", GroupDoc[]>>;
 };
 
 // Define the shape of the submit result
@@ -328,8 +330,8 @@ function HomeContent({ session }: HomeContentProps) {
 
   // UI state
   const [activeTab, setActiveTab] = useState<
-    'upload' | 'results' | 'groups' | 'submit'
-  >('upload');
+    "upload" | "results" | "groups" | "submit"
+  >("upload");
 
   // Document grouping state
   const [groups, setGroups] = useState<Record<string, InvoiceGroup>>({});
@@ -356,7 +358,7 @@ function HomeContent({ session }: HomeContentProps) {
 
   // 🚀 PERFORMANCE: Show loading immediately when switching to groups tab
   useEffect(() => {
-    if (activeTab === 'groups' && !hasInitializedGroups) {
+    if (activeTab === "groups" && !hasInitializedGroups) {
       setIsGroupsLoading(true);
     }
   }, [activeTab, hasInitializedGroups]);
@@ -380,7 +382,7 @@ function HomeContent({ session }: HomeContentProps) {
 
     // Clear any existing polling interval
     if (activePollingRef.current) {
-      console.log('🧹 Clearing existing polling interval');
+      console.log("🧹 Clearing existing polling interval");
       clearInterval(activePollingRef.current);
       activePollingRef.current = null;
     }
@@ -391,18 +393,18 @@ function HomeContent({ session }: HomeContentProps) {
       .map(([invoice]) => invoice);
 
     if (submittedInvoices.length === 0) {
-      console.log('⏹️ No successful submissions to poll for');
+      console.log("⏹️ No successful submissions to poll for");
       return;
     }
 
     // 🚀 CRITICAL FIX: Don't poll for failed submissions
     const hasAnyFailedSubmissions = submittedInvoices.some((invoice) => {
       const doc = recyclingDocs[invoice];
-      return doc && doc.status === 'failed';
+      return doc && doc.status === "failed";
     });
 
     if (hasAnyFailedSubmissions) {
-      console.log('❌ Found failed submissions. Not starting polling.');
+      console.log("❌ Found failed submissions. Not starting polling.");
       return;
     }
 
@@ -414,13 +416,13 @@ function HomeContent({ session }: HomeContentProps) {
         doc.plastiks_collection_id &&
         doc.plastiks_collection_address &&
         doc.plastiks_metadata_hash &&
-        doc.status === 'submitted'
+        doc.status === "submitted"
       );
     });
 
     if (allHaveCompleteData) {
       console.log(
-        '✅ All documents have complete Plastiks data. Stopping polling.'
+        "✅ All documents have complete Plastiks data. Stopping polling."
       );
       return; // Don't poll if we already have all the data
     }
@@ -439,17 +441,17 @@ function HomeContent({ session }: HomeContentProps) {
 
         const supabase = getSupabaseBrowser();
         const { data: updatedDocs, error } = await supabase
-          .from('recycling_docs')
-          .select('*')
-          .in('invoice_number', submittedInvoices);
+          .from("recycling_docs")
+          .select("*")
+          .in("invoice_number", submittedInvoices);
 
         if (error) {
-          console.error('Error polling for updated docs:', error);
+          console.error("Error polling for updated docs:", error);
           return;
         }
 
         console.log(
-          'Received updated docs:',
+          "Received updated docs:",
           JSON.stringify(updatedDocs, null, 2)
         );
 
@@ -492,13 +494,13 @@ function HomeContent({ session }: HomeContentProps) {
               doc.plastiks_collection_id &&
               doc.plastiks_collection_address &&
               doc.plastiks_metadata_hash &&
-              doc.status === 'submitted'
+              doc.status === "submitted"
             );
           });
 
           if (nowHaveCompleteData) {
             console.log(
-              '✅ All documents now have complete Plastiks data. Stopping polling.'
+              "✅ All documents now have complete Plastiks data. Stopping polling."
             );
             if (activePollingRef.current) {
               clearInterval(activePollingRef.current);
@@ -511,12 +513,12 @@ function HomeContent({ session }: HomeContentProps) {
         // Stop polling for failed submissions
         const hasFailedSubmissions = updatedDocs.some(
           (doc) =>
-            doc.status === 'failed' &&
+            doc.status === "failed" &&
             submittedInvoices.includes(doc.invoice_number)
         );
 
         if (hasFailedSubmissions) {
-          console.log('❌ Found failed submissions. Stopping polling.');
+          console.log("❌ Found failed submissions. Stopping polling.");
           if (activePollingRef.current) {
             clearInterval(activePollingRef.current);
             activePollingRef.current = null;
@@ -526,14 +528,14 @@ function HomeContent({ session }: HomeContentProps) {
 
         // Stop polling after max attempts
         if (pollCount >= maxPolls) {
-          console.log('⚠️ Max polling attempts reached. Stopping polling.');
+          console.log("⚠️ Max polling attempts reached. Stopping polling.");
           if (activePollingRef.current) {
             clearInterval(activePollingRef.current);
             activePollingRef.current = null;
           }
         }
       } catch (err) {
-        console.error('Error in polling function:', err);
+        console.error("Error in polling function:", err);
       }
     };
 
@@ -542,12 +544,12 @@ function HomeContent({ session }: HomeContentProps) {
 
     // Set up polling interval (every 3 seconds)
     activePollingRef.current = setInterval(fetchUpdatedDocs, 3000);
-    console.log('🔄 Started new polling interval');
+    console.log("🔄 Started new polling interval");
 
     // Clean up interval on component unmount or when dependencies change
     return () => {
       if (activePollingRef.current) {
-        console.log('🧹 Cleaning up polling interval');
+        console.log("🧹 Cleaning up polling interval");
         clearInterval(activePollingRef.current);
         activePollingRef.current = null;
       }
@@ -575,21 +577,21 @@ function HomeContent({ session }: HomeContentProps) {
       return {
         complete: false,
         count: 0,
-        missing: ['invoice', 'eft_receipt', 'e-way-bill'],
+        missing: ["invoice", "eft_receipt", "e-way-bill"],
       };
     }
 
     const hasInvoice = Boolean(group.docs.invoice?.length);
     const hasEftReceipt = Boolean(group.docs.eft_receipt?.length);
-    const hasEWayBill = Boolean(group.docs['e-way-bill']?.length);
+    const hasEWayBill = Boolean(group.docs["e-way-bill"]?.length);
 
     const count = [hasInvoice, hasEftReceipt, hasEWayBill].filter(
       Boolean
     ).length;
     const missing = [
-      !hasInvoice && 'invoice',
-      !hasEftReceipt && 'eft_receipt',
-      !hasEWayBill && 'e-way-bill',
+      !hasInvoice && "invoice",
+      !hasEftReceipt && "eft_receipt",
+      !hasEWayBill && "e-way-bill",
     ].filter(Boolean) as string[];
 
     return {
@@ -630,7 +632,7 @@ function HomeContent({ session }: HomeContentProps) {
 
         const hasInvoice = (group.docs.invoice?.length || 0) > 0;
         const hasEftReceipt = (group.docs.eft_receipt?.length || 0) > 0;
-        const hasEWayBill = (group.docs['e-way-bill']?.length || 0) > 0;
+        const hasEWayBill = (group.docs["e-way-bill"]?.length || 0) > 0;
 
         return hasInvoice && hasEftReceipt && hasEWayBill;
       };
@@ -641,7 +643,7 @@ function HomeContent({ session }: HomeContentProps) {
         // Helper function to ensure a group exists for an invoice key and add the document to it
         const ensureGroup = (invoiceKey: string) => {
           if (!invoiceKey) {
-            console.log('Skipping empty invoice key');
+            console.log("Skipping empty invoice key");
             return;
           }
 
@@ -691,14 +693,14 @@ function HomeContent({ session }: HomeContentProps) {
 
         // Get the primary invoice key from the document
         const rj = (row.raw_json || {}) as Record<string, unknown>;
-        const primary = ((rj.anchor_key || rj.invoice || '') as string)
+        const primary = ((rj.anchor_key || rj.invoice || "") as string)
           .toString()
           .trim();
 
         if (primary) {
           console.log(`Primary invoice for document ${row.id}: '${primary}'`);
           // Track the invoice number if this is an actual invoice document
-          if (row.document_type === 'invoice') {
+          if (row.document_type === "invoice") {
             trackProcessedInvoice(primary);
           }
           ensureGroup(primary);
@@ -707,9 +709,9 @@ function HomeContent({ session }: HomeContentProps) {
         }
 
         // Handle EFT receipts that reference other invoices
-        if (row.document_type === 'eft_receipt') {
-          const secondInvoice = ((rj.second_invoice || '') as string).trim();
-          const thirdInvoice = ((rj.third_invoice || '') as string).trim();
+        if (row.document_type === "eft_receipt") {
+          const secondInvoice = ((rj.second_invoice || "") as string).trim();
+          const thirdInvoice = ((rj.third_invoice || "") as string).trim();
 
           // Only process EFT references that match our processed invoices
           const validReferences = [secondInvoice, thirdInvoice].filter(
@@ -723,7 +725,7 @@ function HomeContent({ session }: HomeContentProps) {
             ensureGroup(invoice);
           });
 
-          console.log('Processed EFT receipt with references:', {
+          console.log("Processed EFT receipt with references:", {
             id: row.id,
             primary,
             secondInvoice,
@@ -746,7 +748,7 @@ function HomeContent({ session }: HomeContentProps) {
           }
         }
       } catch (error) {
-        console.error('Error in mergeRowIntoGroups:', error);
+        console.error("Error in mergeRowIntoGroups:", error);
       } finally {
         console.groupEnd();
       }
@@ -760,17 +762,17 @@ function HomeContent({ session }: HomeContentProps) {
 
     const loadRecyclingDocs = async () => {
       // Only load recycling docs when groups tab is active and we have documents loaded
-      if (activeTab !== 'groups' || !isDocumentsLoaded) return;
+      if (activeTab !== "groups" || !isDocumentsLoaded) return;
 
       try {
-        console.log('📊 [PERFORMANCE] Loading recycling docs...');
-        console.time('⏱️ [PERFORMANCE] Recycling docs loading');
+        console.log("📊 [PERFORMANCE] Loading recycling docs...");
+        console.time("⏱️ [PERFORMANCE] Recycling docs loading");
 
         const supa = getSupabaseBrowser();
         const { data, error } = await supa
-          .from('recycling_docs')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .from("recycling_docs")
+          .select("*")
+          .order("created_at", { ascending: false });
 
         if (!cancelled && !error && data) {
           console.log(`✅ [PERFORMANCE] Loaded ${data.length} recycling docs`);
@@ -781,9 +783,9 @@ function HomeContent({ session }: HomeContentProps) {
                 ...doc,
                 // Ensure we have all required fields with defaults
                 tonnage_tons: doc.tonnage_tons || 0,
-                country: doc.country || doc.origin || '',
-                plastic_type: doc.plastic_type || 'Unknown',
-                recycler_company: doc.recycler_company || 'Unknown',
+                country: doc.country || doc.origin || "",
+                plastic_type: doc.plastic_type || "Unknown",
+                recycler_company: doc.recycler_company || "Unknown",
                 plastiks_collection_id: doc.plastiks_collection_id || null,
                 plastiks_collection_address:
                   doc.plastiks_collection_address || null,
@@ -796,9 +798,9 @@ function HomeContent({ session }: HomeContentProps) {
           setRecyclingDocs(docsMap);
         }
       } catch (error) {
-        console.error('Error loading recycling docs:', error);
+        console.error("Error loading recycling docs:", error);
       } finally {
-        console.timeEnd('⏱️ [PERFORMANCE] Recycling docs loading');
+        console.timeEnd("⏱️ [PERFORMANCE] Recycling docs loading");
       }
     };
 
@@ -816,20 +818,20 @@ function HomeContent({ session }: HomeContentProps) {
     const loadProcessedDocuments = async () => {
       try {
         console.log(
-          '📄 [REVIEW] Loading ALL processed documents from database...'
+          "📄 [REVIEW] Loading ALL processed documents from database..."
         );
 
         const { data, error } = await supabase
-          .from('parsed_documents')
+          .from("parsed_documents")
           .select(
-            'id, document_type, file_url, created_at, raw_json, anchor_key'
+            "id, document_type, file_url, created_at, raw_json, anchor_key"
           )
-          .eq('user_id', session.user.id)
-          .order('created_at', { ascending: false })
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false })
           .limit(100);
 
         if (error) {
-          console.error('❌ [REVIEW] Failed to load parsed_documents:', error);
+          console.error("❌ [REVIEW] Failed to load parsed_documents:", error);
           return;
         }
 
@@ -848,8 +850,8 @@ function HomeContent({ session }: HomeContentProps) {
             documentType: dbDoc.document_type as DocumentTypeKey,
             data: dbDoc.raw_json as AppDocument,
             databaseId: dbDoc.id,
-            storageType: 'database' as const,
-            status: 'completed' as ProcessingStatus,
+            storageType: "database" as const,
+            status: "completed" as ProcessingStatus,
             fileUrl: dbDoc.file_url || undefined,
           })
         );
@@ -860,7 +862,7 @@ function HomeContent({ session }: HomeContentProps) {
           `✅ [REVIEW] Set ${convertedDocs.length} documents from database to Review tab`
         );
       } catch (error) {
-        console.error('💥 [REVIEW] Error loading processed documents:', error);
+        console.error("💥 [REVIEW] Error loading processed documents:", error);
       }
     };
 
@@ -875,32 +877,32 @@ function HomeContent({ session }: HomeContentProps) {
   // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
   useEffect(() => {
     // Only load groups data when the groups tab is active
-    if (activeTab !== 'groups') return;
+    if (activeTab !== "groups") return;
 
     let cancelled = false;
 
     const loadInitial = async () => {
       setIsGroupsLoading(true);
-      console.time('⏱️ [PERFORMANCE] Groups data loading');
+      console.time("⏱️ [PERFORMANCE] Groups data loading");
 
       try {
-        console.log('📊 [PERFORMANCE] Loading parsed documents for groups...');
+        console.log("📊 [PERFORMANCE] Loading parsed documents for groups...");
         console.log(
-          '📊 [PERFORMANCE] Loading parsed documents for current user:',
+          "📊 [PERFORMANCE] Loading parsed documents for current user:",
           session.user.email
         );
-        console.log('🔍 [DEBUG] User ID for filtering:', session.user.id);
+        console.log("🔍 [DEBUG] User ID for filtering:", session.user.id);
 
         const { data, error } = await supabase
-          .from('parsed_documents')
-          .select('id, document_type, file_url, created_at, raw_json, user_id')
-          .eq('user_id', session.user.id) // 👈 FILTER BY USER ID
-          .order('created_at', { ascending: false })
+          .from("parsed_documents")
+          .select("id, document_type, file_url, created_at, raw_json, user_id")
+          .eq("user_id", session.user.id) // 👈 FILTER BY USER ID
+          .order("created_at", { ascending: false })
           .limit(500);
 
         if (error) {
-          console.error('❌ [GROUPS] Failed to load parsed_documents:', error);
-          console.error('❌ [GROUPS] Error details:', error);
+          console.error("❌ [GROUPS] Failed to load parsed_documents:", error);
+          console.error("❌ [GROUPS] Error details:", error);
           setIsGroupsLoading(false);
           return;
         }
@@ -910,14 +912,14 @@ function HomeContent({ session }: HomeContentProps) {
         console.log(
           `📊 [GROUPS] Loaded ${data?.length || 0} documents for user`
         );
-        console.log('🔍 [GROUPS] Raw data sample:', data?.slice(0, 2));
+        console.log("🔍 [GROUPS] Raw data sample:", data?.slice(0, 2));
 
         // Check if documents have the correct user_id
         if (data && data.length > 0) {
           const userIds = [...new Set(data.map((d) => d.user_id))];
-          console.log('🔍 [GROUPS] User IDs in loaded documents:', userIds);
-          console.log('🔍 [GROUPS] Expected user ID:', session.user.id);
-          console.log('🔍 [GROUPS] Document types found:', [
+          console.log("🔍 [GROUPS] User IDs in loaded documents:", userIds);
+          console.log("🔍 [GROUPS] Expected user ID:", session.user.id);
+          console.log("🔍 [GROUPS] Document types found:", [
             ...new Set(data.map((d) => d.document_type)),
           ]);
         }
@@ -932,7 +934,7 @@ function HomeContent({ session }: HomeContentProps) {
 
             // Get the primary invoice key from the document
             const rj = (row.raw_json || {}) as Record<string, unknown>;
-            const primary = (rj.anchor_key || rj.invoice || '') as string;
+            const primary = (rj.anchor_key || rj.invoice || "") as string;
 
             if (!primary) return;
 
@@ -941,7 +943,7 @@ function HomeContent({ session }: HomeContentProps) {
 
             // Skip if document type is not one we care about
             if (
-              !['invoice', 'eft_receipt', 'e-way-bill'].includes(
+              !["invoice", "eft_receipt", "e-way-bill"].includes(
                 row.document_type
               )
             ) {
@@ -962,20 +964,20 @@ function HomeContent({ session }: HomeContentProps) {
           setIsDocumentsLoaded(true);
           setHasInitializedGroups(true);
         } else {
-          console.log('📭 [GROUPS] No documents found for user');
+          console.log("📭 [GROUPS] No documents found for user");
           setGroups({});
           setIsDocumentsLoaded(true);
           setHasInitializedGroups(true);
         }
       } catch (error) {
-        console.error('❌ [GROUPS] Error loading initial data:', error);
+        console.error("❌ [GROUPS] Error loading initial data:", error);
         setGroups({});
         setIsDocumentsLoaded(true);
         setHasInitializedGroups(true);
       } finally {
         if (!cancelled) {
           setIsGroupsLoading(false);
-          console.timeEnd('⏱️ [PERFORMANCE] Groups data loading');
+          console.timeEnd("⏱️ [PERFORMANCE] Groups data loading");
         }
       }
     };
@@ -987,7 +989,7 @@ function HomeContent({ session }: HomeContentProps) {
 
     // Define the payload type for the postgres_changes event
     type PostgresChangePayload = {
-      eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+      eventType: "INSERT" | "UPDATE" | "DELETE";
       new: Record<string, unknown> | null;
       old: Record<string, unknown> | null;
       schema: string;
@@ -995,10 +997,10 @@ function HomeContent({ session }: HomeContentProps) {
     };
 
     const channel = supabase
-      .channel('parsed_documents_changes')
+      .channel("parsed_documents_changes")
       .on<PostgresChangePayload>(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'parsed_documents' },
+        "postgres_changes",
+        { event: "*", schema: "public", table: "parsed_documents" },
         (payload) => {
           setGroups((prev: Record<string, InvoiceGroup>) => {
             const map = { ...prev };
@@ -1006,24 +1008,24 @@ function HomeContent({ session }: HomeContentProps) {
               raw_json: Record<string, unknown>;
             };
             // Accept all realtime rows; show immediately
-            if (payload.eventType === 'DELETE' && row) {
+            if (payload.eventType === "DELETE" && row) {
               // Rebuild affected groups conservatively: remove this id from all types in its groups
               const rj = (row.raw_json || {}) as Record<string, unknown>;
               const keys = [
-                (rj as Record<string, unknown>)['anchor_key'] ||
-                  (rj as Record<string, unknown>)['invoice'],
-                (rj as Record<string, unknown>)['second_invoice'],
-                (rj as Record<string, unknown>)['third_invoice'],
+                (rj as Record<string, unknown>)["anchor_key"] ||
+                  (rj as Record<string, unknown>)["invoice"],
+                (rj as Record<string, unknown>)["second_invoice"],
+                (rj as Record<string, unknown>)["third_invoice"],
               ]
                 .filter(Boolean)
                 .map((s) => String(s).trim());
               keys.forEach((k: string) => {
                 const g = map[k];
                 if (!g) return;
-                const types: Array<'invoice' | 'eft_receipt' | 'e-way-bill'> = [
-                  'invoice',
-                  'eft_receipt',
-                  'e-way-bill',
+                const types: Array<"invoice" | "eft_receipt" | "e-way-bill"> = [
+                  "invoice",
+                  "eft_receipt",
+                  "e-way-bill",
                 ];
                 types.forEach((t) => {
                   const list = g.docs[t];
@@ -1033,8 +1035,8 @@ function HomeContent({ session }: HomeContentProps) {
               return { ...map };
             }
             if (
-              payload.eventType === 'INSERT' ||
-              payload.eventType === 'UPDATE'
+              payload.eventType === "INSERT" ||
+              payload.eventType === "UPDATE"
             ) {
               mergeRowIntoGroups(row, map);
             }
@@ -1062,7 +1064,7 @@ function HomeContent({ session }: HomeContentProps) {
     setSubmitting((prev) => ({ ...prev, [invoice]: true }));
     setSubmitResult((prev) => ({
       ...prev,
-      [invoice]: { ok: false, message: '' },
+      [invoice]: { ok: false, message: "" },
     }));
     try {
       console.log(`[UI] Promote starting for invoice='${invoice}'`);
@@ -1073,7 +1075,7 @@ function HomeContent({ session }: HomeContentProps) {
           )}&invoice=${encodeURIComponent(invoice)}`
         : `/api/recycling-docs/promote?invoice=${encodeURIComponent(invoice)}`;
       // Step 1: Promote latest parsed_documents rows into recycling_docs
-      const promoteResp = await fetch(promoteUrl, { method: 'POST' });
+      const promoteResp = await fetch(promoteUrl, { method: "POST" });
       const promoteJson = await promoteResp.json().catch(() => ({}));
       console.log(`[UI] Promote response ok=${promoteResp.ok}`, promoteJson);
       if (!promoteResp.ok) {
@@ -1083,7 +1085,7 @@ function HomeContent({ session }: HomeContentProps) {
             ok: false,
             message: promoteJson?.error
               ? `Promote failed: ${promoteJson.error}`
-              : 'Promote failed',
+              : "Promote failed",
           },
         }));
         console.warn(`[UI] Promote failed for invoice='${invoice}'`);
@@ -1098,14 +1100,14 @@ function HomeContent({ session }: HomeContentProps) {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        throw new Error('No valid session found');
+        throw new Error("No valid session found");
       }
 
       const verifyUrl = `/api/human-verify?invoice=${encodeURIComponent(
         invoice
       )}`;
       const resp = await fetch(verifyUrl, {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -1115,12 +1117,12 @@ function HomeContent({ session }: HomeContentProps) {
 
       if (resp.ok) {
         const individualResult = json?.results?.[0];
-        const isActuallySucceeded = individualResult?.status === 'verified';
+        const isActuallySucceeded = individualResult?.status === "verified";
 
         if (isActuallySucceeded) {
           setSubmitResult((prev) => ({
             ...prev,
-            [invoice]: { ok: true, message: 'Human Verified' },
+            [invoice]: { ok: true, message: "Human Verified" },
           }));
           console.log(
             `[UI] Human verification succeeded for invoice='${invoice}'`
@@ -1128,7 +1130,7 @@ function HomeContent({ session }: HomeContentProps) {
         } else {
           // HTTP 200 but internal failure
           const errorMessage =
-            individualResult?.error || 'Human verification failed';
+            individualResult?.error || "Human verification failed";
           setSubmitResult((prev) => ({
             ...prev,
             [invoice]: { ok: false, message: errorMessage },
@@ -1143,7 +1145,7 @@ function HomeContent({ session }: HomeContentProps) {
           ...prev,
           [invoice]: {
             ok: false,
-            message: json?.error || 'Verification failed',
+            message: json?.error || "Verification failed",
           },
         }));
         console.warn(`[UI] Human verification failed for invoice='${invoice}'`);
@@ -1199,7 +1201,7 @@ function HomeContent({ session }: HomeContentProps) {
         ...prev,
         [invoice]: {
           ok: false,
-          message: (e as Error)?.message || 'Network error',
+          message: (e as Error)?.message || "Network error",
         },
       }));
       console.error(`[UI] Submit error for invoice='${invoice}'`, e);
@@ -1282,7 +1284,7 @@ function HomeContent({ session }: HomeContentProps) {
     // 🚀 CRITICAL FIX: Only process files that haven't been processed yet
     const newFilesToProcess = files.filter((_, index) => {
       const doc = processedDocuments[index];
-      return !doc || doc.status === 'pending';
+      return !doc || doc.status === "pending";
     });
 
     if (newFilesToProcess.length === 0) {
@@ -1330,12 +1332,12 @@ function HomeContent({ session }: HomeContentProps) {
           );
           updated.push({
             fileName: file.name,
-            documentType: '',
+            documentType: "",
             data: JSON.parse(
               JSON.stringify(documentTemplates.invoice)
             ) as AppDocument,
-            fileUrl: '',
-            status: 'pending',
+            fileUrl: "",
+            status: "pending",
           });
         } else {
           console.log(
@@ -1362,7 +1364,7 @@ function HomeContent({ session }: HomeContentProps) {
         const doc = docIndex >= 0 ? processedDocuments[docIndex] : null;
 
         // Skip files that are already processed
-        if (doc && doc.status === 'completed') {
+        if (doc && doc.status === "completed") {
           console.log(
             `⏭️ Frontend: Skipping already processed file ${i + 1}: ${
               currentFile.name
@@ -1404,7 +1406,7 @@ function HomeContent({ session }: HomeContentProps) {
         setProcessedDocuments((prev) =>
           prev.map((doc) =>
             doc.fileName === currentFile.name
-              ? { ...doc, status: 'processing' }
+              ? { ...doc, status: "processing" }
               : doc
           )
         );
@@ -1414,7 +1416,7 @@ function HomeContent({ session }: HomeContentProps) {
         try {
           console.log(`📦 Frontend: Creating FormData for API request`);
           const formData = new FormData();
-          formData.append('file', currentFile);
+          formData.append("file", currentFile);
 
           // Log session and token details
           console.log(`🔐 Frontend: Auth session details:`, {
@@ -1440,8 +1442,8 @@ function HomeContent({ session }: HomeContentProps) {
               : null,
           });
 
-          const response = await fetch('/api/process-document', {
-            method: 'POST',
+          const response = await fetch("/api/process-document", {
+            method: "POST",
             headers,
             body: formData,
           });
@@ -1541,7 +1543,7 @@ function HomeContent({ session }: HomeContentProps) {
                 fileName: currentFile.name,
                 documentType: result.data.document_type,
                 data: result.data,
-                status: 'completed' as const,
+                status: "completed" as const,
                 fileUrl: result.fileUrl,
                 databaseId: result.databaseId,
                 storageType: result.storageType,
@@ -1585,8 +1587,8 @@ function HomeContent({ session }: HomeContentProps) {
                 doc.fileName === currentFile.name
                   ? {
                       ...doc,
-                      status: 'error' as const,
-                      error: result.error || 'Processing failed',
+                      status: "error" as const,
+                      error: result.error || "Processing failed",
                     }
                   : doc
               )
@@ -1605,8 +1607,8 @@ function HomeContent({ session }: HomeContentProps) {
               doc.fileName === currentFile.name
                 ? {
                     ...doc,
-                    status: 'error' as const,
-                    error: 'Network error or backend unavailable',
+                    status: "error" as const,
+                    error: "Network error or backend unavailable",
                   }
                 : doc
             )
@@ -1639,10 +1641,10 @@ function HomeContent({ session }: HomeContentProps) {
       console.log(`🎯 ===============================================`);
 
       const completedDocs = processedDocuments.filter(
-        (doc) => doc.status === 'completed'
+        (doc) => doc.status === "completed"
       );
       const failedDocs = processedDocuments.filter(
-        (doc) => doc.status === 'error'
+        (doc) => doc.status === "error"
       );
       const successRate = Math.round(
         (completedDocs.length / files.length) * 100
@@ -1679,38 +1681,38 @@ function HomeContent({ session }: HomeContentProps) {
           return;
         }
 
-        if (doc.status === 'completed' && doc.data) {
+        if (doc.status === "completed" && doc.data) {
           console.log(`      🏷️  Type: ${doc.data.document_type}`);
 
           // Safe property access with type assertions
           const docData = doc.data as unknown as Record<string, unknown>;
-          const bankName = docData.bank_name || 'N/A';
+          const bankName = docData.bank_name || "N/A";
           const title =
-            docData.document_title || docData.invoice_title || 'N/A';
+            docData.document_title || docData.invoice_title || "N/A";
 
           console.log(`      🏦 Bank: ${bankName}`);
           console.log(`      📝 Title: ${title}`);
 
           // Extract amount with safe property access
-          let documentAmount: string | number = 'N/A';
-          if (doc.data.document_type === 'eft_receipt') {
+          let documentAmount: string | number = "N/A";
+          if (doc.data.document_type === "eft_receipt") {
             const transactionDetails = docData.transaction_details as
               | Record<string, unknown>
               | undefined;
             documentAmount =
-              (transactionDetails?.amount as string | number) || 'N/A';
-          } else if (doc.data.document_type === 'invoice') {
+              (transactionDetails?.amount as string | number) || "N/A";
+          } else if (doc.data.document_type === "invoice") {
             const totalSummary = docData.total_summary as
               | Record<string, unknown>
               | undefined;
             documentAmount =
-              (totalSummary?.total_invoice_amount as string | number) || 'N/A';
+              (totalSummary?.total_invoice_amount as string | number) || "N/A";
           }
 
           console.log(`      💰 Amount: ${documentAmount}`);
           console.log(`      ☁️  Status: ✅ SUCCESS`);
           console.log(
-            `      🔗 File URL: ${doc.fileUrl ? 'Generated' : 'Missing'}`
+            `      🔗 File URL: ${doc.fileUrl ? "Generated" : "Missing"}`
           );
         } else {
           console.log(`      🏷️  Type: Failed to process`);
@@ -1718,7 +1720,7 @@ function HomeContent({ session }: HomeContentProps) {
           console.log(`      📝 Title: N/A`);
           console.log(`      💰 Amount: N/A`);
           console.log(`      ☁️  Status: ❌ FAILED`);
-          console.log(`      ⚠️  Error: ${doc?.error || 'Unknown error'}`);
+          console.log(`      ⚠️  Error: ${doc?.error || "Unknown error"}`);
         }
       });
 
@@ -1749,16 +1751,16 @@ function HomeContent({ session }: HomeContentProps) {
 
       // Calculate success/error counts
       const completedCount = processedDocuments.filter(
-        (doc) => doc.status === 'completed'
+        (doc) => doc.status === "completed"
       ).length;
       const errorCount = processedDocuments.filter(
-        (doc) => doc.status === 'error'
+        (doc) => doc.status === "error"
       ).length;
       console.log(
         `📈 Frontend: Results - Completed: ${completedCount}, Errors: ${errorCount}`
       );
 
-      setActiveTab('results');
+      setActiveTab("results");
       console.log(`🔄 Frontend: Switched to results tab`);
 
       // 🚀 Reset groups when new documents are processed (but keep documents loaded)
@@ -1780,7 +1782,7 @@ function HomeContent({ session }: HomeContentProps) {
 
   const handleDownloadCSV = () => {
     const completedDocs = processedDocuments.filter(
-      (doc) => doc.status === 'completed'
+      (doc) => doc.status === "completed"
     );
 
     console.log(`📥 Frontend: Starting CSV download`);
@@ -1799,14 +1801,14 @@ function HomeContent({ session }: HomeContentProps) {
     // Flatten nested objects for CSV
     const flattenObject = (
       obj: Record<string, unknown>,
-      prefix = ''
+      prefix = ""
     ): Record<string, unknown> => {
       const flattened: Record<string, unknown> = {};
 
       for (const key in obj) {
         if (
           obj[key] !== null &&
-          typeof obj[key] === 'object' &&
+          typeof obj[key] === "object" &&
           !Array.isArray(obj[key])
         ) {
           Object.assign(
@@ -1818,7 +1820,7 @@ function HomeContent({ session }: HomeContentProps) {
           );
         } else if (Array.isArray(obj[key])) {
           (obj[key] as unknown[]).forEach((item: unknown, index: number) => {
-            if (typeof item === 'object' && item !== null) {
+            if (typeof item === "object" && item !== null) {
               Object.assign(
                 flattened,
                 flattenObject(
@@ -1849,32 +1851,32 @@ function HomeContent({ session }: HomeContentProps) {
     });
 
     const headers = Array.from(allFields);
-    csvRows.push(headers.join(','));
+    csvRows.push(headers.join(","));
 
     // Add data rows
     completedDocs.forEach((doc) => {
       const flattened = flattenObject({ fileName: doc.fileName, ...doc.data });
       const row = headers.map((header) => {
-        const value = flattened[header] || '';
-        return typeof value === 'string' &&
-          (value.includes(',') || value.includes('"'))
+        const value = flattened[header] || "";
+        return typeof value === "string" &&
+          (value.includes(",") || value.includes('"'))
           ? `"${value.replace(/"/g, '""')}"` // escape double quotes
           : value;
       });
-      csvRows.push(row.join(','));
+      csvRows.push(row.join(","));
     });
 
     // Download CSV
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     const fileName = `ocean-integrity-data-${
-      new Date().toISOString().split('T')[0]
+      new Date().toISOString().split("T")[0]
     }.csv`;
-    link.setAttribute('href', url);
-    link.setAttribute('download', fileName);
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", url);
+    link.setAttribute("download", fileName);
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1886,11 +1888,11 @@ function HomeContent({ session }: HomeContentProps) {
   };
 
   const completedCount = useMemo(
-    () => processedDocuments.filter((d) => d.status === 'completed').length,
+    () => processedDocuments.filter((d) => d.status === "completed").length,
     [processedDocuments]
   );
   const errorCount = useMemo(
-    () => processedDocuments.filter((d) => d.status === 'error').length,
+    () => processedDocuments.filter((d) => d.status === "error").length,
     [processedDocuments]
   );
 
@@ -1899,26 +1901,47 @@ function HomeContent({ session }: HomeContentProps) {
     `📊 Frontend State: Files: ${files.length}, Processed: ${processedDocuments.length}, Completed: ${completedCount}, Errors: ${errorCount}`
   );
 
+  // Add this useEffect to test Redis via API
+  useEffect(() => {
+    const testRedisViaAPI = async () => {
+      try {
+        console.log("🔍 [CLIENT] Testing Redis via API...");
+        const response = await fetch("/api/test-redis");
+        const result = await response.json();
+
+        if (result.success) {
+          console.log("✅ [CLIENT] Redis API test successful:", result);
+        } else {
+          console.error("❌ [CLIENT] Redis API test failed:", result.error);
+        }
+      } catch (error) {
+        console.error("❌ [CLIENT] Redis API request failed:", error);
+      }
+    };
+
+    testRedisViaAPI();
+  }, []);
+
   return (
-    <main className='min-h-screen bg-gradient-to-b from-slate-50 to-slate-100'>
-      <div className='container mx-auto py-8 px-4'>
-        <header className='mb-8 text-center'>
-          <div className='relative h-[300px] w-full overflow-hidden'>
-            <VideoText src='https://cdn.magicui.design/ocean-small.webm'>
+    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+      <div className="container mx-auto py-8 px-4">
+        <header className="mb-8 text-center">
+          <div className="relative h-[300px] w-full overflow-hidden">
+            <VideoText src="https://cdn.magicui.design/ocean-small.webm">
               OCEAN/AI
             </VideoText>
           </div>
 
-          <h2 className='text-2xl font-semibold text-slate-700 mt-2'>
+          <h2 className="text-2xl font-semibold text-slate-700 mt-2">
             Automated Plastic Credit Verification
           </h2>
-          <p className='text-slate-600 mt-4 max-w-3xl mx-auto'>
+          <p className="text-slate-600 mt-4 max-w-3xl mx-auto">
             Streamline your sustainability reporting with intelligent document
             processing and blockchain-backed transparency.
           </p>
 
-          <div className='mt-6 text-left max-w-3xl mx-auto space-y-4'>
-            <h3 className='text-xl font-semibold text-slate-800'>
+          <div className="mt-6 text-left max-w-3xl mx-auto space-y-4">
+            <h3 className="text-xl font-semibold text-slate-800">
               🚀 What It Does
             </h3>
             <p>
@@ -1927,9 +1950,9 @@ function HomeContent({ session }: HomeContentProps) {
               our AI do the heavy lifting:
             </p>
 
-            <ul className='space-y-3 list-disc pl-5'>
-              <li className='flex items-start'>
-                <span className='mr-2'>🔍</span>
+            <ul className="space-y-3 list-disc pl-5">
+              <li className="flex items-start">
+                <span className="mr-2">🔍</span>
                 <span>
                   <strong>Automatic Data Extraction</strong>
                   <br />
@@ -1937,8 +1960,8 @@ function HomeContent({ session }: HomeContentProps) {
                   documents with high accuracy.
                 </span>
               </li>
-              <li className='flex items-start'>
-                <span className='mr-2'>📁</span>
+              <li className="flex items-start">
+                <span className="mr-2">📁</span>
                 <span>
                   <strong>Smart Grouping</strong>
                   <br />
@@ -1946,8 +1969,8 @@ function HomeContent({ session }: HomeContentProps) {
                   accelerate verification.
                 </span>
               </li>
-              <li className='flex items-start'>
-                <span className='mr-2'>✅</span>
+              <li className="flex items-start">
+                <span className="mr-2">✅</span>
                 <span>
                   <strong>Plastic Credit Verification</strong>
                   <br />
@@ -1956,8 +1979,8 @@ function HomeContent({ session }: HomeContentProps) {
                   automatically flagged to be uploaded.
                 </span>
               </li>
-              <li className='flex items-start'>
-                <span className='mr-2'>📊</span>
+              <li className="flex items-start">
+                <span className="mr-2">📊</span>
                 <span>
                   <strong>Simple Analytics</strong>
                   <br />
@@ -1968,40 +1991,40 @@ function HomeContent({ session }: HomeContentProps) {
           </div>
         </header>
 
-        <div className='max-w-4xl mx-auto'>
+        <div className="max-w-4xl mx-auto">
           <Tabs
             value={activeTab}
             onValueChange={(v: string) =>
-              setActiveTab(v as 'upload' | 'results' | 'groups' | 'submit')
+              setActiveTab(v as "upload" | "results" | "groups" | "submit")
             }
-            className='space-y-6'
+            className="space-y-6"
           >
-            <div className='flex justify-center'>
-              <TabsList className='grid w-full grid-cols-3'>
-                <TabsTrigger value='upload' className='text-base py-1'>
+            <div className="flex justify-center">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="upload" className="text-base py-1">
                   Upload & Process
                 </TabsTrigger>
                 <TabsTrigger
-                  value='results'
+                  value="results"
                   disabled={completedCount === 0}
-                  className='text-base py-1'
+                  className="text-base py-1"
                 >
                   Review Documents
                 </TabsTrigger>
-                <TabsTrigger value='groups' className='text-base py-1'>
+                <TabsTrigger value="groups" className="text-base py-1">
                   Verify & Submit
                 </TabsTrigger>
               </TabsList>
             </div>
 
-            <TabsContent value='upload' className='space-y-6'>
-              <Card className='shadow-md border-slate-200'>
-                <CardContent className='p-6'>
-                  <div className='mb-6'>
-                    <h2 className='text-xl font-semibold mb-2'>
+            <TabsContent value="upload" className="space-y-6">
+              <Card className="shadow-md border-slate-200">
+                <CardContent className="p-6">
+                  <div className="mb-6">
+                    <h2 className="text-xl font-semibold mb-2">
                       Document Upload
                     </h2>
-                    <p className='text-slate-600 text-sm'>
+                    <p className="text-slate-600 text-sm">
                       Upload your accounting documents and our AI will process
                       them to identify and extract the relevant data
                     </p>
@@ -2010,21 +2033,21 @@ function HomeContent({ session }: HomeContentProps) {
                   <FileUploader
                     onFilesAdded={handleFilesAdded}
                     maxFiles={1000}
-                    acceptedFileTypes={['.pdf']}
+                    acceptedFileTypes={[".pdf"]}
                   />
 
                   {files.length > 0 && (
-                    <div className='mt-8'>
-                      <div className='flex items-center justify-between mb-4'>
-                        <h3 className='text-lg font-medium'>
+                    <div className="mt-8">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-medium">
                           Uploaded Documents
                         </h3>
-                        <Badge variant='outline' className='text-slate-600'>
-                          {files.length} {files.length === 1 ? 'file' : 'files'}
+                        <Badge variant="outline" className="text-slate-600">
+                          {files.length} {files.length === 1 ? "file" : "files"}
                         </Badge>
                       </div>
 
-                      <div className='space-y-3'>
+                      <div className="space-y-3">
                         {files.map((file, index) => {
                           const doc = processedDocuments[index];
                           const docType =
@@ -2032,53 +2055,53 @@ function HomeContent({ session }: HomeContentProps) {
                           const DocIcon =
                             documentTypes[docType]?.icon || FileText;
                           const iconColor =
-                            documentTypes[docType]?.color || 'text-slate-500';
+                            documentTypes[docType]?.color || "text-slate-500";
 
                           return (
                             <div
                               key={index}
-                              className='flex items-center justify-between p-4 bg-white border rounded-lg shadow-sm'
+                              className="flex items-center justify-between p-4 bg-white border rounded-lg shadow-sm"
                             >
-                              <div className='flex items-center gap-3'>
-                                <div className='p-2 bg-blue-50 rounded-md relative'>
-                                  {doc?.status === 'processing' &&
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-50 rounded-md relative">
+                                  {doc?.status === "processing" &&
                                   currentProcessingIndex === index ? (
-                                    <Loader2 className='h-5 w-5 text-blue-500 animate-spin' />
-                                  ) : doc?.status === 'completed' ? (
+                                    <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+                                  ) : doc?.status === "completed" ? (
                                     <DocIcon
                                       className={`h-5 w-5 ${iconColor}`}
                                     />
-                                  ) : doc?.status === 'error' ? (
-                                    <AlertCircle className='h-5 w-5 text-red-500' />
+                                  ) : doc?.status === "error" ? (
+                                    <AlertCircle className="h-5 w-5 text-red-500" />
                                   ) : (
-                                    <FileText className='h-5 w-5 text-slate-500' />
+                                    <FileText className="h-5 w-5 text-slate-500" />
                                   )}
                                 </div>
                                 <div>
-                                  <p className='font-medium text-slate-800'>
+                                  <p className="font-medium text-slate-800">
                                     {file.name}
                                   </p>
-                                  <div className='flex items-center gap-2 text-xs text-slate-500'>
+                                  <div className="flex items-center gap-2 text-xs text-slate-500">
                                     <span>
                                       {(file.size / 1024).toFixed(1)} KB
                                     </span>
-                                    {doc?.status === 'processing' &&
+                                    {doc?.status === "processing" &&
                                       currentProcessingIndex === index && (
-                                        <span className='text-blue-600 flex items-center gap-1'>
-                                          <Clock className='h-3 w-3' />
+                                        <span className="text-blue-600 flex items-center gap-1">
+                                          <Clock className="h-3 w-3" />
                                           Processing...
                                         </span>
                                       )}
-                                    {doc?.status === 'completed' && (
-                                      <span className='text-green-600 flex items-center gap-1'>
-                                        <CheckCircle2 className='h-3 w-3' />
+                                    {doc?.status === "completed" && (
+                                      <span className="text-green-600 flex items-center gap-1">
+                                        <CheckCircle2 className="h-3 w-3" />
                                         {documentTypes[docType]?.title ||
-                                          'Completed'}
+                                          "Completed"}
                                       </span>
                                     )}
-                                    {doc?.status === 'error' && (
-                                      <span className='text-red-600 flex items-center gap-1'>
-                                        <AlertCircle className='h-3 w-3' />
+                                    {doc?.status === "error" && (
+                                      <span className="text-red-600 flex items-center gap-1">
+                                        <AlertCircle className="h-3 w-3" />
                                         Error
                                       </span>
                                     )}
@@ -2087,10 +2110,10 @@ function HomeContent({ session }: HomeContentProps) {
                               </div>
                               {!isProcessing && (
                                 <Button
-                                  variant='ghost'
-                                  size='sm'
+                                  variant="ghost"
+                                  size="sm"
                                   onClick={() => handleRemoveFile(index)}
-                                  className='text-slate-500 hover:text-red-500'
+                                  className="text-slate-500 hover:text-red-500"
                                 >
                                   Remove
                                 </Button>
@@ -2100,33 +2123,33 @@ function HomeContent({ session }: HomeContentProps) {
                         })}
                       </div>
 
-                      <div className='mt-8'>
+                      <div className="mt-8">
                         {isProcessing ? (
-                          <div className='space-y-4'>
-                            <div className='flex items-center justify-between'>
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
                               <div>
-                                <p className='font-medium text-slate-800'>
-                                  Processing Document{' '}
+                                <p className="font-medium text-slate-800">
+                                  Processing Document{" "}
                                   {currentProcessingIndex + 1} of {files.length}
                                 </p>
-                                <p className='text-sm text-slate-600'>
+                                <p className="text-sm text-slate-600">
                                   AI is analyzing each document individually...
                                 </p>
                               </div>
-                              <Loader2 className='h-5 w-5 text-blue-500 animate-spin' />
+                              <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
                             </div>
                             <Progress
                               value={processingProgress}
-                              className='h-2'
+                              className="h-2"
                             />
                           </div>
                         ) : (
                           <Button
                             onClick={processFiles}
                             disabled={files.length === 0}
-                            className='w-full py-6 text-lg gap-2'
+                            className="w-full py-6 text-lg gap-2"
                           >
-                            Process Documents <ArrowRight className='h-5 w-5' />
+                            Process Documents <ArrowRight className="h-5 w-5" />
                           </Button>
                         )}
                       </div>
@@ -2135,24 +2158,24 @@ function HomeContent({ session }: HomeContentProps) {
 
                   {errorCount > 0 && !isProcessing && (
                     <Alert
-                      className='mt-6 bg-red-50 border-red-200'
-                      variant='destructive'
+                      className="mt-6 bg-red-50 border-red-200"
+                      variant="destructive"
                     >
-                      <AlertCircle className='h-4 w-4' />
+                      <AlertCircle className="h-4 w-4" />
                       <AlertTitle>Processing Errors</AlertTitle>
                       <AlertDescription>
-                        {errorCount} document{errorCount > 1 ? 's' : ''} failed
+                        {errorCount} document{errorCount > 1 ? "s" : ""} failed
                         to process. Check the results tab for details.
                       </AlertDescription>
                     </Alert>
                   )}
 
                   {completedCount > 0 && !isProcessing && (
-                    <Alert className='mt-6 bg-green-50 border-green-200'>
-                      <CheckCircle2 className='h-4 w-4 text-green-600' />
+                    <Alert className="mt-6 bg-green-50 border-green-200">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
                       <AlertTitle>Processing Complete</AlertTitle>
                       <AlertDescription>
-                        {completedCount} document{completedCount > 1 ? 's' : ''}{' '}
+                        {completedCount} document{completedCount > 1 ? "s" : ""}{" "}
                         processed successfully.
                         <p>
                           Click the &quot;Review &amp; Export&quot; tab to see
@@ -2164,14 +2187,14 @@ function HomeContent({ session }: HomeContentProps) {
 
                   {showAlreadyProcessedAlert && (
                     <Alert
-                      className='mt-6 bg-amber-50 border-amber-400 border-2 shadow-lg'
-                      variant='destructive'
+                      className="mt-6 bg-amber-50 border-amber-400 border-2 shadow-lg"
+                      variant="destructive"
                     >
-                      <AlertCircle className='h-6 w-6 text-amber-600 animate-pulse' />
-                      <AlertTitle className='text-amber-800 font-bold text-lg'>
+                      <AlertCircle className="h-6 w-6 text-amber-600 animate-pulse" />
+                      <AlertTitle className="text-amber-800 font-bold text-lg">
                         ⚠️ WARNING: Documents Already Processed!
                       </AlertTitle>
-                      <AlertDescription className='text-amber-700 font-semibold text-base'>
+                      <AlertDescription className="text-amber-700 font-semibold text-base">
                         🚫 All uploaded documents have already been processed!
                         <br />
                         <br />
@@ -2186,65 +2209,65 @@ function HomeContent({ session }: HomeContentProps) {
                 </CardContent>
               </Card>
 
-              <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <DocumentTypeCard
-                  title='Invoices'
-                  description='Bills from vendors with detailed item breakdown'
+                  title="Invoices"
+                  description="Bills from vendors with detailed item breakdown"
                   icon={FileCheck}
-                  color='blue'
+                  color="blue"
                 />
                 <DocumentTypeCard
-                  title='EFT Receipts'
-                  description='Electronic fund transfer payment confirmations'
+                  title="EFT Receipts"
+                  description="Electronic fund transfer payment confirmations"
                   icon={CreditCard}
-                  color='green'
+                  color="green"
                 />
                 <DocumentTypeCard
-                  title='E-Way Bills'
-                  description='Electronic waybills for goods transportation'
+                  title="E-Way Bills"
+                  description="Electronic waybills for goods transportation"
                   icon={Truck}
-                  color='amber'
+                  color="amber"
                 />
               </div>
             </TabsContent>
 
-            <TabsContent value='results' className='space-y-6'>
+            <TabsContent value="results" className="space-y-6">
               {completedCount > 0 ? (
                 <>
-                  <div className='grid grid-cols-1 gap-6'>
+                  <div className="grid grid-cols-1 gap-6">
                     {processedDocuments.map((doc, index) => {
-                      if (doc.status !== 'completed') return null;
+                      if (doc.status !== "completed") return null;
 
                       const docType =
                         doc.documentType as keyof typeof documentTypes;
                       const DocIcon = documentTypes[docType]?.icon || FileText;
                       const iconColor =
-                        documentTypes[docType]?.color || 'text-slate-500';
+                        documentTypes[docType]?.color || "text-slate-500";
                       const bgColor =
-                        documentTypes[docType]?.bgColor || 'bg-slate-100';
+                        documentTypes[docType]?.bgColor || "bg-slate-100";
                       const title =
                         documentTypes[docType]?.title || doc.documentType;
 
                       return (
                         <Card
                           key={index}
-                          className='shadow-md border-slate-200 overflow-hidden'
+                          className="shadow-md border-slate-200 overflow-hidden"
                         >
                           <CardHeader>
                             <div
                               className={`p-4 ${bgColor} border-b flex items-center justify-between`}
                             >
-                              <div className='flex items-center gap-3'>
+                              <div className="flex items-center gap-3">
                                 <div className={`p-1.5 rounded-md ${bgColor}`}>
                                   <DocIcon className={`h-5 w-5 ${iconColor}`} />
                                 </div>
                                 <div>
-                                  <CardTitle className='font-medium text-slate-800'>
+                                  <CardTitle className="font-medium text-slate-800">
                                     {doc.fileName}
                                   </CardTitle>
-                                  <CardDescription className='text-xs'>
-                                    Identified as:{' '}
-                                    <span className='font-medium'>{title}</span>
+                                  <CardDescription className="text-xs">
+                                    Identified as:{" "}
+                                    <span className="font-medium">{title}</span>
                                   </CardDescription>
                                 </div>
                               </div>
@@ -2259,14 +2282,14 @@ function HomeContent({ session }: HomeContentProps) {
                           </CardHeader>
 
                           <CardContent>
-                            <div className='grid grid-cols-1 md:grid-cols-2 gap-6 p-4'>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
                               <DataSheet
                                 key={
                                   doc.fileName +
-                                  '-' +
+                                  "-" +
                                   doc.documentType +
-                                  '-' +
-                                  (typeof doc.data === 'object'
+                                  "-" +
+                                  (typeof doc.data === "object"
                                     ? JSON.stringify(doc.data)
                                     : String(doc.data))
                                 }
@@ -2285,7 +2308,7 @@ function HomeContent({ session }: HomeContentProps) {
                           </CardContent>
 
                           <CardFooter>
-                            <p className='text-xs text-slate-500'>
+                            <p className="text-xs text-slate-500">
                               Card Footer (optional info)
                             </p>
                           </CardFooter>
@@ -2296,20 +2319,20 @@ function HomeContent({ session }: HomeContentProps) {
 
                   {/* Show error documents */}
                   {errorCount > 0 && (
-                    <Card className='shadow-md border-red-200 bg-red-50'>
-                      <CardContent className='p-4'>
-                        <h3 className='font-medium text-red-800 mb-2 flex items-center gap-2'>
-                          <AlertCircle className='h-5 w-5' />
+                    <Card className="shadow-md border-red-200 bg-red-50">
+                      <CardContent className="p-4">
+                        <h3 className="font-medium text-red-800 mb-2 flex items-center gap-2">
+                          <AlertCircle className="h-5 w-5" />
                           Failed Documents ({errorCount})
                         </h3>
-                        <div className='space-y-2'>
+                        <div className="space-y-2">
                           {processedDocuments
-                            .filter((doc) => doc.status === 'error')
+                            .filter((doc) => doc.status === "error")
                             .map((doc, index) => (
-                              <div key={index} className='text-sm text-red-700'>
-                                <span className='font-medium'>
+                              <div key={index} className="text-sm text-red-700">
+                                <span className="font-medium">
                                   {doc.fileName}:
-                                </span>{' '}
+                                </span>{" "}
                                 {doc.error}
                               </div>
                             ))}
@@ -2318,18 +2341,18 @@ function HomeContent({ session }: HomeContentProps) {
                     </Card>
                   )}
 
-                  <Card className='shadow-md border-slate-200 bg-white p-6'>
-                    <div className='flex flex-col sm:flex-row items-center justify-between gap-4'>
+                  <Card className="shadow-md border-slate-200 bg-white p-6">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                       <div>
-                        <h3 className='text-lg font-medium'>
+                        <h3 className="text-lg font-medium">
                           Document Processing Summary
                         </h3>
-                        <p className='text-slate-600 text-sm'>
-                          {completedCount} completed • {errorCount} failed •{' '}
+                        <p className="text-slate-600 text-sm">
+                          {completedCount} completed • {errorCount} failed •{" "}
                           {files.length} total
                         </p>
                       </div>
-                      <div className='flex gap-3'>
+                      <div className="flex gap-3">
                         <CSVDownloadBtn
                           processedDocuments={processedDocuments}
                           handleDownloadCSV={handleDownloadCSV}
@@ -2360,19 +2383,19 @@ function HomeContent({ session }: HomeContentProps) {
                   </Card>
                 </>
               ) : (
-                <div className='text-center py-16 bg-white rounded-lg border shadow-sm'>
-                  <FileText className='h-12 w-12 text-slate-300 mx-auto mb-4' />
-                  <h3 className='text-xl font-medium text-slate-800 mb-2'>
+                <div className="text-center py-16 bg-white rounded-lg border shadow-sm">
+                  <FileText className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+                  <h3 className="text-xl font-medium text-slate-800 mb-2">
                     No Completed Documents
                   </h3>
-                  <p className='text-slate-600 max-w-md mx-auto'>
+                  <p className="text-slate-600 max-w-md mx-auto">
                     Please upload and process documents first to see the
                     extracted data here.
                   </p>
                   <Button
-                    variant='outline'
-                    className='mt-6'
-                    onClick={() => setActiveTab('upload')}
+                    variant="outline"
+                    className="mt-6"
+                    onClick={() => setActiveTab("upload")}
                   >
                     Go to Upload
                   </Button>
@@ -2381,109 +2404,109 @@ function HomeContent({ session }: HomeContentProps) {
             </TabsContent>
 
             {/* ===== New: Group & Verify Tab ===== */}
-            <TabsContent value='groups' className='space-y-6'>
-              <Card className='shadow-md border-slate-200'>
+            <TabsContent value="groups" className="space-y-6">
+              <Card className="shadow-md border-slate-200">
                 <CardHeader>
-                  <div className='flex justify-between items-start'>
+                  <div className="flex justify-between items-start">
                     <div>
                       <CardTitle>Group & Verify</CardTitle>
                       <CardDescription>
                         {isDocumentsLoaded
-                          ? 'Groups are built from parsed documents. Complete all three files to enable submission.'
-                          : 'Loading document groups...'}
+                          ? "Groups are built from parsed documents. Complete all three files to enable submission."
+                          : "Loading document groups..."}
                       </CardDescription>
                     </div>
-                    <div className='flex items-center gap-2'>
+                    <div className="flex items-center gap-2">
                       <VerifiedCsvDownload session={session} />
                       <Button
-                        variant='outline'
-                        size='sm'
+                        variant="outline"
+                        size="sm"
                         onClick={() => {
-                          console.log('🔄 [MANUAL] Refreshing groups...');
+                          console.log("🔄 [MANUAL] Refreshing groups...");
                           setHasInitializedGroups(false);
                           setIsDocumentsLoaded(false);
                           setGroups({});
                         }}
                         disabled={isGroupsLoading}
                       >
-                        {isGroupsLoading ? 'Loading...' : 'Refresh Groups'}
+                        {isGroupsLoading ? "Loading..." : "Refresh Groups"}
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className='p-6'>
+                <CardContent className="p-6">
                   {isGroupsLoading || !isDocumentsLoaded ? (
-                    <div className='flex items-center gap-2 text-slate-600'>
-                      <Loader2 className='h-4 w-4 animate-spin' /> Loading
-                      {isGroupsLoading ? ' groups...' : ' documents...'}
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading
+                      {isGroupsLoading ? " groups..." : " documents..."}
                     </div>
                   ) : Object.keys(groups).length === 0 ? (
-                    <div className='text-slate-600 text-sm'>
+                    <div className="text-slate-600 text-sm">
                       No groups found. Upload and process documents to see
                       groups here.
                     </div>
                   ) : (
-                    <div className='space-y-8'>
+                    <div className="space-y-8">
                       {Object.entries(groups).map(([invoiceKey, group]) => {
                         const latestByType = {
-                          invoice: group.docs?.['invoice']?.[0],
-                          'e-way-bill': group.docs?.['e-way-bill']?.[0],
-                          eft_receipt: group.docs?.['eft_receipt']?.[0],
+                          invoice: group.docs?.["invoice"]?.[0],
+                          "e-way-bill": group.docs?.["e-way-bill"]?.[0],
+                          eft_receipt: group.docs?.["eft_receipt"]?.[0],
                         };
                         if (!group) return null;
                         const status = computeGroupStatus(group);
                         return (
                           <div
                             key={invoiceKey}
-                            className='border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-all border-slate-200 w-full max-w-4xl mx-auto'
+                            className="border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-all border-slate-200 w-full max-w-4xl mx-auto"
                           >
-                            <div className='flex items-start justify-between gap-4'>
+                            <div className="flex items-start justify-between gap-4">
                               <div>
-                                <div className='font-medium text-slate-800'>
-                                  Invoice: {group.invoice || 'N/A'}
+                                <div className="font-medium text-slate-800">
+                                  Invoice: {group.invoice || "N/A"}
                                 </div>
-                                <div className='text-xs text-slate-600'>
+                                <div className="text-xs text-slate-600">
                                   Status: {status.count} of 3 files uploaded
                                 </div>
                               </div>
-                              <div className='flex items-center gap-2'>
+                              <div className="flex items-center gap-2">
                                 {recyclingDocs[group.invoice]
                                   ?.human_verified ? (
-                                  <Badge className='bg-green-100 text-green-700 border-0 flex items-center gap-1'>
-                                    <CheckCircle2 className='h-3 w-3' />
+                                  <Badge className="bg-green-100 text-green-700 border-0 flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" />
                                     Verified
                                   </Badge>
                                 ) : status.complete ? (
-                                  <Badge className='bg-blue-100 text-blue-700 border-0 flex items-center gap-1'>
-                                    <FileCheck className='h-3 w-3' />
+                                  <Badge className="bg-blue-100 text-blue-700 border-0 flex items-center gap-1">
+                                    <FileCheck className="h-3 w-3" />
                                     Complete
                                   </Badge>
                                 ) : (
-                                  <Badge className='bg-red-100 text-red-700 border-0 flex items-center gap-1'>
-                                    <AlertCircle className='h-3 w-3' />
+                                  <Badge className="bg-red-100 text-red-700 border-0 flex items-center gap-1">
+                                    <AlertCircle className="h-3 w-3" />
                                     Incomplete
                                   </Badge>
                                 )}
                                 <Button
-                                  variant='ghost'
-                                  size='sm'
+                                  variant="ghost"
+                                  size="sm"
                                   onClick={() =>
                                     toggleGroupExpansion(invoiceKey)
                                   }
-                                  className='h-8 w-8 p-0'
+                                  className="h-8 w-8 p-0"
                                 >
                                   {expandedGroups[invoiceKey] ? (
-                                    <ChevronUp className='h-4 w-4' />
+                                    <ChevronUp className="h-4 w-4" />
                                   ) : (
-                                    <ChevronDown className='h-4 w-4' />
+                                    <ChevronDown className="h-4 w-4" />
                                   )}
                                 </Button>
                               </div>
                             </div>
 
                             {!status.complete && status.missing.length > 0 && (
-                              <div className='text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded mt-3 p-2'>
-                                Missing: {status.missing.join(', ')}. Use
+                              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded mt-3 p-2">
+                                Missing: {status.missing.join(", ")}. Use
                                 &quot;Upload & Process&quot; to add the missing
                                 files.
                               </div>
@@ -2492,12 +2515,12 @@ function HomeContent({ session }: HomeContentProps) {
                             {/* Collapsible content - only show when expanded */}
                             {expandedGroups[invoiceKey] && (
                               <>
-                                <div className='space-y-6 mt-6'>
+                                <div className="space-y-6 mt-6">
                                   {(
                                     [
-                                      'invoice',
-                                      'eft_receipt',
-                                      'e-way-bill',
+                                      "invoice",
+                                      "eft_receipt",
+                                      "e-way-bill",
                                     ] as const
                                   ).map((t) => {
                                     const latest = group.docs?.[t]?.[0];
@@ -2508,57 +2531,57 @@ function HomeContent({ session }: HomeContentProps) {
                                       documentTypes[docType]?.icon || FileText;
                                     const iconColor =
                                       documentTypes[docType]?.color ||
-                                      'text-slate-500';
+                                      "text-slate-500";
 
                                     return (
                                       <div
                                         key={t}
-                                        className='border rounded-lg overflow-hidden bg-white'
+                                        className="border rounded-lg overflow-hidden bg-white"
                                       >
-                                        <div className='bg-slate-50 px-4 py-2 border-b flex items-center gap-2'>
+                                        <div className="bg-slate-50 px-4 py-2 border-b flex items-center gap-2">
                                           <DocIcon
                                             className={`h-4 w-4 ${iconColor}`}
                                           />
-                                          <h4 className='font-medium text-slate-800'>
+                                          <h4 className="font-medium text-slate-800">
                                             {tTitle}
                                           </h4>
                                           {latest?.file_url && (
                                             <a
                                               href={latest.file_url}
-                                              target='_blank'
-                                              rel='noreferrer'
-                                              className='ml-auto text-xs text-blue-600 hover:underline'
-                                              title='View original PDF'
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="ml-auto text-xs text-blue-600 hover:underline"
+                                              title="View original PDF"
                                             >
                                               View PDF
                                             </a>
                                           )}
                                         </div>
-                                        <div className='grid grid-cols-1 md:grid-cols-2 gap-0'>
-                                          <div className='p-4 border-r'>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                                          <div className="p-4 border-r">
                                             {latest?.file_url ? (
-                                              <div className='h-[400px]'>
+                                              <div className="h-[400px]">
                                                 <PdfPreview
                                                   fileUrl={latest.file_url}
-                                                  heightClass='h-full'
+                                                  heightClass="h-full"
                                                 />
                                               </div>
                                             ) : (
-                                              <div className='h-[400px] flex items-center justify-center text-slate-400'>
+                                              <div className="h-[400px] flex items-center justify-center text-slate-400">
                                                 No file uploaded
                                               </div>
                                             )}
                                           </div>
                                           <div
-                                            className='p-4 overflow-auto'
-                                            style={{ maxHeight: '500px' }}
+                                            className="p-4 overflow-auto"
+                                            style={{ maxHeight: "500px" }}
                                           >
                                             {latest?.raw_json ? (
-                                              <div className='space-y-4'>
-                                                <h5 className='font-medium text-slate-800 border-b pb-2'>
+                                              <div className="space-y-4">
+                                                <h5 className="font-medium text-slate-800 border-b pb-2">
                                                   Extracted Data
                                                 </h5>
-                                                <div className='space-y-2 text-sm'>
+                                                <div className="space-y-2 text-sm">
                                                   {latest.raw_json ? (
                                                     Object.entries(
                                                       latest.raw_json as Record<
@@ -2569,12 +2592,12 @@ function HomeContent({ session }: HomeContentProps) {
                                                       if (
                                                         value === null ||
                                                         value === undefined ||
-                                                        value === ''
+                                                        value === ""
                                                       )
                                                         return null;
                                                       if (
                                                         typeof value ===
-                                                          'object' &&
+                                                          "object" &&
                                                         !Array.isArray(value)
                                                       )
                                                         return null;
@@ -2583,34 +2606,34 @@ function HomeContent({ session }: HomeContentProps) {
                                                         Array.isArray(value)
                                                           ? value
                                                               .map(String)
-                                                              .join(', ')
+                                                              .join(", ")
                                                           : String(value);
 
                                                       return (
                                                         <div
                                                           key={key}
-                                                          className='grid grid-cols-3 gap-2'
+                                                          className="grid grid-cols-3 gap-2"
                                                         >
-                                                          <div className='text-slate-500 capitalize'>
+                                                          <div className="text-slate-500 capitalize">
                                                             {key.replace(
                                                               /_/g,
-                                                              ' '
+                                                              " "
                                                             )}
                                                             :
                                                           </div>
-                                                          <div className='col-span-2 font-medium'>
+                                                          <div className="col-span-2 font-medium">
                                                             {displayValue}
                                                           </div>
                                                         </div>
                                                       );
                                                     })
                                                   ) : (
-                                                    <div className='text-slate-400 text-center py-2'></div>
+                                                    <div className="text-slate-400 text-center py-2"></div>
                                                   )}
                                                 </div>
                                               </div>
                                             ) : (
-                                              <div className='text-slate-400 text-center py-8'>
+                                              <div className="text-slate-400 text-center py-8">
                                                 No data extracted yet
                                               </div>
                                             )}
@@ -2620,144 +2643,144 @@ function HomeContent({ session }: HomeContentProps) {
                                     );
                                   })}
                                 </div>
-                                <div className='mt-6 pt-4 border-t border-slate-100'>
+                                <div className="mt-6 pt-4 border-t border-slate-100">
                                   {recyclingDocs[group.invoice]
                                     ?.plastiks_submitted_at ? (
-                                    <div className='mb-4 space-y-2 text-sm'>
-                                      <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
-                                        <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
-                                          <CheckCircle2 className='h-4 w-4' />
+                                    <div className="mb-4 space-y-2 text-sm">
+                                      <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                                        <h4 className="font-medium text-green-800 mb-3 flex items-center gap-2">
+                                          <CheckCircle2 className="h-4 w-4" />
                                           Successfully Human Verified
                                         </h4>
-                                        <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Invoice #
                                             </div>
-                                            <div className='font-medium text-slate-800'>
+                                            <div className="font-medium text-slate-800">
                                               {recyclingDocs[
                                                 group.invoice
                                               ]?.invoice_number?.toString() ||
-                                                'N/A'}
+                                                "N/A"}
                                             </div>
                                           </div>
 
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Recycler Company
                                             </div>
-                                            <div className='font-medium text-slate-800'>
+                                            <div className="font-medium text-slate-800">
                                               {recyclingDocs[
                                                 group.invoice
                                               ]?.recycler_company?.toString() ||
-                                                'N/A'}
+                                                "N/A"}
                                             </div>
                                           </div>
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Network Operator Company
                                             </div>
-                                            <div className='font-medium text-slate-800'>
+                                            <div className="font-medium text-slate-800">
                                               {recyclingDocs[
                                                 group.invoice
                                               ]?.network_operator_company?.toString() ||
-                                                'N/A'}
+                                                "N/A"}
                                             </div>
                                           </div>
 
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Plastic Type
                                             </div>
-                                            <div className='font-medium text-slate-800'>
+                                            <div className="font-medium text-slate-800">
                                               {recyclingDocs[
                                                 group.invoice
                                               ]?.plastic_type?.toString() ||
-                                                'N/A'}
+                                                "N/A"}
                                             </div>
                                           </div>
 
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Weight
                                             </div>
-                                            <div className='font-medium text-slate-800'>
+                                            <div className="font-medium text-slate-800">
                                               {recyclingDocs[group.invoice]
                                                 ?.tonnage_tons !== undefined
                                                 ? `${
                                                     recyclingDocs[
                                                       group.invoice
                                                     ]?.tonnage_tons?.toString() ||
-                                                    '0'
+                                                    "0"
                                                   } tons`
-                                                : 'N/A'}
+                                                : "N/A"}
                                             </div>
                                           </div>
 
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Country
                                             </div>
-                                            <div className='font-medium text-slate-800'>
+                                            <div className="font-medium text-slate-800">
                                               {recyclingDocs[
                                                 group.invoice
-                                              ]?.country?.toString() || 'N/A'}
+                                              ]?.country?.toString() || "N/A"}
                                             </div>
                                           </div>
 
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Collection ID
                                             </div>
-                                            <div className='font-mono text-xs text-slate-600 break-all'>
+                                            <div className="font-mono text-xs text-slate-600 break-all">
                                               {recyclingDocs[
                                                 group.invoice
                                               ]?.plastiks_collection_id?.toString() ||
-                                                'N/A'}
+                                                "N/A"}
                                             </div>
                                           </div>
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Metadata Hash
                                             </div>
-                                            <div className='font-mono text-xs text-slate-600 break-all'>
+                                            <div className="font-mono text-xs text-slate-600 break-all">
                                               {recyclingDocs[
                                                 group.invoice
                                               ]?.plastiks_metadata_hash?.toString() ||
-                                                'N/A'}
+                                                "N/A"}
                                             </div>
                                           </div>
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Collection Address
                                             </div>
-                                            <div className='font-mono text-xs text-slate-600 break-all'>
+                                            <div className="font-mono text-xs text-slate-600 break-all">
                                               {recyclingDocs[
                                                 group.invoice
                                               ]?.plastiks_collection_address?.toString() ||
-                                                'N/A'}
+                                                "N/A"}
                                             </div>
                                           </div>
                                           <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
+                                            <div className="text-slate-500 text-xs font-medium mb-1">
                                               Submitted At
                                             </div>
-                                            <div className='text-sm text-slate-700'>
+                                            <div className="text-sm text-slate-700">
                                               {recyclingDocs[group.invoice]
                                                 ?.plastiks_submitted_at
                                                 ? new Date(
                                                     recyclingDocs[group.invoice]
                                                       ?.plastiks_submitted_at ??
-                                                      ''
+                                                      ""
                                                   ).toLocaleString()
-                                                : 'N/A'}
+                                                : "N/A"}
                                             </div>
                                           </div>
                                         </div>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className='text-sm text-slate-600'>
+                                    <div className="text-sm text-slate-600">
                                       No data available
                                     </div>
                                   )}
@@ -2767,24 +2790,24 @@ function HomeContent({ session }: HomeContentProps) {
                                     className={`p-6 border rounded-lg mt-4 ${
                                       recyclingDocs[group.invoice]
                                         ?.human_verified
-                                        ? 'border-green-200 bg-green-50'
-                                        : 'border-blue-200 bg-blue-50'
+                                        ? "border-green-200 bg-green-50"
+                                        : "border-blue-200 bg-blue-50"
                                     }`}
                                   >
-                                    <div className='space-y-4'>
+                                    <div className="space-y-4">
                                       {/* Header */}
-                                      <div className='flex items-center justify-between'>
-                                        <h4 className='font-medium text-slate-800'>
+                                      <div className="flex items-center justify-between">
+                                        <h4 className="font-medium text-slate-800">
                                           {recyclingDocs[group.invoice]
                                             ?.human_verified
-                                            ? 'Verified Document Data'
-                                            : 'Document Data for Verification'}
+                                            ? "Verified Document Data"
+                                            : "Document Data for Verification"}
                                         </h4>
                                         {recyclingDocs[group.invoice]
                                           ?.human_verified && (
-                                          <div className='flex items-center gap-2 text-green-800'>
-                                            <CheckCircle2 className='h-4 w-4' />
-                                            <span className='text-sm font-semibold'>
+                                          <div className="flex items-center gap-2 text-green-800">
+                                            <CheckCircle2 className="h-4 w-4" />
+                                            <span className="text-sm font-semibold">
                                               Human Verified
                                             </span>
                                           </div>
@@ -2792,74 +2815,74 @@ function HomeContent({ session }: HomeContentProps) {
                                       </div>
 
                                       {/* Data Grid */}
-                                      <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                         <div>
-                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          <div className="text-slate-500 text-xs font-medium mb-1">
                                             Invoice #
                                           </div>
-                                          <div className='font-medium text-slate-800'>
+                                          <div className="font-medium text-slate-800">
                                             {String(
                                               latestByType.invoice?.raw_json
                                                 ?.invoice_number ||
                                                 latestByType.invoice?.raw_json
                                                   ?.invoice ||
-                                                'N/A'
+                                                "N/A"
                                             )}
                                           </div>
                                         </div>
 
                                         <div>
-                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          <div className="text-slate-500 text-xs font-medium mb-1">
                                             Company
                                           </div>
-                                          <div className='font-medium text-slate-800'>
+                                          <div className="font-medium text-slate-800">
                                             {String(
                                               latestByType.invoice?.raw_json
                                                 ?.bill_to_company_name ||
-                                                latestByType['e-way-bill']
+                                                latestByType["e-way-bill"]
                                                   ?.raw_json
                                                   ?.ship_to_company_name ||
-                                                'N/A'
+                                                "N/A"
                                             )}
                                           </div>
                                         </div>
 
                                         <div>
-                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          <div className="text-slate-500 text-xs font-medium mb-1">
                                             Network Operator
                                           </div>
-                                          <div className='font-medium text-slate-800'>
+                                          <div className="font-medium text-slate-800">
                                             {String(
                                               latestByType.invoice?.raw_json
                                                 ?.bill_from_company_name ||
-                                                latestByType['e-way-bill']
+                                                latestByType["e-way-bill"]
                                                   ?.raw_json
                                                   ?.ship_from_company_name ||
-                                                'N/A'
+                                                "N/A"
                                             )}
                                           </div>
                                         </div>
 
                                         <div>
-                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          <div className="text-slate-500 text-xs font-medium mb-1">
                                             Plastic Type
                                           </div>
-                                          <div className='font-medium text-slate-800'>
+                                          <div className="font-medium text-slate-800">
                                             {String(
                                               latestByType.invoice?.raw_json
                                                 ?.plastic_type ||
-                                                latestByType['e-way-bill']
+                                                latestByType["e-way-bill"]
                                                   ?.raw_json?.plastic_type ||
-                                                'N/A'
+                                                "N/A"
                                             )}
                                           </div>
                                         </div>
 
                                         <div>
-                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          <div className="text-slate-500 text-xs font-medium mb-1">
                                             Weight
                                           </div>
-                                          <div className='font-medium text-slate-800'>
+                                          <div className="font-medium text-slate-800">
                                             {latestByType.invoice?.raw_json
                                               ?.weight
                                               ? `${String(
@@ -2867,45 +2890,45 @@ function HomeContent({ session }: HomeContentProps) {
                                                     .weight
                                                 )} ${String(
                                                   latestByType.invoice.raw_json
-                                                    .weight_unit || 'kg'
+                                                    .weight_unit || "kg"
                                                 )}`
-                                              : 'N/A'}
+                                              : "N/A"}
                                           </div>
                                         </div>
 
                                         <div>
-                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          <div className="text-slate-500 text-xs font-medium mb-1">
                                             City
                                           </div>
-                                          <div className='font-medium text-slate-800'>
+                                          <div className="font-medium text-slate-800">
                                             {String(
-                                              latestByType['e-way-bill']
+                                              latestByType["e-way-bill"]
                                                 ?.raw_json?.from_location ||
-                                                latestByType['e-way-bill']
+                                                latestByType["e-way-bill"]
                                                   ?.raw_json?.city ||
                                                 latestByType.invoice?.raw_json
                                                   ?.city ||
-                                                'N/A'
+                                                "N/A"
                                             )}
                                           </div>
                                         </div>
 
                                         <div>
-                                          <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          <div className="text-slate-500 text-xs font-medium mb-1">
                                             Country
                                           </div>
-                                          <div className='font-medium text-slate-800'>
+                                          <div className="font-medium text-slate-800">
                                             {String(
-                                              latestByType['e-way-bill']
+                                              latestByType["e-way-bill"]
                                                 ?.raw_json
                                                 ?.ship_to_country_code ||
-                                                latestByType['e-way-bill']
+                                                latestByType["e-way-bill"]
                                                   ?.raw_json?.origin_country ||
-                                                latestByType['e-way-bill']
+                                                latestByType["e-way-bill"]
                                                   ?.raw_json?.country ||
                                                 latestByType.invoice?.raw_json
                                                   ?.country ||
-                                                'N/A'
+                                                "N/A"
                                             )}
                                           </div>
                                         </div>
@@ -2914,22 +2937,22 @@ function HomeContent({ session }: HomeContentProps) {
                                       {/* Verification Details (if verified) */}
                                       {recyclingDocs[group.invoice]
                                         ?.human_verified ? (
-                                        <div className='pt-3 border-t border-green-200'>
-                                          <div className='grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-green-700'>
+                                        <div className="pt-3 border-t border-green-200">
+                                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-green-700">
                                             <div>
-                                              <div className='text-green-600 text-xs font-medium mb-1'>
+                                              <div className="text-green-600 text-xs font-medium mb-1">
                                                 Verified by
                                               </div>
-                                              <div className='font-medium'>
+                                              <div className="font-medium">
                                                 {session.user?.email ||
-                                                  'Unknown'}
+                                                  "Unknown"}
                                               </div>
                                             </div>
                                             <div>
-                                              <div className='text-green-600 text-xs font-medium mb-1'>
+                                              <div className="text-green-600 text-xs font-medium mb-1">
                                                 Verified at
                                               </div>
-                                              <div className='font-medium'>
+                                              <div className="font-medium">
                                                 {recyclingDocs[group.invoice]
                                                   ?.verified_at
                                                   ? new Date(
@@ -2937,22 +2960,22 @@ function HomeContent({ session }: HomeContentProps) {
                                                         group.invoice
                                                       ].verified_at!
                                                     ).toLocaleString()
-                                                  : 'Unknown'}
+                                                  : "Unknown"}
                                               </div>
                                             </div>
                                             <div>
-                                              <div className='text-green-600 text-xs font-medium mb-1'>
+                                              <div className="text-green-600 text-xs font-medium mb-1">
                                                 Status
                                               </div>
-                                              <div className='font-medium'>
+                                              <div className="font-medium">
                                                 ✅ Ready for blockchain
                                               </div>
                                             </div>
                                           </div>
                                         </div>
                                       ) : (
-                                        <div className='pt-3 border-t border-blue-200'>
-                                          <p className='text-sm text-slate-600'>
+                                        <div className="pt-3 border-t border-blue-200">
+                                          <p className="text-sm text-slate-600">
                                             Data needs to be human-verified
                                             before it gets sent to the
                                             blockchain.
@@ -2963,7 +2986,7 @@ function HomeContent({ session }: HomeContentProps) {
                                   </div>
 
                                   <Button
-                                    size='sm'
+                                    size="sm"
                                     disabled={
                                       !status.complete ||
                                       submitting[group.invoice] ||
@@ -2977,35 +3000,35 @@ function HomeContent({ session }: HomeContentProps) {
                                     className={`w-full gap-2 mt-2 ${
                                       recyclingDocs[group.invoice]
                                         ?.human_verified
-                                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                                        ? "bg-green-600 hover:bg-green-700 text-white"
                                         : submitResult[group.invoice] &&
                                           !submitResult[group.invoice]?.ok
-                                        ? 'bg-red-600 hover:bg-red-700 text-white'
-                                        : ''
+                                        ? "bg-red-600 hover:bg-red-700 text-white"
+                                        : ""
                                     }`}
                                   >
                                     {submitting[group.invoice] ? (
-                                      <span className='flex items-center gap-2'>
-                                        <Loader2 className='h-3 w-3 animate-spin' />
+                                      <span className="flex items-center gap-2">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
                                         Verifying...
                                       </span>
                                     ) : recyclingDocs[group.invoice]
                                         ?.human_verified ? (
-                                      <span className='flex items-center gap-2'>
-                                        <CheckCircle2 className='h-3 w-3' />
+                                      <span className="flex items-center gap-2">
+                                        <CheckCircle2 className="h-3 w-3" />
                                         Human Verified
                                       </span>
                                     ) : submitResult[group.invoice] &&
                                       !submitResult[group.invoice]?.ok ? (
-                                      <span className='flex items-center gap-2'>
-                                        <AlertCircle className='h-3 w-3' />
+                                      <span className="flex items-center gap-2">
+                                        <AlertCircle className="h-3 w-3" />
                                         Retry Verification
                                       </span>
                                     ) : (
-                                      <span className='flex items-center gap-2'>
-                                        <UploadCloud className='h-3 w-3' />
+                                      <span className="flex items-center gap-2">
+                                        <UploadCloud className="h-3 w-3" />
                                         Human Verify
-                                        <ArrowRight className='h-3 w-3' />
+                                        <ArrowRight className="h-3 w-3" />
                                       </span>
                                     )}
                                   </Button>
@@ -3033,22 +3056,22 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('🔄 [HOME] Initializing session...');
+    console.log("🔄 [HOME] Initializing session...");
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
-        console.error('❌ [HOME] Session error:', error);
+        console.error("❌ [HOME] Session error:", error);
         // Clear invalid session data
         if (
-          error.message.includes('refresh_token_not_found') ||
-          error.message.includes('Invalid Refresh Token')
+          error.message.includes("refresh_token_not_found") ||
+          error.message.includes("Invalid Refresh Token")
         ) {
-          console.log('🧹 [HOME] Clearing invalid tokens...');
+          console.log("🧹 [HOME] Clearing invalid tokens...");
           supabase.auth.signOut();
         }
       }
-      console.log('📥 [HOME] Initial session:', !!session);
+      console.log("📥 [HOME] Initial session:", !!session);
       setSession(session);
       setLoading(false);
     });
@@ -3057,11 +3080,11 @@ export default function Home() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('🔄 [HOME] Auth changed:', event, !!session);
+      console.log("🔄 [HOME] Auth changed:", event, !!session);
 
       // Handle token refresh errors
-      if (event === 'TOKEN_REFRESHED' && !session) {
-        console.log('⚠️ [HOME] Token refresh failed, signing out...');
+      if (event === "TOKEN_REFRESHED" && !session) {
+        console.log("⚠️ [HOME] Token refresh failed, signing out...");
         supabase.auth.signOut();
       }
 
@@ -3070,7 +3093,7 @@ export default function Home() {
     });
 
     return () => {
-      console.log('🔚 [HOME] Cleaning up auth subscription');
+      console.log("🔚 [HOME] Cleaning up auth subscription");
       subscription.unsubscribe();
     };
   }, []);
@@ -3078,8 +3101,8 @@ export default function Home() {
   // Show loading
   if (loading) {
     return (
-      <div className='min-h-screen flex items-center justify-center'>
-        <div className='text-lg'>Loading...</div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg">Loading...</div>
       </div>
     );
   }
@@ -3087,11 +3110,11 @@ export default function Home() {
   // Show login if not authenticated
   if (!session) {
     return (
-      <div className='bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10'>
-        <div className='flex w-full max-w-sm flex-col gap-6'>
-          <div className='flex items-center gap-2 self-center font-medium'>
-            <div className='bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md'>
-              <GalleryVerticalEnd className='size-4' />
+      <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
+        <div className="flex w-full max-w-sm flex-col gap-6">
+          <div className="flex items-center gap-2 self-center font-medium">
+            <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
+              <GalleryVerticalEnd className="size-4" />
             </div>
             Ocean Integrity AI
           </div>
