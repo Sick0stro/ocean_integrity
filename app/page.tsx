@@ -1211,42 +1211,106 @@ function HomeContent({ session }: HomeContentProps) {
   const [processingProgress, setProcessingProgress] = useState(0);
   const [blobUrls, setBlobUrls] = useState<Map<string, string>>(new Map()); // Track blob URLs for database files
 
-  const handleFilesAdded = useCallback((newFiles: File[]) => {
-    console.log(`📁 Frontend: Adding ${newFiles.length} new files`);
+  // Helper function to upload files to temp_documents
+  const uploadToTempDocuments = async (files: File[]) => {
+    if (!session?.user?.id) {
+      console.error('❌ No user session for upload');
+      return;
+    }
 
-    setFiles((prevFiles) => {
-      const updatedFiles = [...prevFiles];
-      let addedCount = 0;
+    console.log(`🚀 Uploading ${files.length} files to temp_documents...`);
 
-      newFiles.forEach((newFile) => {
-        console.log(
-          `🔍 Frontend: Checking file - ${newFile.name} (${(
-            newFile.size / 1024
-          ).toFixed(2)} KB)`
-        );
+    const supabase = getSupabaseBrowser();
+    const uploadPromises = files.map(async (file) => {
+      try {
+        // Generate unique path for storage
+        const timestamp = Date.now();
+        const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const pdfPath = `temp/${session.user.id}/${timestamp}_${safeName}`;
 
-        // Check if a file with the same name and size already exists
-        if (
-          !updatedFiles.some(
-            (existingFile) =>
-              existingFile.name === newFile.name &&
-              existingFile.size === newFile.size
-          )
-        ) {
-          updatedFiles.push(newFile);
-          addedCount++;
-          console.log(`✅ Frontend: Added file - ${newFile.name}`);
-        } else {
-          console.log(`⚠️ Frontend: Skipped duplicate file - ${newFile.name}`);
+        // Upload to Supabase storage
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(pdfPath, file);
+
+        if (uploadError) {
+          console.error(`❌ Failed to upload ${file.name}:`, uploadError);
+          return;
         }
+
+        // Insert into temp_documents
+        const { error: insertError } = await supabase
+          .from('temp_documents')
+          .insert({
+            user_id: session.user.id,
+            pdf_path: pdfPath,
+            upload_date: new Date().toISOString(),
+          });
+
+        if (insertError) {
+          console.error(
+            `❌ Failed to insert ${file.name} to temp_documents:`,
+            insertError
+          );
+          // Clean up uploaded file
+          await supabase.storage.from('documents').remove([pdfPath]);
+          return;
+        }
+
+        console.log(`✅ Successfully uploaded ${file.name} to temp_documents`);
+      } catch (error) {
+        console.error(`❌ Error uploading ${file.name}:`, error);
+      }
+    });
+
+    await Promise.all(uploadPromises);
+    console.log('✅ Upload to temp_documents completed');
+  };
+
+  const handleFilesAdded = useCallback(
+    (newFiles: File[]) => {
+      console.log(`📁 Frontend: Adding ${newFiles.length} new files`);
+
+      setFiles((prevFiles) => {
+        const updatedFiles = [...prevFiles];
+        let addedCount = 0;
+
+        newFiles.forEach((newFile) => {
+          console.log(
+            `🔍 Frontend: Checking file - ${newFile.name} (${(
+              newFile.size / 1024
+            ).toFixed(2)} KB)`
+          );
+
+          // Check if a file with the same name and size already exists
+          if (
+            !updatedFiles.some(
+              (existingFile) =>
+                existingFile.name === newFile.name &&
+                existingFile.size === newFile.size
+            )
+          ) {
+            updatedFiles.push(newFile);
+            addedCount++;
+            console.log(`✅ Frontend: Added file - ${newFile.name}`);
+          } else {
+            console.log(
+              `⚠️ Frontend: Skipped duplicate file - ${newFile.name}`
+            );
+          }
+        });
+
+        console.log(
+          `📊 Frontend: Files summary - Added: ${addedCount}, Total: ${updatedFiles.length}`
+        );
+        return updatedFiles;
       });
 
-      console.log(
-        `📊 Frontend: Files summary - Added: ${addedCount}, Total: ${updatedFiles.length}`
-      );
-      return updatedFiles;
-    });
-  }, []);
+      // Upload files to temp_documents for pre-processing
+      uploadToTempDocuments(newFiles);
+    },
+    [session?.user?.id, uploadToTempDocuments]
+  );
 
   const handleRemoveFile = (index: number) => {
     const fileName = files[index]?.name;
