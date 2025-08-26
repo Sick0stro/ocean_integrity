@@ -387,7 +387,6 @@ Template for additional_document
       storageType: 'none' as 'storage' | 'database' | 'hybrid' | 'none',
       databaseId: null as string | null,
     };
-    let uploadError: any = null;
 
     // If we're processing from single_documents, use existing file
     if (documentId && pdfPath) {
@@ -879,10 +878,7 @@ Template for additional_document
       databaseId: storageResult.databaseId,
       uploadSuccess: storageResult.success,
       error: !storageResult.success
-        ? `Storage failed: All upload attempts failed. ${
-            (uploadError as { message?: string })?.message ||
-            'Network connectivity issue'
-          }`
+        ? 'Storage failed: All upload attempts failed. Network connectivity issue'
         : undefined,
       meta: {
         requestId,
