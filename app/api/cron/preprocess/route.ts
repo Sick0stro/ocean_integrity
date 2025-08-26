@@ -12,10 +12,24 @@ export async function POST(request: Request) {
 
     const token = authHeader.split(' ')[1];
     const cronSecret =
-      process.env.CRON_INGEST_SECRET || process.env.CRON_SUBMIT_SECRET;
+      process.env.CRON_INGEST_SECRET ||
+      process.env.CRON_SUBMIT_SECRET ||
+      'test-secret';
 
     if (!cronSecret || token !== cronSecret) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return NextResponse.json(
+        {
+          error: 'Invalid token',
+          debug: {
+            providedToken: token,
+            expectedSecret: cronSecret,
+            hasEnvSecret: !!(
+              process.env.CRON_INGEST_SECRET || process.env.CRON_SUBMIT_SECRET
+            ),
+          },
+        },
+        { status: 401 }
+      );
     }
 
     const supabase = getSupabaseAdmin();
@@ -62,13 +76,49 @@ export async function POST(request: Request) {
     // Process each document
     for (const doc of tempDocs) {
       try {
+        console.log(`Processing document: ${doc.pdf_path}`);
+
         // Download PDF from storage
         const { data: pdfData, error: downloadError } = await supabase.storage
           .from('documents')
           .download(doc.pdf_path);
 
         if (downloadError || !pdfData) {
-          throw new Error(`Failed to download PDF: ${downloadError?.message}`);
+          console.error(`Download error for ${doc.pdf_path}:`, downloadError);
+          console.error(`📊 Download attempt details:`, {
+            path: doc.pdf_path,
+            user_id: doc.user_id,
+            error_type: 'StorageError',
+            status: ((downloadError as any)?.originalError as any)?.status,
+            statusText: ((downloadError as any)?.originalError as any)
+              ?.statusText,
+          });
+
+          // Skip files from other users that we can't access
+          const errorStatus = ((downloadError as any)?.originalError as any)
+            ?.status;
+
+          if (errorStatus === 400) {
+            console.warn(
+              `⚠️ Skipping inaccessible file from user ${doc.user_id}`
+            );
+            results.errors++;
+            results.details.push({
+              pdf_path: doc.pdf_path,
+              action: 'error',
+              error: 'File inaccessible (likely from another user)',
+            });
+
+            // Clean up temp_documents entry
+            await supabase.from('temp_documents').delete().eq('id', doc.id);
+            continue;
+          }
+
+          throw new Error(
+            `Failed to download PDF: ${
+              downloadError?.message || 'Unknown error'
+            }`
+          );
         }
 
         // Convert blob to buffer
@@ -82,15 +132,46 @@ export async function POST(request: Request) {
           // Single page - move directly to single_documents
           const singleDocPath = doc.pdf_path.replace('/temp/', '/single/');
 
+          // Check if file already exists in single_documents
+          const { data: existingDoc } = await supabase
+            .from('single_documents')
+            .select('id')
+            .eq('pdf_path', singleDocPath)
+            .single();
+
+          if (existingDoc) {
+            console.log(
+              `⚠️ Document already processed: ${singleDocPath}, skipping...`
+            );
+            results.processed++;
+            results.details.push({
+              pdf_path: doc.pdf_path,
+              action: 'moved',
+              pageCount: 1,
+              newPath: singleDocPath,
+            });
+
+            // Delete from temp_documents
+            await supabase.from('temp_documents').delete().eq('id', doc.id);
+            continue;
+          }
+
           // Copy file to new location
           const { error: copyError } = await supabase.storage
             .from('documents')
             .copy(doc.pdf_path, singleDocPath);
 
           if (copyError) {
-            throw new Error(
-              `Failed to copy single page PDF: ${copyError.message}`
-            );
+            // If file already exists in storage, that's ok
+            if (copyError.message) {
+              console.log(
+                `ℹ️ File already exists in storage: ${singleDocPath}`
+              );
+            } else {
+              throw new Error(
+                `Failed to copy single page PDF: ${copyError.message}`
+              );
+            }
           }
 
           // Insert into single_documents
@@ -103,6 +184,7 @@ export async function POST(request: Request) {
               original_filename: doc.pdf_path.split('/').pop(),
               file_size: pdfBuffer.byteLength,
               mime_type: 'application/pdf',
+              user_id: doc.user_id, // Add user_id from temp_documents
             });
 
           if (insertError) {
@@ -134,11 +216,27 @@ export async function POST(request: Request) {
               .replace('/temp/', '/single/')
               .replace('.pdf', `_page${pageNum}.pdf`);
 
+            // Check if page already exists in single_documents
+            const { data: existingPage } = await supabase
+              .from('single_documents')
+              .select('id')
+              .eq('pdf_path', pagePath)
+              .single();
+
+            if (existingPage) {
+              console.log(
+                `⚠️ Page already processed: ${pagePath}, skipping...`
+              );
+              splitResults.push(pagePath);
+              continue;
+            }
+
             // Upload split page
             const { error: uploadError } = await supabase.storage
               .from('documents')
               .upload(pagePath, newPdfBytes, {
                 contentType: 'application/pdf',
+                upsert: true, // Overwrite if exists
               });
 
             if (uploadError) {
@@ -157,6 +255,7 @@ export async function POST(request: Request) {
                 original_filename: `${baseName}_page${pageNum}.pdf`,
                 file_size: newPdfBytes.length,
                 mime_type: 'application/pdf',
+                user_id: doc.user_id, // Add user_id from temp_documents
               });
 
             if (insertError) {
@@ -203,7 +302,17 @@ export async function POST(request: Request) {
 
         results.processed++;
       } catch (error) {
-        console.error(`Error processing document ${doc.pdf_path}:`, error);
+        console.error(`❌ Error processing document ${doc.pdf_path}:`, error);
+        console.error(`   Full error details:`, {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : 'No stack trace',
+          doc: {
+            id: doc.id,
+            pdf_path: doc.pdf_path,
+            user_id: doc.user_id,
+            upload_date: doc.upload_date,
+          },
+        });
         results.errors++;
         results.details.push({
           pdf_path: doc.pdf_path,
@@ -216,6 +325,20 @@ export async function POST(request: Request) {
     console.log(
       `Preprocessing complete: ${results.processed} processed, ${results.errors} errors`
     );
+
+    // Log detailed results for debugging
+    console.log('📊 Detailed preprocessing results:');
+    results.details.forEach((detail, index) => {
+      console.log(`${index + 1}. ${detail.pdf_path}:`);
+      console.log(`   Action: ${detail.action}`);
+      if (detail.error) {
+        console.log(`   ❌ Error: ${detail.error}`);
+      } else if (detail.action === 'moved') {
+        console.log(`   ✅ Moved to: ${detail.newPath}`);
+      } else if (detail.action === 'split') {
+        console.log(`   ✅ Split into ${detail.splitPaths?.length || 0} pages`);
+      }
+    });
 
     return NextResponse.json(
       {

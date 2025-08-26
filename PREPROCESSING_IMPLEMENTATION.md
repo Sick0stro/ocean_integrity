@@ -1,5 +1,15 @@
 # Pre-processing Workflow Implementation
 
+## Current Status (January 2025)
+
+✅ **Production Ready** - The pre-processing workflow is fully implemented and tested with the following capabilities:
+
+- Automatic PDF splitting for multi-page documents
+- Intelligent duplicate handling
+- Graceful error recovery
+- Complete user data isolation
+- Seamless integration with existing AI pipeline
+
 ## Overview
 
 This document details the comprehensive implementation of a new pre-processing workflow for PDF document handling in the Ocean Integrity application. The system was redesigned to decouple PDF upload from AI processing, resulting in faster uploads and more efficient document processing.
@@ -601,6 +611,72 @@ GOOGLE_API_KEY=your_gemini_api_key
    - Test cron job processing
    - Validate AI processing from single_documents
 
+## Recent Updates (January 2025)
+
+### 1. Enhanced Error Handling
+
+- **Duplicate File Handling:** Added intelligent duplicate detection to prevent reprocessing
+
+  - Checks `single_documents` table before moving/creating files
+  - Gracefully skips already processed files
+  - Cleans up `temp_documents` entries for skipped files
+
+- **Inaccessible File Handling:** Improved handling of files from other users
+
+  - Detects 400 Bad Request errors from storage API
+  - Skips files that can't be accessed (likely from other users)
+  - Proper cleanup of database entries
+
+- **Detailed Error Logging:** Enhanced logging throughout the pipeline
+  ```typescript
+  console.error(`📊 Download attempt details:`, {
+    path: doc.pdf_path,
+    user_id: doc.user_id,
+    error_type: 'StorageError',
+    status: errorStatus,
+    statusText: errorStatusText,
+  });
+  ```
+
+### 2. E-way Bill Processing Improvements
+
+- **Synthetic Anchor Key Generation:** Fixed null anchor_key issue for E-way bill page 2
+  ```typescript
+  if (!finalAnchorKey && parsedJSON?.document_type === 'e-way-bill') {
+    if (parsedJSON.eway_bill_number) {
+      finalAnchorKey = parsedJSON.eway_bill_number;
+    } else if (parsedJSON.invoice) {
+      finalAnchorKey = parsedJSON.invoice;
+    } else {
+      finalAnchorKey = `EWAY-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+    }
+  }
+  ```
+
+### 3. User Isolation Enhancement
+
+- **Added user_id to single_documents:** Complete user data isolation
+
+  ```sql
+  ALTER TABLE public.single_documents
+  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id);
+  ```
+
+- **Updated RLS Policies:**
+  ```sql
+  CREATE POLICY "Users can read their own single documents" ON public.single_documents
+  FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+  ```
+
+### 4. UI Refinements
+
+- **Removed Debug Button:** Production-ready interface without debug controls
+- **Automatic Pre-processing:** Seamlessly triggered when clicking "Process Documents"
+- **Improved Upload Handling:** Prevented duplicate uploads with `useRef` flag
+
 ## Future Enhancements
 
 ### 1. Advanced Features
@@ -608,7 +684,7 @@ GOOGLE_API_KEY=your_gemini_api_key
 - **Priority Processing:** Expedite certain document types
 - **Intelligent Retry:** Smart retry logic for failed operations
 - **Parallel Processing:** Process multiple documents simultaneously
-- **Duplicate Detection:** Prevent processing of identical documents
+- **Advanced Duplicate Detection:** Content-based deduplication beyond filename matching
 
 ### 2. Monitoring Improvements
 

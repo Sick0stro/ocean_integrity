@@ -1219,6 +1219,9 @@ function HomeContent({ session }: HomeContentProps) {
   const [processingProgress, setProcessingProgress] = useState(0);
   // const [blobUrls, setBlobUrls] = useState<Map<string, string>>(new Map()); // Track blob URLs for database files - Removed with Review tab
 
+  // Track upload state to prevent duplicates
+  const isUploadingRef = useRef(false);
+
   // Helper function to upload files to temp_documents
   const uploadToTempDocuments = useCallback(
     async (files: File[]) => {
@@ -1226,6 +1229,13 @@ function HomeContent({ session }: HomeContentProps) {
         console.error('❌ No user session for upload');
         return;
       }
+
+      // Prevent duplicate uploads
+      if (isUploadingRef.current) {
+        console.log('⏳ Upload already in progress, skipping...');
+        return;
+      }
+      isUploadingRef.current = true;
 
       console.log(`🚀 Uploading ${files.length} files to temp_documents...`);
 
@@ -1276,6 +1286,9 @@ function HomeContent({ session }: HomeContentProps) {
 
       await Promise.all(uploadPromises);
       console.log('✅ Upload to temp_documents completed');
+
+      // Reset upload flag
+      isUploadingRef.current = false;
     },
     [session?.user?.id]
   );
@@ -1357,14 +1370,96 @@ function HomeContent({ session }: HomeContentProps) {
     // Fetch documents from single_documents instead of using local files
     const supabase = getSupabaseBrowser();
 
+    console.log(`🔍 Frontend: === PROCESS DOCUMENTS CLICKED ===`);
     console.log(`🔍 Frontend: Fetching documents from single_documents...`);
 
-    // Fetch uploaded (unprocessed) documents from single_documents
+    // ENHANCED LOGGING: Check both tables to understand the current state
+    console.log(
+      `📊 Frontend: First, let's check the current state of all tables...`
+    );
+
+    // Check temp_documents
+    const { data: tempDocs, error: tempError } = await supabase
+      .from('temp_documents')
+      .select('*')
+      .order('upload_date', { ascending: true });
+
+    console.log(`📁 Frontend: temp_documents query result:`, {
+      count: tempDocs?.length || 0,
+      error: tempError,
+      documents: tempDocs,
+    });
+
+    // If there are documents in temp_documents, run pre-processing automatically
+    if (tempDocs && tempDocs.length > 0) {
+      console.log(
+        `🔄 Frontend: Found ${tempDocs.length} documents in temp_documents. Running pre-processing automatically...`
+      );
+
+      try {
+        const response = await fetch('/api/cron/preprocess', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer local-dev-submit-123`,
+            'Content-Type': 'application/json',
+          },
+        });
+        const result = await response.json();
+        console.log('🔧 Frontend: Pre-processing result:', result);
+
+        if (!result.success) {
+          console.error(
+            '❌ Pre-processing failed:',
+            result.error || 'Unknown error'
+          );
+          alert(
+            `Pre-processing failed: ${
+              result.error || 'Unknown error'
+            }\n\nPlease check the console for details.`
+          );
+          return;
+        }
+
+        console.log(
+          `✅ Pre-processing complete: ${result.processed} processed, ${result.errors} errors`
+        );
+
+        // Continue with processing after pre-processing is done
+      } catch (error) {
+        console.error('❌ Pre-processing error:', error);
+        alert(
+          `Pre-processing error: ${error}\n\nPlease check the console for details.`
+        );
+        return;
+      }
+    }
+
+    // Check single_documents (all statuses)
+    const { data: allSingleDocs, error: allSingleError } = await supabase
+      .from('single_documents')
+      .select('*')
+      .eq('user_id', session?.user?.id) // Filter by current user
+      .order('upload_date', { ascending: true });
+
+    console.log(`📂 Frontend: single_documents query result (all statuses):`, {
+      count: allSingleDocs?.length || 0,
+      error: allSingleError,
+      documents: allSingleDocs,
+    });
+
+    // Now check specifically for uploadable documents
     const { data: singleDocs, error: fetchError } = await supabase
       .from('single_documents')
       .select('*')
       .eq('status', 'uploaded')
+      .eq('user_id', session?.user?.id) // Filter by current user
       .order('upload_date', { ascending: true });
+
+    console.log(`🎯 Frontend: single_documents with status='uploaded':`, {
+      count: singleDocs?.length || 0,
+      error: fetchError,
+      documents: singleDocs,
+    });
 
     if (fetchError) {
       console.error(
@@ -1376,6 +1471,13 @@ function HomeContent({ session }: HomeContentProps) {
 
     if (!singleDocs || singleDocs.length === 0) {
       console.log(`⚠️ Frontend: No documents to process in single_documents`);
+      console.log(`💡 Frontend: This means either:`);
+      console.log(`   1. No files uploaded yet`);
+      console.log(`   2. Files are in temp_documents waiting for cron job`);
+      console.log(`   3. Files already processed (status='processed')`);
+      console.log(
+        `🔧 Frontend: Check temp_documents above to see if cron job needs to run`
+      );
       setShowAlreadyProcessedAlert(true);
       setTimeout(() => {
         setShowAlreadyProcessedAlert(false);
@@ -2211,13 +2313,17 @@ function HomeContent({ session }: HomeContentProps) {
                             />
                           </div>
                         ) : (
-                          <Button
-                            onClick={processFiles}
-                            disabled={files.length === 0}
-                            className='w-full py-6 text-lg gap-2'
-                          >
-                            Process Documents <ArrowRight className='h-5 w-5' />
-                          </Button>
+                          <>
+                            <Button
+                              type='button'
+                              onClick={processFiles}
+                              disabled={files.length === 0}
+                              className='w-full py-6 text-lg gap-2'
+                            >
+                              Process Documents{' '}
+                              <ArrowRight className='h-5 w-5' />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>

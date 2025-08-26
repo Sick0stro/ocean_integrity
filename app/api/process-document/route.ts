@@ -797,8 +797,37 @@ Template for additional_document
           // Continue processing on duplicate check failure
         }
 
+        // Log extracted anchor_key for debugging
+        console.log(`🔑 [${requestId}] Anchor key extraction:`, {
+          extractedValue: anchorKey,
+          isNull: anchorKey === null,
+          isEmpty: anchorKey === '',
+          documentType: parsedJSON?.document_type,
+          invoiceField: parsedJSON?.invoice,
+          allFields: Object.keys(parsedJSON || {}),
+        });
+
+        // For E-way bills without anchor_key, generate one from available data
+        let finalAnchorKey = anchorKey;
+        if (!finalAnchorKey && parsedJSON?.document_type === 'e-way-bill') {
+          // Try to extract from other fields or generate a unique one
+          if (parsedJSON.eway_bill_number) {
+            finalAnchorKey = parsedJSON.eway_bill_number;
+          } else if (parsedJSON.invoice) {
+            finalAnchorKey = parsedJSON.invoice;
+          } else {
+            // Generate a unique key for E-way bills without invoice numbers
+            finalAnchorKey = `EWAY-${Date.now()}-${Math.random()
+              .toString(36)
+              .substr(2, 9)}`;
+            console.log(
+              `⚠️ [${requestId}] Generated synthetic anchor_key for E-way bill: ${finalAnchorKey}`
+            );
+          }
+        }
+
         const insertPayload = {
-          anchor_key: anchorKey,
+          anchor_key: finalAnchorKey,
           document_type: parsedJSON?.document_type ?? null,
           raw_json: parsedJSON ?? null,
           file_url: storageResult.publicUrl,
@@ -878,7 +907,7 @@ Template for additional_document
       databaseId: storageResult.databaseId,
       uploadSuccess: storageResult.success,
       error: !storageResult.success
-        ? 'Storage failed: All upload attempts failed. Network connectivity issue'
+        ? 'Storage failed: All upload attempts failed.'
         : undefined,
       meta: {
         requestId,
