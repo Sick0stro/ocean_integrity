@@ -12,11 +12,10 @@ export function SiteHeader() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Get initial session
     const getSession = async () => {
       try {
-        const {
-          data: { session },
-        } = await getSupabaseBrowser().auth.getSession();
+        const { data: { session } } = await getSupabaseBrowser().auth.getSession();
         setSession(session);
       } catch (error) {
         console.error('Error getting session:', error);
@@ -24,7 +23,20 @@ export function SiteHeader() {
         setIsLoading(false);
       }
     };
+
     getSession();
+
+    // Subscribe to auth state changes
+    const { data: { subscription } } = getSupabaseBrowser().auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   return (
