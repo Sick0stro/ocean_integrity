@@ -118,43 +118,88 @@ export async function POST(req: Request) {
     // ========== STEP 1: EXTRACT & VALIDATE FILE ==========
     console.log(`📁 [${requestId}] Step 1: Extracting form data...`);
     const formData = await req.formData();
-    const file = formData.get('file') as File | null;
 
-    if (!file) {
-      console.error(`❌ [${requestId}] ERROR: No PDF file provided`);
-      return NextResponse.json(
-        { success: false, error: 'No PDF file provided' },
-        { status: 400 }
+    // Check if we have a document ID (from single_documents)
+    const documentId = formData.get('documentId') as string | null;
+    const pdfPath = formData.get('pdfPath') as string | null;
+
+    let file: File | null = null;
+    let fileName: string;
+    let arrayBuffer: ArrayBuffer;
+
+    if (documentId && pdfPath) {
+      // Fetch file from storage using pdfPath
+      console.log(`📂 [${requestId}] Fetching document from storage:`);
+      console.log(`   🆔 Document ID: ${documentId}`);
+      console.log(`   📍 PDF Path: ${pdfPath}`);
+
+      const adminSupabase = getSupabaseAdmin();
+      const { data: downloadData, error: downloadError } =
+        await adminSupabase.storage.from('documents').download(pdfPath);
+
+      if (downloadError || !downloadData) {
+        console.error(
+          `❌ [${requestId}] ERROR: Failed to download PDF from storage`
+        );
+        console.error(`   Error:`, downloadError);
+        return NextResponse.json(
+          { success: false, error: 'Failed to download PDF from storage' },
+          { status: 500 }
+        );
+      }
+
+      arrayBuffer = await downloadData.arrayBuffer();
+      fileName = pdfPath.split('/').pop() || 'document.pdf';
+
+      console.log(`✅ [${requestId}] PDF downloaded from storage`);
+      console.log(`   📝 Name: ${fileName}`);
+      console.log(
+        `   📊 Size: ${(arrayBuffer.byteLength / (1024 * 1024)).toFixed(2)} MB`
       );
-    }
+    } else {
+      // Original file upload logic
+      file = formData.get('file') as File | null;
 
-    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-    console.log(`📄 [${requestId}] File received:`);
-    console.log(`   📝 Name: ${file.name}`);
-    console.log(`   📊 Size: ${fileSizeMB} MB`);
-    console.log(`   🔖 Type: ${file.type}`);
+      if (!file) {
+        console.error(
+          `❌ [${requestId}] ERROR: No PDF file or document ID provided`
+        );
+        return NextResponse.json(
+          { success: false, error: 'No PDF file or document ID provided' },
+          { status: 400 }
+        );
+      }
 
-    if (file.type !== 'application/pdf') {
-      console.error(
-        `❌ [${requestId}] ERROR: Invalid file type - ${file.type}`
-      );
-      return NextResponse.json(
-        { success: false, error: 'Invalid file format. PDF only' },
-        { status: 400 }
-      );
-    }
+      fileName = file.name;
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      console.log(`📄 [${requestId}] File received via upload:`);
+      console.log(`   📝 Name: ${fileName}`);
+      console.log(`   📊 Size: ${fileSizeMB} MB`);
+      console.log(`   🔖 Type: ${file.type}`);
 
-    // Check file size and warn if large
-    if (file.size > 10 * 1024 * 1024) {
-      // 10MB
-      console.warn(`⚠️ [${requestId}] Large file detected: ${fileSizeMB} MB`);
+      if (file.type !== 'application/pdf') {
+        console.error(
+          `❌ [${requestId}] ERROR: Invalid file type - ${file.type}`
+        );
+        return NextResponse.json(
+          { success: false, error: 'Invalid file format. PDF only' },
+          { status: 400 }
+        );
+      }
+
+      // Check file size and warn if large
+      if (file.size > 10 * 1024 * 1024) {
+        // 10MB
+        console.warn(`⚠️ [${requestId}] Large file detected: ${fileSizeMB} MB`);
+      }
+
+      arrayBuffer = await file.arrayBuffer();
     }
 
     // ========== STEP 2: CONVERT TO BASE64 ==========
     console.log(`🔄 [${requestId}] Step 2: Converting PDF to base64...`);
     const conversionStart = Date.now();
 
-    const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString('base64');
 
     const conversionTime = Date.now() - conversionStart;
@@ -182,62 +227,83 @@ export async function POST(req: Request) {
     const PROMPT = `
 You are an expert document processing AI. Your task is to analyze the provided document, identify its type, and extract the data into a precise JSON format.
 
-**Instructions:**
-
-1.  **Classify Document:** Determine if the document is an \`invoice\`, \`eft_receipt\`, or \`e-way-bill\`.
-2.  **Extract Data:** Populate the corresponding JSON template with data extracted from the document.
-3.  **Strict Formatting:**
-    * Use the exact field names and data types from the templates.
-    * If a field's value is not found in the document, you **MUST** use \`null\`.
-    * Your output **MUST** be only the JSON object. Do not include any extra text, explanations, or markdown formatting like \`\`\`json.
 
 ---
-**JSON TEMPLATES**
+Instructions:
 
-**Template for \`eft_receipt\`**
+
+1. Classify Document:
+   Determine if the document is an invoice, eft_receipt, e-way-bill, or additional_document.
+   * If the document does not match the first three categories, classify it as additional_document.
+
+2. Extract Data:
+   Populate the corresponding JSON template with data extracted from the document.
+
+3. Strict Formatting:
+   * Use the exact field names and data types from the templates.
+    If a field's value is not found in the document, you *MUST** use null.
+    Your output *MUST** be only the JSON object. Do not include any extra text, explanations, or markdown formatting like \`\`\`json.
+
+---
+
+### JSON TEMPLATES
+
+
+Template for eft_receipt
 {
   "document_type": "eft_receipt",
-  "invoice": "string",// generate invoice from Agst Ref, exsample MAT/UP/12-30/054
-  "second_invoice": "string",// generate second_invoice from Agst Ref, exsample MAT/UP/12-30/054, generate "second_invoice" only if its avelible.
-  "third_invoice": "string",// generate third_invoice from Agst Ref, exsample MAT/UP/12-30/054, generate "third_invoice" only if its avelible.    
+  "invoice": "string", // generate invoice from Agst Ref, exsample MAT/UP/12-30/054
+  "second_invoice": "string", // generate only if available
+  "third_invoice": "string",  // generate only if available
   "bank_name": "string",
   "etf_date": "string (dd/mm/yyyy)",
   "sender_name": "string",
-  "reciver_name": "string",
+  "reciver_name": "string"
 }
 
-**Template for \`invoice\`**
+
+Template for invoice
 {
   "document_type": "invoice",
-  "invoice": "string",// generate invoice from invoice #, like exsample MAT/UP/12-30/054 not like this exsample MAT-UP-12-30-054
+  "invoice": "string", // from invoice #, format MAT/UP/12-30/054 not MAT-UP-12-30-054
   "invoice_date": "string (dd-mm-yyyy)",
   "bill_to_address": "string", 
   "bill_to_company_name": "string",
   "bill_from_company_name": "string",
   "vehicle_number": "string",
-  "weight": "number",// generate weight from Qty
+  "weight": "number", // generate from Qty
   "weight_unit_of_mesurement": "string", // exsample KG
-  "plastic_type": "string",// generate plastic type from items, exsample  PET, HDPE , PVC , LDPE , PP , PS , OTHER , MIXED , ALU , PAP , GLASS , PAPER , TP , TEX , TEXN , TEX 
+  "plastic_type": "string" // from items, exsample PET, HDPE, PVC, LDPE, PP, PS, OTHER, MIXED, ALU, PAP, GLASS, PAPER, TP, TEX, TEXN, TEX
 }
 
-**Template for \`e-way-bill\`**
+
+Template for e-way-bill
 {
   "document_type": "e-way-bill",
   "eway_bill_no": "string",
-  "invoice": "string",// exsample MAT/UP/12-30/054 and do not add date (dd-mm-yyyy) and do not add Tax Invoice in the begining  
+  "invoice": "string", // format MAT/UP/12-30/054 (exclude date and words like 'Tax Invoice')
   "generated_date": "string (dd/mm/yyyy hh:mm pm/am)",
-  "plastic_type": "string",// generate plastic type from product name and discription, exsample  PET, HDPE , PVC , LDPE , PP , PS , OTHER , MIXED , ALU , PAP , GLASS , PAPER , TP , TEX , TEXN , TEX 
+  "plastic_type": "string", // from product name or description
   "weight": "number",
   "weight_unit_of_mesurement": "string", // exsample KG
   "mode": "string",
-  "city": "string",// generate city from ship_to_address,
+  "city": "string", // from ship_to_address
   "ship_to_address": "string", 
   "ship_to_company_name": "string",
   "ship_from_company_name": "string",
-  "ship_to_country_code": "string",// generate country code from ship to address, exsample IN,BR,US,CA,GB
-  "vehicle_number": "string",
+  "ship_to_country_code": "string", // exsample IN, BR, US, CA, GB
+  "vehicle_number": "string"
 }
----`;
+
+Template for additional_document
+{
+  "document_type": "additional_document",
+  "document_name": "string", // from title, header, or main label
+  "issuer_name": "string",   // from who issued/provided the document
+  "issue_date": "string (dd-mm-yyyy)", // if available
+  "reference_number": "string" // if available
+}
+`;
 
     const geminiPayload = {
       contents: [
@@ -321,243 +387,322 @@ You are an expert document processing AI. Your task is to analyze the provided d
       storageType: 'none' as 'storage' | 'database' | 'hybrid' | 'none',
       databaseId: null as string | null,
     };
+    let uploadError: any = null;
 
-    // Add timestamp to prevent duplicate file conflicts
-    const timestamp = Date.now();
+    // If we're processing from single_documents, use existing file
+    if (documentId && pdfPath) {
+      console.log(
+        `✅ [${requestId}] Using existing file from storage: ${pdfPath}`
+      );
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('documents').getPublicUrl(pdfPath);
+      storageResult = {
+        success: true,
+        publicUrl: publicUrl,
+        storageType: 'storage',
+        databaseId: null,
+      };
+      console.log(`📍 [${requestId}] Existing file URL: ${publicUrl}`);
+    } else {
+      // Original upload logic for new files
+      // Add timestamp to prevent duplicate file conflicts
+      const timestamp = Date.now();
 
-    // ENHANCED STORAGE WITH MULTIPLE UPLOAD METHODS AND COMPREHENSIVE LOGGING
-    console.log(
-      `📤 [${requestId}] Testing multiple upload methods for Supabase Storage (${fileSizeMB} MB)`
-    );
+      // ENHANCED STORAGE WITH MULTIPLE UPLOAD METHODS AND COMPREHENSIVE LOGGING
+      console.log(
+        `📤 [${requestId}] Testing multiple upload methods for Supabase Storage (${(
+          arrayBuffer.byteLength /
+          (1024 * 1024)
+        ).toFixed(2)} MB)`
+      );
 
-    // Prepare different data formats to test (ordered by reliability based on logs)
-    const uploadFormats = [
-      {
-        name: 'ArrayBuffer (Reliable)',
-        data: arrayBuffer,
-        options: { contentType: 'application/pdf', upsert: true },
-      },
-      {
-        name: 'File Object',
-        data: file,
-        options: { contentType: 'application/pdf', upsert: true },
-      },
-      {
-        name: 'Buffer',
-        data: Buffer.from(arrayBuffer),
-        options: { contentType: 'application/pdf', upsert: true },
-      },
-      {
-        name: 'Blob',
-        data: new Blob([arrayBuffer], { type: 'application/pdf' }),
-        options: { contentType: 'application/pdf', upsert: true },
-      },
-      {
-        name: 'ArrayBuffer (With Duplex)',
-        data: arrayBuffer,
-        options: {
-          contentType: 'application/pdf',
-          upsert: true,
-          duplex: 'half' as const,
+      // Prepare different data formats to test (ordered by reliability based on logs)
+      const uploadFormats = [
+        {
+          name: 'ArrayBuffer (Reliable)',
+          data: arrayBuffer,
+          options: { contentType: 'application/pdf', upsert: true },
         },
-      },
-    ];
+        ...(file
+          ? [
+              {
+                name: 'File Object',
+                data: file,
+                options: { contentType: 'application/pdf', upsert: true },
+              },
+            ]
+          : []),
+        {
+          name: 'Buffer',
+          data: Buffer.from(arrayBuffer),
+          options: { contentType: 'application/pdf', upsert: true },
+        },
+        {
+          name: 'Blob',
+          data: new Blob([arrayBuffer], { type: 'application/pdf' }),
+          options: { contentType: 'application/pdf', upsert: true },
+        },
+        {
+          name: 'ArrayBuffer (With Duplex)',
+          data: arrayBuffer,
+          options: {
+            contentType: 'application/pdf',
+            upsert: true,
+            duplex: 'half' as const,
+          },
+        },
+      ];
 
-    // Try with admin client as well
-    const adminClient = getSupabaseAdmin();
-    const clients = [
-      { name: 'Anon Client', client: supabase },
-      { name: 'Admin Client', client: adminClient },
-    ];
+      // Try with admin client as well
+      const adminClient = getSupabaseAdmin();
+      const clients = [
+        { name: 'Anon Client', client: supabase },
+        { name: 'Admin Client', client: adminClient },
+      ];
 
-    let uploadError = null as unknown;
-    let successfulMethod = null;
+      let uploadError = null as unknown;
+      let successfulMethod = null;
 
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    const maxRetriesPerAttempt = 3;
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const maxRetriesPerAttempt = 3;
 
-    // Test each client with each upload format
-    for (const clientTest of clients) {
-      if (storageResult.success) break; // Exit if we already succeeded
-
-      console.log(`🔄 [${requestId}] Testing ${clientTest.name}...`);
-
-      for (
-        let formatIndex = 0;
-        formatIndex < uploadFormats.length;
-        formatIndex++
-      ) {
+      // Test each client with each upload format
+      for (const clientTest of clients) {
         if (storageResult.success) break; // Exit if we already succeeded
 
-        const format = uploadFormats[formatIndex];
-        const currentFilePath = `documents/${timestamp}-${formatIndex}-${file.name}`;
+        console.log(`🔄 [${requestId}] Testing ${clientTest.name}...`);
 
-        console.log(
-          `   🧪 [${requestId}] Method ${formatIndex + 1}/${
-            uploadFormats.length
-          }: ${format.name}`
-        );
-        console.log(`   📋 [${requestId}] Options:`, format.options);
-        console.log(`   📊 [${requestId}] Data type:`, typeof format.data);
-        console.log(
-          `   📏 [${requestId}] Data size:`,
-          format.data instanceof File
-            ? format.data.size
-            : format.data instanceof ArrayBuffer
-            ? format.data.byteLength
-            : format.data instanceof Buffer
-            ? format.data.length
-            : format.data instanceof Blob
-            ? format.data.size
-            : 'unknown'
-        );
+        for (
+          let formatIndex = 0;
+          formatIndex < uploadFormats.length;
+          formatIndex++
+        ) {
+          if (storageResult.success) break; // Exit if we already succeeded
 
-        try {
-          let attempt = 0;
-          while (attempt < maxRetriesPerAttempt && !storageResult.success) {
-            try {
-              const uploadStart = Date.now();
-              const { error, data: uploadData } =
-                await clientTest.client.storage
-                  .from('documents')
-                  .upload(currentFilePath, format.data, format.options);
-              const uploadDuration = Date.now() - uploadStart;
-              console.log(
-                `   ⏱️ [${requestId}] Upload attempt ${
-                  attempt + 1
-                } took ${uploadDuration}ms`
-              );
+          const format = uploadFormats[formatIndex];
+          const currentFilePath = `documents/${timestamp}-${formatIndex}-${fileName}`;
 
-              if (!error) {
+          console.log(
+            `   🧪 [${requestId}] Method ${formatIndex + 1}/${
+              uploadFormats.length
+            }: ${format.name}`
+          );
+          console.log(`   📋 [${requestId}] Options:`, format.options);
+          console.log(`   📊 [${requestId}] Data type:`, typeof format.data);
+          console.log(
+            `   📏 [${requestId}] Data size:`,
+            format.data instanceof File
+              ? format.data.size
+              : format.data instanceof ArrayBuffer
+              ? format.data.byteLength
+              : format.data instanceof Buffer
+              ? format.data.length
+              : format.data instanceof Blob
+              ? format.data.size
+              : 'unknown'
+          );
+
+          try {
+            let attempt = 0;
+            while (attempt < maxRetriesPerAttempt && !storageResult.success) {
+              try {
+                const uploadStart = Date.now();
+                const { error, data: uploadData } =
+                  await clientTest.client.storage
+                    .from('documents')
+                    .upload(currentFilePath, format.data, format.options);
+                const uploadDuration = Date.now() - uploadStart;
                 console.log(
-                  `   ✅ [${requestId}] SUCCESS with ${clientTest.name} + ${format.name}!`
+                  `   ⏱️ [${requestId}] Upload attempt ${
+                    attempt + 1
+                  } took ${uploadDuration}ms`
                 );
-                console.log(`   📄 [${requestId}] Upload result:`, uploadData);
-                const { data: urlData } = clientTest.client.storage
-                  .from('documents')
-                  .getPublicUrl(currentFilePath);
-                console.log(
-                  `   🔗 [${requestId}] Public URL generated:`,
-                  urlData.publicUrl
+
+                if (!error) {
+                  console.log(
+                    `   ✅ [${requestId}] SUCCESS with ${clientTest.name} + ${format.name}!`
+                  );
+                  console.log(
+                    `   📄 [${requestId}] Upload result:`,
+                    uploadData
+                  );
+                  const { data: urlData } = clientTest.client.storage
+                    .from('documents')
+                    .getPublicUrl(currentFilePath);
+                  console.log(
+                    `   🔗 [${requestId}] Public URL generated:`,
+                    urlData.publicUrl
+                  );
+                  storageResult = {
+                    success: true,
+                    publicUrl: urlData.publicUrl,
+                    storageType: 'storage',
+                    databaseId: null,
+                  };
+                  successfulMethod = `${clientTest.name} + ${format.name}`;
+                  break;
+                }
+
+                uploadError = error;
+                console.error(
+                  `   ❌ [${requestId}] ${clientTest.name} + ${format.name} failed: ${error?.message}`
                 );
-                storageResult = {
-                  success: true,
-                  publicUrl: urlData.publicUrl,
-                  storageType: 'storage',
-                  databaseId: null,
-                };
-                successfulMethod = `${clientTest.name} + ${format.name}`;
-                break;
+              } catch (e) {
+                uploadError = e;
+                console.error(
+                  `   💥 [${requestId}] ${clientTest.name} + ${format.name} exception:`,
+                  (e as Error).message
+                );
               }
 
-              uploadError = error;
-              console.error(
-                `   ❌ [${requestId}] ${clientTest.name} + ${format.name} failed: ${error?.message}`
+              attempt += 1;
+              const backoff =
+                Math.min(1500, 300 * attempt) + Math.floor(Math.random() * 200);
+              console.log(`   🔁 [${requestId}] Retrying in ${backoff}ms...`);
+              await sleep(backoff);
+            }
+          } catch (loopErr) {
+            uploadError = loopErr;
+          }
+        }
+      }
+
+      if (storageResult.success) {
+        console.log(
+          `🎉 [${requestId}] Upload successful using: ${successfulMethod}`
+        );
+      }
+
+      // If all storage attempts failed, try a final signed-url fallback
+      if (!storageResult.success) {
+        console.warn(`🟠 [${requestId}] Falling back to signed upload url...`);
+        try {
+          const admin = getSupabaseAdmin();
+          const signedPath = `documents/${timestamp}-signed-${fileName}`;
+          let signedAttempt = 0;
+          while (
+            !storageResult.success &&
+            signedAttempt < maxRetriesPerAttempt
+          ) {
+            const { data: signed, error: signErr } = await admin.storage
+              .from('documents')
+              .createSignedUploadUrl(signedPath);
+            if (signErr || !signed?.signedUrl) {
+              uploadError =
+                signErr || new Error('createSignedUploadUrl failed');
+              signedAttempt += 1;
+              await sleep(300 * (signedAttempt + 1));
+              continue;
+            }
+            const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+            const { error: uploadSignedErr } = await admin.storage
+              .from('documents')
+              .uploadToSignedUrl(signedPath, signed.signedUrl, blob, {
+                contentType: 'application/pdf',
+                upsert: true,
+                cacheControl: '3600',
+                duplex: 'half',
+              });
+            if (!uploadSignedErr) {
+              const { data: urlData } = admin.storage
+                .from('documents')
+                .getPublicUrl(signedPath);
+              storageResult = {
+                success: true,
+                publicUrl: urlData.publicUrl,
+                storageType: 'storage',
+                databaseId: null,
+              };
+              successfulMethod = `Admin + SignedUrl`;
+              console.log(`🟢 [${requestId}] Signed upload succeeded`);
+            } else {
+              uploadError = uploadSignedErr;
+              signedAttempt += 1;
+              const backoff = 400 * signedAttempt;
+              console.log(
+                `   🔁 [${requestId}] Signed upload retry in ${backoff}ms...`
               );
-            } catch (e) {
-              uploadError = e;
+              await sleep(backoff);
+            }
+          }
+        } catch (signedEx) {
+          uploadError = signedEx;
+        }
+
+        // If still failed after fallback, mark as none
+        if (!storageResult.success) {
+          console.error(
+            `❌ [${requestId}] ALL STORAGE ATTEMPTS FAILED! File will not have URL`
+          );
+          console.error(`📝 [${requestId}] Final error:`, uploadError);
+          storageResult = {
+            success: false,
+            publicUrl: null,
+            storageType: 'none',
+            databaseId: null,
+          };
+          if (uploadError && typeof uploadError === 'object') {
+            const errorObj = uploadError as {
+              originalError?: { cause?: { code?: string } };
+            };
+            if (errorObj.originalError?.cause?.code === 'UND_ERR_SOCKET') {
               console.error(
-                `   💥 [${requestId}] ${clientTest.name} + ${format.name} exception:`,
-                (e as Error).message
+                `🔌 [${requestId}] Socket error detected - network connection dropped`
               );
             }
-
-            attempt += 1;
-            const backoff =
-              Math.min(1500, 300 * attempt) + Math.floor(Math.random() * 200);
-            console.log(`   🔁 [${requestId}] Retrying in ${backoff}ms...`);
-            await sleep(backoff);
-          }
-        } catch (loopErr) {
-          uploadError = loopErr;
-        }
-      }
-    }
-
-    if (storageResult.success) {
-      console.log(
-        `🎉 [${requestId}] Upload successful using: ${successfulMethod}`
-      );
-    }
-
-    // If all storage attempts failed, try a final signed-url fallback
-    if (!storageResult.success) {
-      console.warn(`🟠 [${requestId}] Falling back to signed upload url...`);
-      try {
-        const admin = getSupabaseAdmin();
-        const signedPath = `documents/${timestamp}-signed-${file.name}`;
-        let signedAttempt = 0;
-        while (!storageResult.success && signedAttempt < maxRetriesPerAttempt) {
-          const { data: signed, error: signErr } = await admin.storage
-            .from('documents')
-            .createSignedUploadUrl(signedPath);
-          if (signErr || !signed?.signedUrl) {
-            uploadError = signErr || new Error('createSignedUploadUrl failed');
-            signedAttempt += 1;
-            await sleep(300 * (signedAttempt + 1));
-            continue;
-          }
-          const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-          const { error: uploadSignedErr } = await admin.storage
-            .from('documents')
-            .uploadToSignedUrl(signedPath, signed.signedUrl, blob, {
-              contentType: 'application/pdf',
-              upsert: true,
-              cacheControl: '3600',
-              duplex: 'half',
-            });
-          if (!uploadSignedErr) {
-            const { data: urlData } = admin.storage
-              .from('documents')
-              .getPublicUrl(signedPath);
-            storageResult = {
-              success: true,
-              publicUrl: urlData.publicUrl,
-              storageType: 'storage',
-              databaseId: null,
-            };
-            successfulMethod = `Admin + SignedUrl`;
-            console.log(`🟢 [${requestId}] Signed upload succeeded`);
-          } else {
-            uploadError = uploadSignedErr;
-            signedAttempt += 1;
-            const backoff = 400 * signedAttempt;
-            console.log(
-              `   🔁 [${requestId}] Signed upload retry in ${backoff}ms...`
-            );
-            await sleep(backoff);
-          }
-        }
-      } catch (signedEx) {
-        uploadError = signedEx;
-      }
-
-      // If still failed after fallback, mark as none
-      if (!storageResult.success) {
-        console.error(
-          `❌ [${requestId}] ALL STORAGE ATTEMPTS FAILED! File will not have URL`
-        );
-        console.error(`📝 [${requestId}] Final error:`, uploadError);
-        storageResult = {
-          success: false,
-          publicUrl: null,
-          storageType: 'none',
-          databaseId: null,
-        };
-        if (uploadError && typeof uploadError === 'object') {
-          const errorObj = uploadError as {
-            originalError?: { cause?: { code?: string } };
-          };
-          if (errorObj.originalError?.cause?.code === 'UND_ERR_SOCKET') {
-            console.error(
-              `🔌 [${requestId}] Socket error detected - network connection dropped`
-            );
           }
         }
       }
-    }
+    } // Close else block for new file upload
 
     const uploadTime = Date.now() - uploadStart;
+
+    // ========== STEP 8.5: CHECK IF DOCUMENT SHOULD BE SKIPPED ==========
+    if (parsedJSON?.document_type === 'additional_document') {
+      console.log(
+        `🚫 [${requestId}] Document classified as additional_document - SKIPPING`
+      );
+      console.log(`📄 [${requestId}] Document details:`, {
+        document_name: parsedJSON.document_name,
+        issuer_name: parsedJSON.issuer_name,
+        reference_number: parsedJSON.reference_number,
+      });
+
+      // Update single_documents status to 'processed' even though we're skipping
+      if (documentId) {
+        const { error: updateError } = await supabase
+          .from('single_documents')
+          .update({ status: 'processed' })
+          .eq('id', documentId);
+
+        if (updateError) {
+          console.error(
+            `❌ Failed to update single_documents status:`,
+            updateError
+          );
+        } else {
+          console.log(
+            `✅ Updated single_documents status to 'processed' for skipped document`
+          );
+        }
+      }
+
+      // Return success but indicate document was skipped
+      return NextResponse.json(
+        {
+          success: true,
+          skipped: true,
+          reason: 'Document classified as additional_document',
+          data: parsedJSON,
+          metadata: {
+            processingTime: Date.now() - startTime,
+            fileName: fileName,
+          },
+        },
+        { status: 200 }
+      );
+    }
 
     // ========== STEP 9: SAVE AI RESULT TO DB (parsed_documents) ==========
     console.log(
@@ -742,9 +887,11 @@ You are an expert document processing AI. Your task is to analyze the provided d
       meta: {
         requestId,
         processingTime: totalTime,
-        fileSize: file.size,
-        fileSizeMB: parseFloat(fileSizeMB),
-        fileName: file.name,
+        fileSize: arrayBuffer.byteLength,
+        fileSizeMB: parseFloat(
+          (arrayBuffer.byteLength / (1024 * 1024)).toFixed(2)
+        ),
+        fileName: fileName,
         storageStrategy: storageResult.storageType,
       },
     };

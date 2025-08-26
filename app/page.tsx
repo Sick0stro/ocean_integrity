@@ -54,10 +54,10 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   Card,
-  CardAction,
+  // CardAction, // Removed with Review tab
   CardContent,
   CardDescription,
-  CardFooter,
+  // CardFooter, // Removed with Review tab
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -66,7 +66,7 @@ import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import FileUploader from '@/components/file-uploader';
 import dynamic from 'next/dynamic';
-import DataSheet from '@/components/data-sheet';
+// import DataSheet from '@/components/data-sheet'; // Removed with Review tab
 // Import documentTemplates for default document structure
 import { documentTemplates } from '@/constants/document-templates';
 // import { setDocumentField, documentEntries } from "@/types/document-types-util"; // Removed unused imports
@@ -84,7 +84,7 @@ import { VideoText } from '@/components/magicui/video-text';
 import { Session } from '@supabase/supabase-js';
 import { LoginForm } from '@/components/login-form';
 import { GalleryVerticalEnd } from 'lucide-react';
-import CSVDownloadBtn from '@/components/csv-download-btn';
+// import CSVDownloadBtn from '@/components/csv-download-btn'; // Removed with Review tab
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
 import { VerifiedCsvDownload } from '@/components/verified-csv-download';
@@ -94,6 +94,8 @@ const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
 });
 
 // Helper function to create blob URL for database-stored PDFs
+// Removed with Review tab
+/*
 const createPdfBlobUrl = async (databaseId: string): Promise<string | null> => {
   try {
     console.log(
@@ -121,14 +123,19 @@ const createPdfBlobUrl = async (databaseId: string): Promise<string | null> => {
     return null;
   }
 };
+*/
 
-// Component to handle PDF preview for both Supabase Storage and Database files
+// Component to handle PDF preview for both Supabase Storage and Database files - Removed with Review tab
+/*
 interface DocumentPdfPreviewProps {
   doc: ProcessedDocument;
   blobUrls: Map<string, string>;
   setBlobUrls: React.Dispatch<React.SetStateAction<Map<string, string>>>;
 }
+*/
 
+// Removed with Review tab
+/*
 const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
   doc,
   blobUrls,
@@ -285,6 +292,7 @@ const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
     </div>
   );
 };
+*/
 
 interface GroupDoc {
   id: string;
@@ -1209,63 +1217,68 @@ function HomeContent({ session }: HomeContentProps) {
   }, []);
   const [currentProcessingIndex, setCurrentProcessingIndex] = useState(-1);
   const [processingProgress, setProcessingProgress] = useState(0);
-  const [blobUrls, setBlobUrls] = useState<Map<string, string>>(new Map()); // Track blob URLs for database files
+  // const [blobUrls, setBlobUrls] = useState<Map<string, string>>(new Map()); // Track blob URLs for database files - Removed with Review tab
 
   // Helper function to upload files to temp_documents
-  const uploadToTempDocuments = async (files: File[]) => {
-    if (!session?.user?.id) {
-      console.error('❌ No user session for upload');
-      return;
-    }
-
-    console.log(`🚀 Uploading ${files.length} files to temp_documents...`);
-
-    const supabase = getSupabaseBrowser();
-    const uploadPromises = files.map(async (file) => {
-      try {
-        // Generate unique path for storage
-        const timestamp = Date.now();
-        const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const pdfPath = `temp/${session.user.id}/${timestamp}_${safeName}`;
-
-        // Upload to Supabase storage
-        const { error: uploadError } = await supabase.storage
-          .from('documents')
-          .upload(pdfPath, file);
-
-        if (uploadError) {
-          console.error(`❌ Failed to upload ${file.name}:`, uploadError);
-          return;
-        }
-
-        // Insert into temp_documents
-        const { error: insertError } = await supabase
-          .from('temp_documents')
-          .insert({
-            user_id: session.user.id,
-            pdf_path: pdfPath,
-            upload_date: new Date().toISOString(),
-          });
-
-        if (insertError) {
-          console.error(
-            `❌ Failed to insert ${file.name} to temp_documents:`,
-            insertError
-          );
-          // Clean up uploaded file
-          await supabase.storage.from('documents').remove([pdfPath]);
-          return;
-        }
-
-        console.log(`✅ Successfully uploaded ${file.name} to temp_documents`);
-      } catch (error) {
-        console.error(`❌ Error uploading ${file.name}:`, error);
+  const uploadToTempDocuments = useCallback(
+    async (files: File[]) => {
+      if (!session?.user?.id) {
+        console.error('❌ No user session for upload');
+        return;
       }
-    });
 
-    await Promise.all(uploadPromises);
-    console.log('✅ Upload to temp_documents completed');
-  };
+      console.log(`🚀 Uploading ${files.length} files to temp_documents...`);
+
+      const supabase = getSupabaseBrowser();
+      const uploadPromises = files.map(async (file) => {
+        try {
+          // Generate unique path for storage
+          const timestamp = Date.now();
+          const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const pdfPath = `temp/${session.user.id}/${timestamp}_${safeName}`;
+
+          // Upload to Supabase storage
+          const { error: uploadError } = await supabase.storage
+            .from('documents')
+            .upload(pdfPath, file);
+
+          if (uploadError) {
+            console.error(`❌ Failed to upload ${file.name}:`, uploadError);
+            return;
+          }
+
+          // Insert into temp_documents
+          const { error: insertError } = await supabase
+            .from('temp_documents')
+            .insert({
+              user_id: session.user.id,
+              pdf_path: pdfPath,
+              upload_date: new Date().toISOString(),
+            });
+
+          if (insertError) {
+            console.error(
+              `❌ Failed to insert ${file.name} to temp_documents:`,
+              insertError
+            );
+            // Clean up uploaded file
+            await supabase.storage.from('documents').remove([pdfPath]);
+            return;
+          }
+
+          console.log(
+            `✅ Successfully uploaded ${file.name} to temp_documents`
+          );
+        } catch (error) {
+          console.error(`❌ Error uploading ${file.name}:`, error);
+        }
+      });
+
+      await Promise.all(uploadPromises);
+      console.log('✅ Upload to temp_documents completed');
+    },
+    [session?.user?.id]
+  );
 
   const handleFilesAdded = useCallback(
     (newFiles: File[]) => {
@@ -1309,7 +1322,7 @@ function HomeContent({ session }: HomeContentProps) {
       // Upload files to temp_documents for pre-processing
       uploadToTempDocuments(newFiles);
     },
-    [session?.user?.id, uploadToTempDocuments]
+    [uploadToTempDocuments]
   );
 
   const handleRemoveFile = (index: number) => {
@@ -1322,6 +1335,8 @@ function HomeContent({ session }: HomeContentProps) {
     console.log(`✅ Frontend: File removed - ${fileName}`);
   };
 
+  // Removed with Review tab
+  /*
   const handleUpdateDocument = (index: number, updatedData: AppDocument) => {
     console.log(`✏️ Frontend: Updating document at index ${index}`);
     console.log(`📄 Frontend: Document type: ${updatedData.document_type}`);
@@ -1336,36 +1351,41 @@ function HomeContent({ session }: HomeContentProps) {
       return newDocs;
     });
   };
+  */
 
   const processFiles = async () => {
-    if (files.length === 0) {
-      console.log(`⚠️ Frontend: No files to process`);
+    // Fetch documents from single_documents instead of using local files
+    const supabase = getSupabaseBrowser();
+
+    console.log(`🔍 Frontend: Fetching documents from single_documents...`);
+
+    // Fetch uploaded (unprocessed) documents from single_documents
+    const { data: singleDocs, error: fetchError } = await supabase
+      .from('single_documents')
+      .select('*')
+      .eq('status', 'uploaded')
+      .order('upload_date', { ascending: true });
+
+    if (fetchError) {
+      console.error(
+        `❌ Frontend: Failed to fetch single_documents:`,
+        fetchError
+      );
       return;
     }
 
-    // 🚀 CRITICAL FIX: Only process files that haven't been processed yet
-    const newFilesToProcess = files.filter((_, index) => {
-      const doc = processedDocuments[index];
-      return !doc || doc.status === 'pending';
-    });
-
-    if (newFilesToProcess.length === 0) {
-      console.log(`⚠️ Frontend: All files already processed`);
-
-      // Show user-facing WARNING alert
+    if (!singleDocs || singleDocs.length === 0) {
+      console.log(`⚠️ Frontend: No documents to process in single_documents`);
       setShowAlreadyProcessedAlert(true);
-
-      // Auto-hide alert after 8 seconds (longer for warnings)
       setTimeout(() => {
         setShowAlreadyProcessedAlert(false);
       }, 8000);
-
       return;
     }
 
     console.log(`🚀 Frontend: === STARTING BATCH PROCESSING ===`);
     console.log(
-      `📊 Frontend: Processing ${newFilesToProcess.length} NEW files out of ${files.length} total`
+      `📊 Frontend: Processing ${singleDocs.length} documents from single_documents`
     );
     console.log(`⏰ Frontend: Started at ${new Date().toISOString()}`);
 
@@ -1373,27 +1393,32 @@ function HomeContent({ session }: HomeContentProps) {
     setCurrentProcessingIndex(0);
     setProcessingProgress(0);
 
-    // 🚀 Initialize document slots for new files being processed
+    // 🚀 Initialize document slots for documents being processed
     console.log(
-      `🔄 Frontend: Preparing slots for ${files.length} files to process`
+      `🔄 Frontend: Preparing slots for ${singleDocs.length} documents to process`
     );
     setProcessedDocuments((prev) => {
       const updated = [...prev];
 
-      // Add slots for new files at the end
-      files.forEach((file) => {
-        // Check if we already have this file (by name) in our processed documents
+      // Add slots for documents from single_documents
+      singleDocs.forEach((doc) => {
+        const fileName =
+          doc.original_filename ||
+          doc.pdf_path.split('/').pop() ||
+          'unknown.pdf';
+
+        // Check if we already have this file in our processed documents
         const existingIndex = updated.findIndex(
-          (doc) => doc.fileName === file.name
+          (processedDoc) => processedDoc.fileName === fileName
         );
 
         if (existingIndex === -1) {
-          // File not found, add a new slot
+          // Document not found, add a new slot
           console.log(
-            `📝 Frontend: Creating doc slot for NEW file - ${file.name}`
+            `📝 Frontend: Creating doc slot for document - ${fileName}`
           );
           updated.push({
-            fileName: file.name,
+            fileName: fileName,
             documentType: '',
             data: JSON.parse(
               JSON.stringify(documentTemplates.invoice)
@@ -1403,7 +1428,7 @@ function HomeContent({ session }: HomeContentProps) {
           });
         } else {
           console.log(
-            `♻️ Frontend: File ${file.name} already exists in processed documents`
+            `♻️ Frontend: Document ${fileName} already exists in processed documents`
           );
         }
       });
@@ -1414,26 +1439,14 @@ function HomeContent({ session }: HomeContentProps) {
     const batchStartTime = Date.now();
 
     try {
-      // 🚀 CRITICAL FIX: Process only new files, not all files
+      // Process documents from single_documents
       let processedCount = 0;
-      for (let i = 0; i < files.length; i++) {
-        const currentFile = files[i];
-
-        // Find the document in our processed documents array by fileName
-        const docIndex = processedDocuments.findIndex(
-          (doc) => doc.fileName === currentFile.name
-        );
-        const doc = docIndex >= 0 ? processedDocuments[docIndex] : null;
-
-        // Skip files that are already processed
-        if (doc && doc.status === 'completed') {
-          console.log(
-            `⏭️ Frontend: Skipping already processed file ${i + 1}: ${
-              currentFile.name
-            } (found at index ${docIndex})`
-          );
-          continue;
-        }
+      for (let i = 0; i < singleDocs.length; i++) {
+        const currentDoc = singleDocs[i];
+        const fileName =
+          currentDoc.original_filename ||
+          currentDoc.pdf_path.split('/').pop() ||
+          'unknown.pdf';
 
         processedCount++;
 
@@ -1442,43 +1455,40 @@ function HomeContent({ session }: HomeContentProps) {
           // Delay increases every 4 files: 0ms, 1s, 1s, 1s, 2s, 2s, 2s, 2s, 3s...
           const delay = Math.min(1000 * Math.ceil(processedCount / 4), 3000);
           console.log(
-            `⏳ Frontend: Waiting ${delay}ms before processing file ${processedCount} to prevent rate limiting`
+            `⏳ Frontend: Waiting ${delay}ms before processing document ${processedCount} to prevent rate limiting`
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
 
         console.log(
-          `\n🔄 Frontend: === PROCESSING NEW FILE ${processedCount}/${
-            newFilesToProcess.length
-          } (File ${i + 1}/${files.length}) ===`
+          `\n🔄 Frontend: === PROCESSING DOCUMENT ${processedCount}/${singleDocs.length} ===`
         );
-        console.log(`📄 Frontend: File: ${currentFile.name}`);
-        console.log(
-          `📊 Frontend: Size: ${(currentFile.size / 1024).toFixed(2)} KB`
-        );
+        console.log(`📄 Frontend: Document: ${fileName}`);
+        console.log(`🆔 Frontend: Document ID: ${currentDoc.id}`);
 
         setCurrentProcessingIndex(i);
 
         // Update status to processing
         console.log(
-          `🔄 Frontend: Setting status to 'processing' for file ${i + 1}: ${
-            currentFile.name
-          }`
+          `🔄 Frontend: Setting status to 'processing' for document ${
+            i + 1
+          }: ${fileName}`
         );
         setProcessedDocuments((prev) =>
           prev.map((doc) =>
-            doc.fileName === currentFile.name
-              ? { ...doc, status: 'processing' }
-              : doc
+            doc.fileName === fileName ? { ...doc, status: 'processing' } : doc
           )
         );
 
         const fileStartTime = Date.now();
 
         try {
-          console.log(`📦 Frontend: Creating FormData for API request`);
+          console.log(
+            `📦 Frontend: Creating FormData for API request with document ID`
+          );
           const formData = new FormData();
-          formData.append('file', currentFile);
+          formData.append('documentId', currentDoc.id);
+          formData.append('pdfPath', currentDoc.pdf_path);
 
           // Log session and token details
           console.log(`🔐 Frontend: Auth session details:`, {
@@ -1529,14 +1539,11 @@ function HomeContent({ session }: HomeContentProps) {
           }
 
           const result = await response.json();
-          console.log(
-            `📋 Frontend: API response for ${currentFile.name}:`,
-            result
-          );
+          console.log(`📋 Frontend: API response for ${fileName}:`, result);
 
           // ===== DEBUGGING: Check exact response structure =====
           console.log(
-            `🔍 Frontend: Debugging response structure for ${currentFile.name}:`
+            `🔍 Frontend: Debugging response structure for ${fileName}:`
           );
           console.log(
             `   📊 result.success: ${
@@ -1561,9 +1568,19 @@ function HomeContent({ session }: HomeContentProps) {
           console.log(`   🔍 Full result keys:`, Object.keys(result));
 
           if (result.success) {
-            console.log(
-              `✅ Frontend: Processing successful for ${currentFile.name}`
-            );
+            // Check if document was skipped (additional_document)
+            if (result.skipped) {
+              console.log(`🚫 Frontend: Document skipped - ${fileName}`);
+              console.log(`📋 Frontend: Reason: ${result.reason}`);
+              console.log(
+                `📄 Frontend: Document type: ${result.data?.document_type}`
+              );
+
+              // Don't add to processedDocuments, just continue to next document
+              continue;
+            }
+
+            console.log(`✅ Frontend: Processing successful for ${fileName}`);
             console.log(
               `📋 Frontend: Document type identified: ${result.data.document_type}`
             );
@@ -1602,7 +1619,7 @@ function HomeContent({ session }: HomeContentProps) {
             setProcessedDocuments((prev) => {
               // Create a new processed document from the result
               const newDoc: ProcessedDocument = {
-                fileName: currentFile.name,
+                fileName: fileName,
                 documentType: result.data.document_type,
                 data: result.data,
                 status: 'completed' as const,
@@ -1614,21 +1631,19 @@ function HomeContent({ session }: HomeContentProps) {
               // Find the document by fileName and update it, or add if not found
               const updated = [...prev];
               const existingIndex = updated.findIndex(
-                (doc) => doc.fileName === currentFile.name
+                (doc) => doc.fileName === fileName
               );
 
               if (existingIndex >= 0) {
                 // Update the existing document
                 updated[existingIndex] = newDoc;
                 console.log(
-                  `✅ Frontend: Updated existing document: ${currentFile.name} at index ${existingIndex}`
+                  `✅ Frontend: Updated existing document: ${fileName} at index ${existingIndex}`
                 );
               } else {
                 // Add new document
                 updated.push(newDoc);
-                console.log(
-                  `✅ Frontend: Added new document: ${currentFile.name}`
-                );
+                console.log(`✅ Frontend: Added new document: ${fileName}`);
               }
 
               console.log(
@@ -1636,17 +1651,32 @@ function HomeContent({ session }: HomeContentProps) {
               );
               return updated;
             });
+
+            // Update single_documents status to 'processed'
+            const { error: updateError } = await supabase
+              .from('single_documents')
+              .update({ status: 'processed' })
+              .eq('id', currentDoc.id);
+
+            if (updateError) {
+              console.error(
+                `❌ Failed to update single_documents status:`,
+                updateError
+              );
+            } else {
+              console.log(
+                `✅ Updated single_documents status to 'processed' for ${fileName}`
+              );
+            }
           } else {
-            console.error(
-              `❌ Frontend: Processing failed for ${currentFile.name}`
-            );
+            console.error(`❌ Frontend: Processing failed for ${fileName}`);
             console.error(`   Error: ${result.error}`);
             console.error(`   Details:`, result.details);
 
             // Update with error
             setProcessedDocuments((prev) =>
               prev.map((doc) =>
-                doc.fileName === currentFile.name
+                doc.fileName === fileName
                   ? {
                       ...doc,
                       status: 'error' as const,
@@ -1659,14 +1689,14 @@ function HomeContent({ session }: HomeContentProps) {
         } catch (networkError) {
           const errorTime = Date.now() - fileStartTime;
           console.error(
-            `💥 Frontend: Network error for ${currentFile.name} after ${errorTime}ms`
+            `💥 Frontend: Network error for ${fileName} after ${errorTime}ms`
           );
           console.error(`   Error:`, networkError);
 
           // Update with network error
           setProcessedDocuments((prev) =>
             prev.map((doc) =>
-              doc.fileName === currentFile.name
+              doc.fileName === fileName
                 ? {
                     ...doc,
                     status: 'error' as const,
@@ -1678,13 +1708,12 @@ function HomeContent({ session }: HomeContentProps) {
         }
 
         // Update progress based on new files processed
-        const progressPercent =
-          (processedCount / newFilesToProcess.length) * 100;
+        const progressPercent = (processedCount / singleDocs.length) * 100;
         setProcessingProgress(progressPercent);
         console.log(
           `📈 Frontend: Progress updated to ${progressPercent.toFixed(
             1
-          )}% (${processedCount}/${newFilesToProcess.length} new files)`
+          )}% (${processedCount}/${singleDocs.length} documents)`
         );
       }
 
@@ -1842,6 +1871,8 @@ function HomeContent({ session }: HomeContentProps) {
     }
   };
 
+  // Removed with Review tab
+  /*
   const handleDownloadCSV = () => {
     const completedDocs = processedDocuments.filter(
       (doc) => doc.status === 'completed'
@@ -1948,6 +1979,7 @@ function HomeContent({ session }: HomeContentProps) {
     console.log(`📁 Frontend: File name: ${fileName}`);
     console.log(`📊 Frontend: CSV size: ${(blob.size / 1024).toFixed(2)} KB`);
   };
+  */
 
   const completedCount = useMemo(
     () => processedDocuments.filter((d) => d.status === 'completed').length,
@@ -2041,17 +2073,11 @@ function HomeContent({ session }: HomeContentProps) {
             className='space-y-6'
           >
             <div className='flex justify-center'>
-              <TabsList className='grid w-full grid-cols-3'>
+              <TabsList className='grid w-full grid-cols-2'>
                 <TabsTrigger value='upload' className='text-base py-1'>
                   Upload & Process
                 </TabsTrigger>
-                <TabsTrigger
-                  value='results'
-                  disabled={completedCount === 0}
-                  className='text-base py-1'
-                >
-                  Review Documents
-                </TabsTrigger>
+
                 <TabsTrigger value='groups' className='text-base py-1'>
                   Verify & Submit
                 </TabsTrigger>
@@ -2270,178 +2296,6 @@ function HomeContent({ session }: HomeContentProps) {
                   color='amber'
                 />
               </div>
-            </TabsContent>
-
-            <TabsContent value='results' className='space-y-6'>
-              {completedCount > 0 ? (
-                <>
-                  <div className='grid grid-cols-1 gap-6'>
-                    {processedDocuments.map((doc, index) => {
-                      if (doc.status !== 'completed') return null;
-
-                      const docType =
-                        doc.documentType as keyof typeof documentTypes;
-                      const DocIcon = documentTypes[docType]?.icon || FileText;
-                      const iconColor =
-                        documentTypes[docType]?.color || 'text-slate-500';
-                      const bgColor =
-                        documentTypes[docType]?.bgColor || 'bg-slate-100';
-                      const title =
-                        documentTypes[docType]?.title || doc.documentType;
-
-                      return (
-                        <Card
-                          key={index}
-                          className='shadow-md border-slate-200 overflow-hidden'
-                        >
-                          <CardHeader>
-                            <div
-                              className={`p-4 ${bgColor} border-b flex items-center justify-between`}
-                            >
-                              <div className='flex items-center gap-3'>
-                                <div className={`p-1.5 rounded-md ${bgColor}`}>
-                                  <DocIcon className={`h-5 w-5 ${iconColor}`} />
-                                </div>
-                                <div>
-                                  <CardTitle className='font-medium text-slate-800'>
-                                    {doc.fileName}
-                                  </CardTitle>
-                                  <CardDescription className='text-xs'>
-                                    Identified as:{' '}
-                                    <span className='font-medium'>{title}</span>
-                                  </CardDescription>
-                                </div>
-                              </div>
-                              <CardAction>
-                                <Badge
-                                  className={`${bgColor} ${iconColor} border-0`}
-                                >
-                                  {title}
-                                </Badge>
-                              </CardAction>
-                            </div>
-                          </CardHeader>
-
-                          <CardContent>
-                            <div className='grid grid-cols-1 md:grid-cols-2 gap-6 p-4'>
-                              <DataSheet
-                                key={
-                                  doc.fileName +
-                                  '-' +
-                                  doc.documentType +
-                                  '-' +
-                                  (typeof doc.data === 'object'
-                                    ? JSON.stringify(doc.data)
-                                    : String(doc.data))
-                                }
-                                data={doc.data}
-                                documentType={doc.documentType}
-                                onUpdate={(updatedData: AppDocument) =>
-                                  handleUpdateDocument(index, updatedData)
-                                }
-                              />
-                              <DocumentPdfPreview
-                                doc={doc}
-                                blobUrls={blobUrls}
-                                setBlobUrls={setBlobUrls}
-                              />
-                            </div>
-                          </CardContent>
-
-                          <CardFooter>
-                            <p className='text-xs text-slate-500'>
-                              Card Footer (optional info)
-                            </p>
-                          </CardFooter>
-                        </Card>
-                      );
-                    })}
-                  </div>
-
-                  {/* Show error documents */}
-                  {errorCount > 0 && (
-                    <Card className='shadow-md border-red-200 bg-red-50'>
-                      <CardContent className='p-4'>
-                        <h3 className='font-medium text-red-800 mb-2 flex items-center gap-2'>
-                          <AlertCircle className='h-5 w-5' />
-                          Failed Documents ({errorCount})
-                        </h3>
-                        <div className='space-y-2'>
-                          {processedDocuments
-                            .filter((doc) => doc.status === 'error')
-                            .map((doc, index) => (
-                              <div key={index} className='text-sm text-red-700'>
-                                <span className='font-medium'>
-                                  {doc.fileName}:
-                                </span>{' '}
-                                {doc.error}
-                              </div>
-                            ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  <Card className='shadow-md border-slate-200 bg-white p-6'>
-                    <div className='flex flex-col sm:flex-row items-center justify-between gap-4'>
-                      <div>
-                        <h3 className='text-lg font-medium'>
-                          Document Processing Summary
-                        </h3>
-                        <p className='text-slate-600 text-sm'>
-                          {completedCount} completed • {errorCount} failed •{' '}
-                          {files.length} total
-                        </p>
-                      </div>
-                      <div className='flex gap-3'>
-                        <CSVDownloadBtn
-                          processedDocuments={processedDocuments}
-                          handleDownloadCSV={handleDownloadCSV}
-                        />
-                        {/* <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                className='gap-2'
-                                disabled
-                                variant='secondary'
-                                title='Coming soon'
-                              >
-                                Push Data to Portal{' '}
-                                <ArrowRight className='h-4 w-4' />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>
-                                Coming soon - Send extracted data to accounting
-                                portal
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider> */}
-                      </div>
-                    </div>
-                  </Card>
-                </>
-              ) : (
-                <div className='text-center py-16 bg-white rounded-lg border shadow-sm'>
-                  <FileText className='h-12 w-12 text-slate-300 mx-auto mb-4' />
-                  <h3 className='text-xl font-medium text-slate-800 mb-2'>
-                    No Completed Documents
-                  </h3>
-                  <p className='text-slate-600 max-w-md mx-auto'>
-                    Please upload and process documents first to see the
-                    extracted data here.
-                  </p>
-                  <Button
-                    variant='outline'
-                    className='mt-6'
-                    onClick={() => setActiveTab('upload')}
-                  >
-                    Go to Upload
-                  </Button>
-                </div>
-              )}
             </TabsContent>
 
             {/* ===== New: Group & Verify Tab ===== */}
