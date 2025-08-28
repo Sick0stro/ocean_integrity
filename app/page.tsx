@@ -337,6 +337,7 @@ function HomeContent({ session }: HomeContentProps) {
   // Preprocessing state (NEW)
   const [isPreprocessing, setIsPreprocessing] = useState(false);
   const [preprocessingProgress, setPreprocessingProgress] = useState('');
+  const [totalPagesToProcess, setTotalPagesToProcess] = useState(0);
 
   // UI state
   const [activeTab, setActiveTab] = useState<
@@ -1226,6 +1227,109 @@ function HomeContent({ session }: HomeContentProps) {
   // Track upload state to prevent duplicates
   const isUploadingRef = useRef(false);
 
+  // Helper function to check for duplicate files in database
+  const checkForDuplicates = useCallback(
+    async (files: File[], uploadId: string) => {
+      console.log(
+        `🔍 [upload:${uploadId}] Checking for duplicates in database...`
+      );
+
+      const supabase = getSupabaseBrowser();
+      const filesToUpload: File[] = [];
+      const skippedFiles: { name: string; reason: string }[] = [];
+
+      for (const file of files) {
+        const fileName = file.name;
+        const fileSize = file.size;
+
+        console.log(
+          `🔎 [upload:${uploadId}] Checking file: ${fileName} (${(
+            fileSize / 1024
+          ).toFixed(2)} KB)`
+        );
+
+        // Check temp_documents first
+        const { data: tempDocs, error: tempError } = await supabase
+          .from('temp_documents')
+          .select('pdf_path, upload_date')
+          .eq('user_id', session?.user?.id)
+          .ilike('pdf_path', `%${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}%`);
+
+        if (tempError) {
+          console.error(
+            `❌ [upload:${uploadId}] Error checking temp_documents:`,
+            tempError
+          );
+          // Continue with upload if we can't check
+          filesToUpload.push(file);
+          continue;
+        }
+
+        if (tempDocs && tempDocs.length > 0) {
+          console.log(
+            `⚠️ [upload:${uploadId}] File ${fileName} already exists in temp_documents, skipping...`
+          );
+          skippedFiles.push({
+            name: fileName,
+            reason: 'Already in temp_documents',
+          });
+          continue;
+        }
+
+        // Check single_documents (processed files)
+        const { data: singleDocs, error: singleError } = await supabase
+          .from('single_documents')
+          .select('pdf_path, upload_date, original_filename')
+          .eq('user_id', session?.user?.id)
+          .or(
+            `original_filename.ilike.%${fileName}%,pdf_path.ilike.%${fileName.replace(
+              /[^a-zA-Z0-9.-]/g,
+              '_'
+            )}%`
+          );
+
+        if (singleError) {
+          console.error(
+            `❌ [upload:${uploadId}] Error checking single_documents:`,
+            singleError
+          );
+          // Continue with upload if we can't check
+          filesToUpload.push(file);
+          continue;
+        }
+
+        if (singleDocs && singleDocs.length > 0) {
+          console.log(
+            `⚠️ [upload:${uploadId}] File ${fileName} already processed in single_documents, skipping...`
+          );
+          skippedFiles.push({ name: fileName, reason: 'Already processed' });
+          continue;
+        }
+
+        // File is not a duplicate, add to upload queue
+        console.log(
+          `✅ [upload:${uploadId}] File ${fileName} is new, will upload`
+        );
+        filesToUpload.push(file);
+      }
+
+      console.log(`📊 [upload:${uploadId}] Duplicate check results:`);
+      console.log(`   📤 Files to upload: ${filesToUpload.length}`);
+      console.log(`   ⏭️ Files skipped: ${skippedFiles.length}`);
+
+      if (skippedFiles.length > 0) {
+        console.log(`📋 [upload:${uploadId}] Skipped files:`, skippedFiles);
+        // Show user notification about skipped files
+        setPreprocessingProgress(
+          `Skipped ${skippedFiles.length} duplicate files. Uploading ${filesToUpload.length} new files...`
+        );
+      }
+
+      return { filesToUpload, skippedFiles };
+    },
+    [session?.user?.id]
+  );
+
   // Helper function to upload files to temp_documents and trigger preprocessing
   const uploadToTempDocuments = useCallback(
     async (files: File[]) => {
@@ -1250,14 +1354,43 @@ function HomeContent({ session }: HomeContentProps) {
       }
       isUploadingRef.current = true;
 
+      // Check for duplicates before uploading
+      const { filesToUpload, skippedFiles } = await checkForDuplicates(
+        files,
+        uploadId
+      );
+
+      if (filesToUpload.length === 0) {
+        console.log(
+          `⚠️ [upload:${uploadId}] All files are duplicates, nothing to upload`
+        );
+        isUploadingRef.current = false;
+        setPreprocessingProgress(
+          `All ${files.length} files were already uploaded. No new files to process.`
+        );
+        setTimeout(() => setPreprocessingProgress(''), 5000);
+        return;
+      }
+
       const supabase = getSupabaseBrowser();
       const uploadedPaths: string[] = [];
 
       console.log(
         `📤 [upload:${uploadId}] Starting upload to Storage and temp_documents...`
       );
+      console.log(
+        `📊 [upload:${uploadId}] Processing ${filesToUpload.length} new files (${skippedFiles.length} duplicates skipped)`
+      );
 
-      const uploadPromises = files.map(async (file, index) => {
+      // Log all files being processed in this batch
+      console.log(`🔍 [upload:${uploadId}] Files in this batch:`);
+      filesToUpload.forEach((file, idx) => {
+        console.log(
+          `   ${idx}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`
+        );
+      });
+
+      const uploadPromises = filesToUpload.map(async (file, index) => {
         const fileId = `file${index + 1}`;
         try {
           console.log(
@@ -1266,33 +1399,81 @@ function HomeContent({ session }: HomeContentProps) {
             } (${(file.size / 1024).toFixed(2)} KB)`
           );
 
-          // Generate unique path for storage
+          // Generate unique path for storage (timestamp + index + random to prevent collisions)
           const timestamp = Date.now();
+          const randomSuffix = Math.random().toString(36).substring(2, 8);
           const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const pdfPath = `temp/${session.user.id}/${timestamp}_${safeName}`;
+          const pdfPath = `temp/${session.user.id}/${timestamp}_${index}_${randomSuffix}_${safeName}`;
 
           console.log(
             `📁 [upload:${uploadId}] [${fileId}] Target path: ${pdfPath}`
           );
+          console.log(`🔍 [upload:${uploadId}] [${fileId}] Path components:`, {
+            timestamp,
+            index,
+            randomSuffix,
+            safeName,
+            originalName: file.name,
+            userId: session.user.id,
+          });
 
           // Upload to Supabase storage
           console.log(
             `☁️ [upload:${uploadId}] [${fileId}] Uploading to Storage...`
           );
+          console.log(`🔍 [upload:${uploadId}] [${fileId}] Storage details:`, {
+            bucket: 'documents',
+            path: pdfPath,
+            fileSize: file.size,
+            fileName: file.name,
+            contentType: file.type,
+          });
+
           const { error: uploadError } = await supabase.storage
             .from('documents')
-            .upload(pdfPath, file);
+            .upload(pdfPath, file, {
+              cacheControl: '3600',
+              upsert: false, // Fail if file exists (we want unique paths)
+            });
 
           if (uploadError) {
             console.error(
               `❌ [upload:${uploadId}] [${fileId}] Failed to upload ${file.name}:`,
               uploadError
             );
+            console.error(
+              `🔍 [upload:${uploadId}] [${fileId}] Upload error details:`,
+              {
+                message: uploadError.message,
+                path: pdfPath,
+                fileSize: file.size,
+                fileName: file.name,
+                fullError: uploadError,
+              }
+            );
+            // Don't return - let the upload continue for other files
             return;
           }
 
           console.log(
             `✅ [upload:${uploadId}] [${fileId}] Storage upload successful`
+          );
+
+          // Verify the file actually exists in storage
+          const { data: fileExists, error: checkError } = await supabase.storage
+            .from('documents')
+            .list(pdfPath.substring(0, pdfPath.lastIndexOf('/')), {
+              search: pdfPath.substring(pdfPath.lastIndexOf('/') + 1),
+            });
+
+          console.log(
+            `🔍 [upload:${uploadId}] [${fileId}] File verification:`,
+            {
+              path: pdfPath,
+              exists: !checkError && fileExists && fileExists.length > 0,
+              checkError: checkError?.message,
+              foundFiles: fileExists?.map((f) => f.name) || [],
+            }
           );
 
           // Insert into temp_documents
@@ -1339,6 +1520,34 @@ function HomeContent({ session }: HomeContentProps) {
         uploadedPaths
       );
 
+      // Log current storage bucket contents for debugging
+      try {
+        const { data: allFiles, error: listError } = await supabase.storage
+          .from('documents')
+          .list('temp/' + session.user.id, {
+            limit: 100,
+            sortBy: { column: 'created_at', order: 'desc' },
+          });
+
+        console.log(`🗂️ [upload:${uploadId}] Current temp folder contents:`, {
+          userId: session.user.id,
+          folderPath: 'temp/' + session.user.id,
+          fileCount: allFiles?.length || 0,
+          files:
+            allFiles?.map((f) => ({
+              name: f.name,
+              size: f.metadata?.size,
+              created: f.created_at,
+            })) || [],
+          listError: listError?.message,
+        });
+      } catch (e) {
+        console.warn(
+          `⚠️ [upload:${uploadId}] Could not list storage contents:`,
+          e
+        );
+      }
+
       // Store current batch paths for logging
       console.log(
         `📊 [upload:${uploadId}] Current batch paths:`,
@@ -1353,20 +1562,34 @@ function HomeContent({ session }: HomeContentProps) {
         console.log(
           `🔄 [upload:${uploadId}] Triggering immediate preprocessing for ${uploadedPaths.length} files...`
         );
-        // Call triggerPreprocessing directly to avoid dependency issues
-        setIsPreprocessing(true);
-        setPreprocessingProgress(
-          `Preparing ${uploadedPaths.length} documents for processing...`
-        );
+        // Update preprocessing status (isPreprocessing already set to true in handleFilesAdded)
+        const statusMessage =
+          skippedFiles.length > 0
+            ? `Preparing ${uploadedPaths.length} new documents (${skippedFiles.length} duplicates skipped)...`
+            : `Preparing ${uploadedPaths.length} documents for processing...`;
+        setPreprocessingProgress(statusMessage);
 
         try {
+          const cronSecret =
+            process.env.NEXT_PUBLIC_LOCAL_CRON_SECRET || 'local-dev-submit-123';
+          console.log(
+            `🔑 [preprocess-trigger:${uploadId}] Using cron secret: ${
+              cronSecret === process.env.NEXT_PUBLIC_LOCAL_CRON_SECRET
+                ? 'env-variable'
+                : 'fallback'
+            }`
+          );
+
           const response = await fetch('/api/cron/preprocess', {
             method: 'POST',
             headers: {
-              Authorization: `Bearer test-secret`,
+              Authorization: `Bearer ${cronSecret}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ pdf_paths: uploadedPaths }),
+            body: JSON.stringify({
+              pdf_paths: uploadedPaths,
+              user_id: session.user.id,
+            }),
           });
 
           const result = await response.json();
@@ -1393,9 +1616,11 @@ function HomeContent({ session }: HomeContentProps) {
 
           // Start readiness polling
           setTimeout(() => {
-            setPreprocessingProgress(
-              'Ready! Documents prepared for AI processing'
-            );
+            const successMessage =
+              result.processed > uploadedPaths.length
+                ? `Ready! ${uploadedPaths.length} files split into ${result.processed} pages for AI processing`
+                : `Ready! ${result.processed} pages prepared for AI processing`;
+            setPreprocessingProgress(successMessage);
             setIsPreprocessing(false);
           }, 2000);
         } catch (error) {
@@ -1409,29 +1634,41 @@ function HomeContent({ session }: HomeContentProps) {
         console.warn(
           `⚠️ [upload:${uploadId}] No files were successfully uploaded; skipping preprocessing`
         );
+        // Re-enable the button since no preprocessing is needed
+        setIsPreprocessing(false);
+        setPreprocessingProgress('');
+        console.log(`🔓 Frontend: Button re-enabled - no files to preprocess`);
       }
 
       console.log(`🏁 [upload:${uploadId}] === UPLOAD BATCH COMPLETED ===`);
     },
-    [session?.user?.id]
+    [session?.user?.id, checkForDuplicates]
   );
 
   const handleFilesAdded = useCallback(
     (newFiles: File[]) => {
       console.log(`📁 Frontend: Adding ${newFiles.length} new files`);
 
+      // 🚨 IMMEDIATELY disable the button when files are added
+      setIsPreprocessing(true);
+      setPreprocessingProgress('Preparing files for upload...');
+      console.log(
+        `🔒 Frontend: Button disabled immediately - preprocessing started`
+      );
+
+      // Add all files to UI immediately (database-level duplicate checking will handle duplicates)
       setFiles((prevFiles) => {
         const updatedFiles = [...prevFiles];
         let addedCount = 0;
 
         newFiles.forEach((newFile) => {
           console.log(
-            `🔍 Frontend: Checking file - ${newFile.name} (${(
+            `📄 Frontend: Adding file - ${newFile.name} (${(
               newFile.size / 1024
             ).toFixed(2)} KB)`
           );
 
-          // Check if a file with the same name and size already exists
+          // Simple client-side check to avoid duplicate UI entries in the same session
           if (
             !updatedFiles.some(
               (existingFile) =>
@@ -1441,21 +1678,19 @@ function HomeContent({ session }: HomeContentProps) {
           ) {
             updatedFiles.push(newFile);
             addedCount++;
-            console.log(`✅ Frontend: Added file - ${newFile.name}`);
+            console.log(`✅ Frontend: Added to UI - ${newFile.name}`);
           } else {
-            console.log(
-              `⚠️ Frontend: Skipped duplicate file - ${newFile.name}`
-            );
+            console.log(`⚠️ Frontend: Skipped UI duplicate - ${newFile.name}`);
           }
         });
 
         console.log(
-          `📊 Frontend: Files summary - Added: ${addedCount}, Total: ${updatedFiles.length}`
+          `📊 Frontend: Files summary - Added to UI: ${addedCount}, Total in UI: ${updatedFiles.length}`
         );
         return updatedFiles;
       });
 
-      // Upload files to temp_documents for pre-processing
+      // Upload files (with database-level duplicate checking)
       uploadToTempDocuments(newFiles);
     },
     [uploadToTempDocuments]
@@ -1553,7 +1788,7 @@ function HomeContent({ session }: HomeContentProps) {
       `🚀 [process:${processId}] === STARTING AI BATCH PROCESSING ===`
     );
     console.log(
-      `📊 [process:${processId}] Processing ${singleDocs.length} documents from single_documents`
+      `📊 [process:${processId}] Processing ${singleDocs.length} pages from single_documents`
     );
     console.log(
       `⏰ [process:${processId}] Started at ${new Date().toISOString()}`
@@ -1562,6 +1797,7 @@ function HomeContent({ session }: HomeContentProps) {
     setIsProcessing(true);
     setCurrentProcessingIndex(0);
     setProcessingProgress(0);
+    setTotalPagesToProcess(singleDocs.length); // Set the actual page count
 
     // 🚀 Initialize document slots for documents being processed
     console.log(
@@ -2038,6 +2274,19 @@ function HomeContent({ session }: HomeContentProps) {
       setIsProcessing(false);
       setCurrentProcessingIndex(-1);
       console.log(`🔄 Frontend: Processing state reset`);
+
+      // Auto-redirect to Verify & Submit tab after successful processing
+      if (completedCount > 0) {
+        console.log(
+          `🔄 Frontend: Auto-redirecting to Verify & Submit tab (${completedCount} pages processed)`
+        );
+        setTimeout(() => {
+          setActiveTab('submit');
+          console.log(
+            `✅ Frontend: Successfully switched to Verify & Submit tab`
+          );
+        }, 2000); // 2 second delay to let user see completion message
+      }
     }
   };
 
@@ -2388,11 +2637,18 @@ function HomeContent({ session }: HomeContentProps) {
                             <div className='flex items-center justify-between'>
                               <div>
                                 <p className='font-medium text-slate-800'>
-                                  Processing Document{' '}
-                                  {currentProcessingIndex + 1} of {files.length}
+                                  Processing Page {currentProcessingIndex + 1}{' '}
+                                  of {totalPagesToProcess || files.length}
                                 </p>
                                 <p className='text-sm text-slate-600'>
-                                  AI is analyzing each document individually...
+                                  AI is analyzing each page individually...
+                                  {totalPagesToProcess > files.length && (
+                                    <span className='text-blue-600'>
+                                      {' '}
+                                      ({files.length} original files split into{' '}
+                                      {totalPagesToProcess} pages)
+                                    </span>
+                                  )}
                                 </p>
                               </div>
                               <Loader2 className='h-5 w-5 text-blue-500 animate-spin' />
@@ -2442,8 +2698,8 @@ function HomeContent({ session }: HomeContentProps) {
                       <AlertCircle className='h-4 w-4' />
                       <AlertTitle>Processing Errors</AlertTitle>
                       <AlertDescription>
-                        {errorCount} document{errorCount > 1 ? 's' : ''} failed
-                        to process. Check the results tab for details.
+                        {errorCount} page{errorCount > 1 ? 's' : ''} failed to
+                        process. Check the results tab for details.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -2453,10 +2709,17 @@ function HomeContent({ session }: HomeContentProps) {
                       <CheckCircle2 className='h-4 w-4 text-green-600' />
                       <AlertTitle>Processing Complete</AlertTitle>
                       <AlertDescription>
-                        {completedCount} document{completedCount > 1 ? 's' : ''}{' '}
+                        {completedCount} page{completedCount > 1 ? 's' : ''}{' '}
                         processed successfully.
+                        {totalPagesToProcess > files.length && (
+                          <span className='text-green-700'>
+                            {' '}
+                            (from {files.length} original file
+                            {files.length > 1 ? 's' : ''})
+                          </span>
+                        )}
                         <p>
-                          Click the &quot;Review &amp; Export&quot; tab to see
+                          Click the &quot;Verify &amp; Submit&quot; tab to see
                           the extracted data.
                         </p>
                       </AlertDescription>
