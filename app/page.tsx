@@ -1738,23 +1738,29 @@ function HomeContent({ session }: HomeContentProps) {
       `🔍 [process:${processId}] Fetching ready documents from single_documents...`
     );
 
-    // Fetch ready documents for AI processing
+    // Only fetch documents that were uploaded in the last 5 minutes to avoid processing old files
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+    // Fetch ready documents for AI processing (only recent uploads)
     const { data: singleDocs, error: fetchError } = await supabase
       .from('single_documents')
       .select('*')
       .eq('status', 'uploaded')
       .eq('user_id', session?.user?.id) // Filter by current user
+      .gte('upload_date', fiveMinutesAgo) // Only recent uploads
       .order('upload_date', { ascending: true });
 
     console.log(
       `📊 [process:${processId}] Found ${
         singleDocs?.length || 0
-      } documents ready for AI processing`,
+      } documents ready for AI processing (uploaded after ${fiveMinutesAgo})`,
       {
         error: fetchError,
+        timeFilter: fiveMinutesAgo,
         documents: singleDocs?.map((d) => ({
           pdf_path: d.pdf_path,
           original_filename: d.original_filename,
+          upload_date: d.upload_date,
         })),
       }
     );
@@ -2709,8 +2715,8 @@ function HomeContent({ session }: HomeContentProps) {
                       <CheckCircle2 className='h-4 w-4 text-green-600' />
                       <AlertTitle>Processing Complete</AlertTitle>
                       <AlertDescription>
-                        {completedCount} page{completedCount > 1 ? 's' : ''}{' '}
-                        processed successfully.
+                        🎉 {completedCount} page{completedCount > 1 ? 's' : ''}{' '}
+                        processed successfully!
                         {totalPagesToProcess > files.length && (
                           <span className='text-green-700'>
                             {' '}
@@ -2718,9 +2724,9 @@ function HomeContent({ session }: HomeContentProps) {
                             {files.length > 1 ? 's' : ''})
                           </span>
                         )}
-                        <p>
-                          Click the &quot;Verify &amp; Submit&quot; tab to see
-                          the extracted data.
+                        <p className='text-sm text-green-600 mt-1'>
+                          Your documents are ready for verification and
+                          blockchain submission!
                         </p>
                       </AlertDescription>
                     </Alert>
