@@ -334,6 +334,10 @@ function HomeContent({ session }: HomeContentProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDocumentsLoaded, setIsDocumentsLoaded] = useState(false);
 
+  // Preprocessing state (NEW)
+  const [isPreprocessing, setIsPreprocessing] = useState(false);
+  const [preprocessingProgress, setPreprocessingProgress] = useState('');
+
   // UI state
   const [activeTab, setActiveTab] = useState<
     'upload' | 'results' | 'groups' | 'submit'
@@ -1222,42 +1226,79 @@ function HomeContent({ session }: HomeContentProps) {
   // Track upload state to prevent duplicates
   const isUploadingRef = useRef(false);
 
-  // Helper function to upload files to temp_documents
+  // Helper function to upload files to temp_documents and trigger preprocessing
   const uploadToTempDocuments = useCallback(
     async (files: File[]) => {
+      const uploadId = Math.random().toString(36).substring(2, 15);
+      console.log(`🚀 [upload:${uploadId}] === UPLOAD BATCH STARTED ===`);
+      console.log(
+        `⏰ [upload:${uploadId}] Timestamp: ${new Date().toISOString()}`
+      );
+      console.log(`📊 [upload:${uploadId}] Files to upload: ${files.length}`);
+
       if (!session?.user?.id) {
-        console.error('❌ No user session for upload');
+        console.error(`❌ [upload:${uploadId}] No user session for upload`);
         return;
       }
 
       // Prevent duplicate uploads
       if (isUploadingRef.current) {
-        console.log('⏳ Upload already in progress, skipping...');
+        console.log(
+          `⏳ [upload:${uploadId}] Upload already in progress, skipping...`
+        );
         return;
       }
       isUploadingRef.current = true;
 
-      console.log(`🚀 Uploading ${files.length} files to temp_documents...`);
-
       const supabase = getSupabaseBrowser();
-      const uploadPromises = files.map(async (file) => {
+      const uploadedPaths: string[] = [];
+
+      console.log(
+        `📤 [upload:${uploadId}] Starting upload to Storage and temp_documents...`
+      );
+
+      const uploadPromises = files.map(async (file, index) => {
+        const fileId = `file${index + 1}`;
         try {
+          console.log(
+            `📄 [upload:${uploadId}] [${fileId}] Processing file: ${
+              file.name
+            } (${(file.size / 1024).toFixed(2)} KB)`
+          );
+
           // Generate unique path for storage
           const timestamp = Date.now();
           const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
           const pdfPath = `temp/${session.user.id}/${timestamp}_${safeName}`;
 
+          console.log(
+            `📁 [upload:${uploadId}] [${fileId}] Target path: ${pdfPath}`
+          );
+
           // Upload to Supabase storage
+          console.log(
+            `☁️ [upload:${uploadId}] [${fileId}] Uploading to Storage...`
+          );
           const { error: uploadError } = await supabase.storage
             .from('documents')
             .upload(pdfPath, file);
 
           if (uploadError) {
-            console.error(`❌ Failed to upload ${file.name}:`, uploadError);
+            console.error(
+              `❌ [upload:${uploadId}] [${fileId}] Failed to upload ${file.name}:`,
+              uploadError
+            );
             return;
           }
 
+          console.log(
+            `✅ [upload:${uploadId}] [${fileId}] Storage upload successful`
+          );
+
           // Insert into temp_documents
+          console.log(
+            `💾 [upload:${uploadId}] [${fileId}] Inserting record into temp_documents...`
+          );
           const { error: insertError } = await supabase
             .from('temp_documents')
             .insert({
@@ -1268,27 +1309,109 @@ function HomeContent({ session }: HomeContentProps) {
 
           if (insertError) {
             console.error(
-              `❌ Failed to insert ${file.name} to temp_documents:`,
+              `❌ [upload:${uploadId}] [${fileId}] Failed to insert ${file.name} to temp_documents:`,
               insertError
             );
             // Clean up uploaded file
+            console.log(
+              `🧹 [upload:${uploadId}] [${fileId}] Cleaning up orphaned storage file...`
+            );
             await supabase.storage.from('documents').remove([pdfPath]);
             return;
           }
 
           console.log(
-            `✅ Successfully uploaded ${file.name} to temp_documents`
+            `✅ [upload:${uploadId}] [${fileId}] Successfully uploaded ${file.name} to temp_documents`
           );
+          uploadedPaths.push(pdfPath);
         } catch (error) {
-          console.error(`❌ Error uploading ${file.name}:`, error);
+          console.error(
+            `❌ [upload:${uploadId}] [${fileId}] Error uploading ${file.name}:`,
+            error
+          );
         }
       });
 
       await Promise.all(uploadPromises);
-      console.log('✅ Upload to temp_documents completed');
+      console.log(`✅ [upload:${uploadId}] Upload to temp_documents completed`);
+      console.log(
+        `📊 [upload:${uploadId}] Successfully uploaded paths:`,
+        uploadedPaths
+      );
+
+      // Store current batch paths for logging
+      console.log(
+        `📊 [upload:${uploadId}] Current batch paths:`,
+        uploadedPaths
+      );
 
       // Reset upload flag
       isUploadingRef.current = false;
+
+      // Trigger preprocessing immediately if we have successful uploads
+      if (uploadedPaths.length > 0) {
+        console.log(
+          `🔄 [upload:${uploadId}] Triggering immediate preprocessing for ${uploadedPaths.length} files...`
+        );
+        // Call triggerPreprocessing directly to avoid dependency issues
+        setIsPreprocessing(true);
+        setPreprocessingProgress(
+          `Preparing ${uploadedPaths.length} documents for processing...`
+        );
+
+        try {
+          const response = await fetch('/api/cron/preprocess', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer test-secret`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ pdf_paths: uploadedPaths }),
+          });
+
+          const result = await response.json();
+          console.log(
+            `📊 [preprocess-trigger:${uploadId}] Preprocessing result:`,
+            result
+          );
+
+          if (!result.success) {
+            console.error(
+              `❌ [preprocess-trigger:${uploadId}] Preprocessing failed:`,
+              result.error
+            );
+            setPreprocessingProgress(`Preprocessing failed: ${result.error}`);
+            return;
+          }
+
+          console.log(
+            `✅ [preprocess-trigger:${uploadId}] Preprocessing completed: ${result.processed} processed, ${result.errors} errors`
+          );
+          setPreprocessingProgress(
+            `Preprocessing completed: ${result.processed} processed, ${result.errors} errors`
+          );
+
+          // Start readiness polling
+          setTimeout(() => {
+            setPreprocessingProgress(
+              'Ready! Documents prepared for AI processing'
+            );
+            setIsPreprocessing(false);
+          }, 2000);
+        } catch (error) {
+          console.error(
+            `❌ [preprocess-trigger:${uploadId}] Preprocessing error:`,
+            error
+          );
+          setPreprocessingProgress(`Preprocessing error: ${error}`);
+        }
+      } else {
+        console.warn(
+          `⚠️ [upload:${uploadId}] No files were successfully uploaded; skipping preprocessing`
+        );
+      }
+
+      console.log(`🏁 [upload:${uploadId}] === UPLOAD BATCH COMPLETED ===`);
     },
     [session?.user?.id]
   );
@@ -1367,87 +1490,20 @@ function HomeContent({ session }: HomeContentProps) {
   */
 
   const processFiles = async () => {
-    // Fetch documents from single_documents instead of using local files
-    const supabase = getSupabaseBrowser();
-
-    console.log(`🔍 Frontend: === PROCESS DOCUMENTS CLICKED ===`);
-    console.log(`🔍 Frontend: Fetching documents from single_documents...`);
-
-    // ENHANCED LOGGING: Check both tables to understand the current state
+    const processId = Math.random().toString(36).substring(2, 15);
+    console.log(`🚀 [process:${processId}] === AI PROCESSING STARTED ===`);
     console.log(
-      `📊 Frontend: First, let's check the current state of all tables...`
+      `⏰ [process:${processId}] Timestamp: ${new Date().toISOString()}`
     );
 
-    // Check temp_documents
-    const { data: tempDocs, error: tempError } = await supabase
-      .from('temp_documents')
-      .select('*')
-      .order('upload_date', { ascending: true });
+    // Fetch documents from single_documents only (preprocessing already done)
+    const supabase = getSupabaseBrowser();
 
-    console.log(`📁 Frontend: temp_documents query result:`, {
-      count: tempDocs?.length || 0,
-      error: tempError,
-      documents: tempDocs,
-    });
+    console.log(
+      `🔍 [process:${processId}] Fetching ready documents from single_documents...`
+    );
 
-    // If there are documents in temp_documents, run pre-processing automatically
-    if (tempDocs && tempDocs.length > 0) {
-      console.log(
-        `🔄 Frontend: Found ${tempDocs.length} documents in temp_documents. Running pre-processing automatically...`
-      );
-
-      try {
-        const response = await fetch('/api/cron/preprocess', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer local-dev-submit-123`,
-            'Content-Type': 'application/json',
-          },
-        });
-        const result = await response.json();
-        console.log('🔧 Frontend: Pre-processing result:', result);
-
-        if (!result.success) {
-          console.error(
-            '❌ Pre-processing failed:',
-            result.error || 'Unknown error'
-          );
-          alert(
-            `Pre-processing failed: ${
-              result.error || 'Unknown error'
-            }\n\nPlease check the console for details.`
-          );
-          return;
-        }
-
-        console.log(
-          `✅ Pre-processing complete: ${result.processed} processed, ${result.errors} errors`
-        );
-
-        // Continue with processing after pre-processing is done
-      } catch (error) {
-        console.error('❌ Pre-processing error:', error);
-        alert(
-          `Pre-processing error: ${error}\n\nPlease check the console for details.`
-        );
-        return;
-      }
-    }
-
-    // Check single_documents (all statuses)
-    const { data: allSingleDocs, error: allSingleError } = await supabase
-      .from('single_documents')
-      .select('*')
-      .eq('user_id', session?.user?.id) // Filter by current user
-      .order('upload_date', { ascending: true });
-
-    console.log(`📂 Frontend: single_documents query result (all statuses):`, {
-      count: allSingleDocs?.length || 0,
-      error: allSingleError,
-      documents: allSingleDocs,
-    });
-
-    // Now check specifically for uploadable documents
+    // Fetch ready documents for AI processing
     const { data: singleDocs, error: fetchError } = await supabase
       .from('single_documents')
       .select('*')
@@ -1455,29 +1511,37 @@ function HomeContent({ session }: HomeContentProps) {
       .eq('user_id', session?.user?.id) // Filter by current user
       .order('upload_date', { ascending: true });
 
-    console.log(`🎯 Frontend: single_documents with status='uploaded':`, {
-      count: singleDocs?.length || 0,
-      error: fetchError,
-      documents: singleDocs,
-    });
+    console.log(
+      `📊 [process:${processId}] Found ${
+        singleDocs?.length || 0
+      } documents ready for AI processing`,
+      {
+        error: fetchError,
+        documents: singleDocs?.map((d) => ({
+          pdf_path: d.pdf_path,
+          original_filename: d.original_filename,
+        })),
+      }
+    );
 
     if (fetchError) {
       console.error(
-        `❌ Frontend: Failed to fetch single_documents:`,
+        `❌ [process:${processId}] Failed to fetch single_documents:`,
         fetchError
       );
       return;
     }
 
     if (!singleDocs || singleDocs.length === 0) {
-      console.log(`⚠️ Frontend: No documents to process in single_documents`);
-      console.log(`💡 Frontend: This means either:`);
-      console.log(`   1. No files uploaded yet`);
-      console.log(`   2. Files are in temp_documents waiting for cron job`);
-      console.log(`   3. Files already processed (status='processed')`);
       console.log(
-        `🔧 Frontend: Check temp_documents above to see if cron job needs to run`
+        `⚠️ [process:${processId}] No documents ready for AI processing`
       );
+      console.log(`💡 [process:${processId}] This means either:`);
+      console.log(`   1. No files uploaded yet`);
+      console.log(
+        `   2. Files are still being preprocessed (split into pages)`
+      );
+      console.log(`   3. Files already processed (status='processed')`);
       setShowAlreadyProcessedAlert(true);
       setTimeout(() => {
         setShowAlreadyProcessedAlert(false);
@@ -1485,11 +1549,15 @@ function HomeContent({ session }: HomeContentProps) {
       return;
     }
 
-    console.log(`🚀 Frontend: === STARTING BATCH PROCESSING ===`);
     console.log(
-      `📊 Frontend: Processing ${singleDocs.length} documents from single_documents`
+      `🚀 [process:${processId}] === STARTING AI BATCH PROCESSING ===`
     );
-    console.log(`⏰ Frontend: Started at ${new Date().toISOString()}`);
+    console.log(
+      `📊 [process:${processId}] Processing ${singleDocs.length} documents from single_documents`
+    );
+    console.log(
+      `⏰ [process:${processId}] Started at ${new Date().toISOString()}`
+    );
 
     setIsProcessing(true);
     setCurrentProcessingIndex(0);
@@ -2293,7 +2361,29 @@ function HomeContent({ session }: HomeContentProps) {
                       </div>
 
                       <div className='mt-8'>
-                        {isProcessing ? (
+                        {isPreprocessing ? (
+                          <div className='space-y-4'>
+                            <div className='flex items-center justify-between'>
+                              <div>
+                                <p className='font-medium text-orange-800'>
+                                  Pre-processing Documents
+                                </p>
+                                <p className='text-sm text-orange-600'>
+                                  {preprocessingProgress ||
+                                    'Splitting documents into individual pages...'}
+                                </p>
+                              </div>
+                              <Loader2 className='h-5 w-5 text-orange-500 animate-spin' />
+                            </div>
+                            <div className='bg-orange-50 border border-orange-200 rounded-lg p-3'>
+                              <p className='text-sm text-orange-700'>
+                                🔄 Documents are being prepared for AI
+                                processing. This includes splitting multi-page
+                                PDFs into individual pages.
+                              </p>
+                            </div>
+                          </div>
+                        ) : isProcessing ? (
                           <div className='space-y-4'>
                             <div className='flex items-center justify-between'>
                               <div>
@@ -2317,12 +2407,27 @@ function HomeContent({ session }: HomeContentProps) {
                             <Button
                               type='button'
                               onClick={processFiles}
-                              disabled={files.length === 0}
+                              disabled={files.length === 0 || isPreprocessing}
                               className='w-full py-6 text-lg gap-2'
                             >
-                              Process Documents{' '}
-                              <ArrowRight className='h-5 w-5' />
+                              {isPreprocessing ? (
+                                <>
+                                  Pre-processing...
+                                  <Loader2 className='h-5 w-5 animate-spin' />
+                                </>
+                              ) : (
+                                <>
+                                  Process Documents{' '}
+                                  <ArrowRight className='h-5 w-5' />
+                                </>
+                              )}
                             </Button>
+                            {isPreprocessing && (
+                              <p className='text-sm text-center text-orange-600 mt-2'>
+                                Please wait while documents are being
+                                prepared...
+                              </p>
+                            )}
                           </>
                         )}
                       </div>
