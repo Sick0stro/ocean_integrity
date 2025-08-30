@@ -4,9 +4,20 @@ A comprehensive document processing and management system for handling invoices,
 
 ## Recent Updates
 
-### 🚀 Major Workflow Update: Human Verification System (January 2025)
+### 🚀 Major System Enhancement: Backend Grouping & Blockchain Integration (January 2025)
 
-- **✅ Human Verification Workflow**: Replaced Plastiks submission with human verification process for document quality control
+- **✅ Backend Document Grouping**: Moved document grouping logic from frontend to backend for better scalability and rule management
+- **✅ Business Rules Engine**: Added `business_rules` table to define country-specific document requirements
+- **✅ Indian Recycler Exception**: Special logic allowing Indian recyclers to proceed with only Invoice + E-way Bill (2 documents instead of 3)
+- **✅ New Database Tables**: Added `document_groups` and `business_rules` tables with Row Level Security
+- **✅ Blockchain Tab**: New "Blockchain" tab positioned after "Verify & Submit" for final blockchain submission
+- **✅ Smart Push to Plastiks**: Moved "Push to Plastiks" functionality to Blockchain tab with human verification unlock requirement
+- **✅ Comprehensive Backend Logging**: Added extensive logging to Plastiks submission endpoint for debugging and monitoring
+- **✅ Staging Environment**: Confirmed using Plastiks staging environment for safe development and testing
+
+### 🚀 Previous Updates: Human Verification System (January 2025)
+
+- **✅ Human Verification Workflow**: Replaced direct Plastiks submission with human verification process for document quality control
 - **✅ Real-Time Dashboard**: Added sticky header with live stats (Total Tons, Processed Docs, Verified Credits) that stay visible when scrolling
 - **✅ Date Range Filtering**: Dashboard stats can be filtered by date range based on document processing date
 - **✅ Verified CSV Export**: New CSV export feature specifically for human-verified documents
@@ -71,23 +82,27 @@ A comprehensive document processing and management system for handling invoices,
 - **✅ CSV Export Integration**: "Download CSV" button for verified documents placed strategically in the Group & Verify tab header
 - **✅ Enhanced Button States**: Human Verify button shows appropriate state (disabled for incomplete, enabled for complete, success for verified)
 - **✅ Smart Document Processing**: Status indicators show which files are new vs already processed
-- **✅ Tab Layout**: Clean 3-tab layout (Upload & Process → Review & Export → Group & Verify) for logical workflow progression
+- **✅ Tab Layout**: Clean 4-tab layout (Upload & Process → Review & Export → Verify & Submit → Blockchain) for logical workflow progression
 - **✅ Smart Login Experience**: First-time users get guided sign-up flow, returning users get streamlined sign-in with forgot password option
 
 ## Overview
 
-Ocean Integrity is a **production-ready** modern web application that streamlines the processing and management of financial documents with human verification workflow. **All critical bugs have been resolved** and the system is now stable for production use. It provides:
+Ocean Integrity is a **production-ready** modern web application that streamlines the processing and management of financial documents with advanced backend grouping, business rules engine, and blockchain integration. **All critical bugs have been resolved** and the system is now stable for production use. It provides:
 
 - **🔐 User Authentication**: Secure sign-up/sign-in with email verification, password reset, and complete user isolation
 - **📄 Document Processing**: Upload and process invoices, EFT receipts, and e-way bills using Google Gemini 2.0 Flash
-- **📊 Smart Grouping**: Automatically groups related documents by invoice number with collapsible UI and real-time updates
+- **🧠 Backend Grouping**: Server-side document grouping with intelligent business rules engine for scalable processing
+- **📋 Business Rules Engine**: Country-specific document requirements (e.g., Indian recyclers need only 2 documents)
+- **📊 Smart Grouping**: Automatically groups related documents by invoice number with real-time completion tracking
 - **🛡️ User Data Isolation**: Each user only sees and manages their own documents with strict privacy controls
-- **✅ Human Verification**: Manual verification workflow to ensure document accuracy before final processing
+- **✅ Human Verification**: Manual verification workflow to ensure document accuracy before blockchain submission
+- **🔗 Blockchain Integration**: Dedicated "Blockchain" tab for pushing verified documents to Plastiks staging environment
 - **📈 Real-Time Dashboard**: Live statistics in sticky header showing total tonnage, processed documents, and verified credits
 - **📅 Date Range Analytics**: Filter dashboard statistics by processing date with real-time updates
 - **📊 CSV Export**: Export verified documents to CSV for external systems integration
 - **💾 Secure Storage**: All documents are securely stored in Supabase Storage with user-specific access controls
 - **🚀 Performance Optimized**: Eliminated infinite loops, smart file processing, and optimized state management
+- **🔍 Comprehensive Logging**: Extensive backend logging for debugging blockchain submissions and system monitoring
 
 ## Key Features
 
@@ -120,19 +135,27 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 - **User-Specific Data**: All statistics are scoped to the logged-in user only
 - **Color-Coded Display**: Orange (Total Tons), Green (Processed Docs), Blue (Verified Credits) for easy identification
 
+### 🧠 Backend Grouping & Business Rules Engine
+
+- **Server-Side Grouping**: Document grouping moved to backend for better scalability and consistency
+- **Business Rules Engine**: Flexible country-specific document requirements stored in database
+- **Indian Recycler Exception**: Special rule allowing Indian recyclers to proceed with only Invoice + E-way Bill (2 documents)
+- **Automatic Rule Application**: System automatically detects country and applies appropriate business rules
+- **Pre-Computed Groups**: Groups are calculated server-side and cached for better performance
+- **Comprehensive Logging**: Detailed logs track grouping decisions and rule applications
+
 ### 📊 Invoice Management & Verification
 
-- **Automatic Grouping**: Groups related documents by invoice number within user's data
+- **Intelligent Grouping**: Groups related documents by invoice number using backend grouping service
+- **Country-Specific Rules**: Different document requirements based on detected country (e.g., India needs only 2 documents)
 - **Reference Validation**: Validates invoice references in EFT receipts
 - **Status Tracking**: Tracks processing status of each document group (Incomplete → Complete → Verified)
 - **Human Verification**: Manual verification process to ensure data accuracy and completeness
+- **Blockchain Integration**: Verified documents can be pushed to Plastiks blockchain through dedicated tab
 - **Real-Time Analytics**: Dashboard shows verified tonnage, processed documents, and verification counts
 - **User-Specific Views**: Each user only sees their own document groups and statistics
 
 ### 🔮 Upcoming Features
-
-- **⏳ Blockchain Integration** *(Coming Soon)*  
-  Verified credits will be pushed to the blockchain for immutable, transparent tracking.
 
 - **📈 Advanced Analytics Dashboard**  
   Material breakdown, regional insights, time-based trends, and impact scoring.
@@ -158,13 +181,14 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 - **🧠 AI-Powered Fraud Detection**  
   Detect anomalies and flag suspicious entries.
 
-- **🪙 Tokenized Plastic Credits** *(Future-Ready)*  
+- **🪙 Tokenized Plastic Credits** _(Future-Ready)_  
   Convert verified credits into tradable tokens for carbon markets.
 
-### 💡 Use Cases  
-- **Recyclers**: Automate credit validation and reporting.  
-- **Manufacturers**: Track product lifecycle and earn credits.  
-- **Auditors**: Access tamper-proof records for ESG compliance.  
+### 💡 Use Cases
+
+- **Recyclers**: Automate credit validation and reporting.
+- **Manufacturers**: Track product lifecycle and earn credits.
+- **Auditors**: Access tamper-proof records for ESG compliance.
 - **NGOs**: Monitor impact and ensure accountability.
 
 ### 🔗 Integration & Analytics
@@ -201,7 +225,15 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 
 3. Set up environment variables (see Environment Variables section)
 
-4. Start the development server:
+4. Run database migrations to add the new backend grouping tables:
+
+   ```sql
+   -- Execute the migration file in your Supabase SQL Editor:
+   -- supabase/migrations/20250115_add_backend_grouping.sql
+   -- This adds business_rules and document_groups tables
+   ```
+
+5. Start the development server:
    ```bash
    npm run dev
    # or
@@ -227,23 +259,25 @@ GOOGLE_API_KEY=your_google_gemini_api_key
 CRON_INGEST_SECRET=your_ingest_secret
 CRON_SUBMIT_SECRET=your_submit_secret
 
-# Optional: Plastiks Integration (commented out - replaced with human verification)
-# NEXT_PUBLIC_PLASTIKS_BASE_URL=https://staging.plastiks.io
-# NEXT_PUBLIC_API_TOKEN_CALL=your_plastiks_api_token
-# NEXT_PUBLIC_USER_ADDRESS=your_ethereum_address
-# PRIVATE_KEY=your_private_key
+# Plastiks Integration (uses staging environment for safe testing)
+PLASTIKS_BASE_URL=https://staging.plastiks.io
+API_TOKEN_CALL=your_plastiks_api_token
+USER_ADDRESS=your_ethereum_address
+PRIVATE_KEY=your_private_key
 ```
 
 ## Document Processing Flow
 
 1. **Authentication**: Users sign up/sign in with email verification
 2. **Upload**: Authenticated users upload documents through the web interface
-3. **Processing**: Documents are processed to extract key information and associated with the user
-4. **Grouping**: Related documents are grouped by invoice number within the user's data
-5. **Validation**: Each group is validated for completeness (3 files required: invoice, EFT receipt, e-way bill)
-6. **Human Verification**: Users manually verify document data accuracy and completeness
-7. **Analytics**: Real-time dashboard tracks verified tonnage and document counts
-8. **Export**: Verified documents can be exported to CSV for external system integration
+3. **AI Processing**: Documents are processed using Google Gemini 2.0 Flash to extract key information and associated with the user
+4. **Backend Grouping**: Automated backend service groups related documents by invoice number and applies business rules
+5. **Rule Application**: System applies country-specific business rules (e.g., Indian recyclers need only Invoice + E-way Bill)
+6. **Group Validation**: Each group is validated for completeness based on applicable business rules
+7. **Human Verification**: Users manually verify document data accuracy and completeness in "Verify & Submit" tab
+8. **Blockchain Submission**: Verified documents move to "Blockchain" tab where they can be pushed to Plastiks blockchain
+9. **Analytics**: Real-time dashboard tracks verified tonnage and document counts
+10. **Export**: Verified documents can be exported to CSV for external system integration
 
 ## API Endpoints
 
@@ -273,6 +307,32 @@ All API endpoints now require valid JWT authentication tokens passed via `Author
   - **Audit Trail**: Records verification timestamp and user ID
   - **Parameters**: `?invoice=<invoice_number>` to specify which invoice to verify
   - **Response**: Returns verification status and details for the specified invoice
+
+### Backend Document Grouping
+
+- `POST /api/cron/document-grouping` - Automated document grouping with business rules
+  - **Purpose**: Groups `parsed_documents` by invoice number and applies country-specific business rules
+  - **Authentication**: Via cron secrets (`x-cron-secret` header or `?secret=` query param)
+  - **Trigger**: Automatically called after AI document processing completes
+  - **Features**:
+    - ✅ **Business Rules Engine**: Applies country-specific document requirements
+    - ✅ **Indian Recycler Support**: Special 2-document rule (Invoice + E-way Bill only)
+    - ✅ **Comprehensive Logging**: Detailed logs for tracking grouping process
+    - ✅ **User Isolation**: Groups documents within user boundaries only
+  - **Database Updates**: Creates/updates records in `document_groups` table
+
+### Blockchain Integration
+
+- `POST /api/plastiks/submit` - Submit verified documents to Plastiks blockchain
+  - **Purpose**: Push human-verified documents to Plastiks staging environment
+  - **Authentication**: Via cron secrets or called from "Blockchain" tab
+  - **Parameters**: `?invoice=<invoice_number>` to submit specific invoice
+  - **Features**:
+    - ✅ **Comprehensive Logging**: Extensive backend logging for debugging
+    - ✅ **Staging Environment**: Safe testing with `https://staging.plastiks.io`
+    - ✅ **Complete Payload**: All required Plastiks fields including document URLs
+    - ✅ **Error Handling**: Detailed error tracking and database status updates
+  - **Database Updates**: Marks documents as `submitted` or `failed` with blockchain details
 
 ### Data Ingestion
 
@@ -344,6 +404,81 @@ alter table public.parsed_documents enable row level security;
 -- Create RLS policies for user isolation
 create policy "users_own_parsed_documents" on public.parsed_documents
   for all using (auth.uid() = user_id);
+```
+
+#### Table: `business_rules` (NEW)
+
+Defines country-specific document requirements for flexible grouping logic.
+
+```sql
+-- Business rules table for country-specific document requirements
+CREATE TABLE IF NOT EXISTS public.business_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rule_name TEXT NOT NULL UNIQUE,
+  country TEXT, -- 'IN', 'US', 'BR', etc. NULL = global default
+  required_documents TEXT[] NOT NULL, -- e.g., ['invoice', 'e-way-bill']
+  optional_documents TEXT[] DEFAULT '{}',
+  minimum_required INTEGER NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Initial business rules
+INSERT INTO business_rules (rule_name, country, required_documents, optional_documents, minimum_required, description) VALUES
+('global_default', NULL, ARRAY['invoice', 'eft_receipt', 'e-way-bill'], '{}', 3, 'Default rule for all countries'),
+('indian_recyclers', 'IN', ARRAY['invoice', 'e-way-bill'], ARRAY['eft_receipt'], 2, 'Indian recyclers only need Invoice + E-way Bill');
+
+-- Enable Row Level Security
+ALTER TABLE public.business_rules ENABLE ROW LEVEL SECURITY;
+
+-- RLS policy for business rules (read-only for authenticated users)
+CREATE POLICY "authenticated_read_business_rules" ON public.business_rules
+  FOR SELECT USING (auth.role() = 'authenticated');
+```
+
+#### Table: `document_groups` (NEW)
+
+Stores pre-computed document groups with completion status and applied business rules.
+
+```sql
+-- Document groups table for backend grouping results
+CREATE TABLE IF NOT EXISTS public.document_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  invoice_number TEXT NOT NULL,
+  group_key TEXT NOT NULL, -- Can be same as invoice_number or more complex
+  country TEXT,
+  recycler_company TEXT,
+  plastic_type TEXT,
+  applied_rule_name TEXT,
+  required_document_types TEXT[],
+  optional_document_types TEXT[],
+  minimum_required INTEGER,
+  present_document_types TEXT[],
+  present_document_ids UUID[], -- IDs of parsed_documents in this group
+  completion_count INTEGER NOT NULL DEFAULT 0,
+  missing_document_types TEXT[],
+  is_complete BOOLEAN NOT NULL DEFAULT FALSE,
+  can_verify BOOLEAN NOT NULL DEFAULT FALSE, -- Indicates if ready for human verification
+  completion_percentage INTEGER NOT NULL DEFAULT 0,
+  last_processed_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  processing_logs JSONB, -- Detailed logs for debugging
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  UNIQUE (user_id, invoice_number)
+);
+
+-- Enable Row Level Security
+ALTER TABLE public.document_groups ENABLE ROW LEVEL SECURITY;
+
+-- RLS policy for document groups
+CREATE POLICY "users_own_document_groups" ON public.document_groups
+  FOR ALL USING (auth.uid() = user_id);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_document_groups_user_id ON public.document_groups(user_id);
+CREATE INDEX IF NOT EXISTS idx_document_groups_complete ON public.document_groups(user_id, is_complete);
 ```
 
 #### Table: `recycling_docs`
@@ -685,15 +820,24 @@ Ensure your Supabase project has email authentication enabled:
 - Preview PDF documents alongside extracted information
 - Export processed data to CSV
 
-### 3. Group & Verify Tab
+### 3. Verify & Submit Tab
 
-- Documents automatically grouped by invoice number
+- Documents automatically grouped by invoice number using backend grouping service
 - Status badges: Incomplete → Complete → Verified
+- Country-specific business rules (e.g., Indian recyclers need only 2 documents)
 - Human verification button for quality control
 - Combined verification status display with dynamic visual feedback
 - CSV export for verified documents only
 
-### 4. Dashboard Analytics
+### 4. Blockchain Tab (NEW)
+
+- Displays only human-verified documents ready for blockchain submission
+- "Push to Plastiks" button unlocked only after human verification
+- Comprehensive backend logging for debugging blockchain submissions
+- Shows blockchain submission status and transaction details
+- Uses Plastiks staging environment for safe testing
+
+### 5. Dashboard Analytics
 
 - **Sticky Header**: Always visible statistics during scrolling
 - **Real-Time Updates**: Refreshes every 30 seconds automatically
@@ -702,7 +846,8 @@ Ensure your Supabase project has email authentication enabled:
 
 ### Change Log
 
-- **v4.0 **: 🚀 **HUMAN VERIFICATION WORKFLOW** - Replaced Plastiks with human verification, added real-time dashboard with sticky header, date range analytics, CSV export for verified docs, and streamlined 3-tab UI
+- **v5.0 **: 🚀 **BACKEND GROUPING & BLOCKCHAIN INTEGRATION** - Moved document grouping to backend with business rules engine, added Indian recycler 2-document exception, new Blockchain tab with Push to Plastiks functionality, comprehensive backend logging, and staging environment confirmation
+- **v4.0 **: 🚀 **HUMAN VERIFICATION WORKFLOW** - Replaced direct Plastiks submission with human verification, added real-time dashboard with sticky header, date range analytics, CSV export for verified docs, and streamlined 4-tab UI
 - **v3.1 **: 🚀 **PRODUCTION READY** - Fixed all critical Plastiks submission issues, eliminated infinite loops, added password reset, collapsible groups, smart file processing, and comprehensive error handling
 - **v3.0 **: Complete authentication system with user isolation, smart UX, and security features
 - **v2.1 **: Performance optimizations, Plastiks attachment support, UI/UX improvements
