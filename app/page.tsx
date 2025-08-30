@@ -366,7 +366,7 @@ function HomeContent({ session }: HomeContentProps) {
 
   // UI state
   const [activeTab, setActiveTab] = useState<
-    'upload' | 'results' | 'groups' | 'submit'
+    'upload' | 'results' | 'groups' | 'submit' | 'blockchain'
   >('upload');
 
   // Document grouping state
@@ -379,6 +379,15 @@ function HomeContent({ session }: HomeContentProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
     {}
   );
+
+  // 🚀 NEW: Blockchain tab state - for verified recycling docs
+  const [verifiedDocs, setVerifiedDocs] = useState<
+    Record<string, RecyclingDocument>
+  >({});
+  const [isVerifiedDocsLoading, setIsVerifiedDocsLoading] = useState(false);
+  const [hasInitializedVerifiedDocs, setHasInitializedVerifiedDocs] =
+    useState(false);
+  const [isPushingToPlastiks, setIsPushingToPlastiks] = useState(false);
 
   // Alert state for user notifications
   const [showAlreadyProcessedAlert, setShowAlreadyProcessedAlert] =
@@ -1403,7 +1412,152 @@ function HomeContent({ session }: HomeContentProps) {
     hasInitializedGroups,
   ]); // 🚀 Added required dependencies without groups
 
+  // 🚀 NEW: Lazy load verified recycling docs only when Blockchain tab is active
+  useEffect(() => {
+    // Only load verified docs when the blockchain tab is active
+    if (activeTab !== 'blockchain') return;
+
+    let cancelled = false;
+
+    const loadVerifiedDocs = async () => {
+      setIsVerifiedDocsLoading(true);
+      console.time('⏱️ [BLOCKCHAIN] Verified docs loading');
+
+      try {
+        console.log('🔗 [BLOCKCHAIN] Loading human-verified recycling docs...');
+        console.log('👤 [BLOCKCHAIN] User:', session.user.email);
+
+        // Load human-verified recycling docs
+        const supabase = getSupabaseBrowser();
+        const { data, error } = await supabase
+          .from('recycling_docs')
+          .select('*')
+          .eq('user_id', session.user.id) // Filter by current user
+          .eq('human_verified', true) // Only verified documents
+          .order('verified_at', { ascending: false }); // Most recent first
+
+        if (error) {
+          console.error('❌ [BLOCKCHAIN] Failed to load verified docs:', error);
+          return;
+        }
+
+        if (cancelled) return;
+
+        console.log(
+          `✅ [BLOCKCHAIN] Loaded ${data?.length || 0} verified documents`
+        );
+
+        if (data && data.length > 0) {
+          // Convert to map format like recyclingDocs
+          const verifiedMap = data.reduce(
+            (acc, doc) => ({
+              ...acc,
+              [doc.invoice_number]: {
+                ...doc,
+                // Ensure all expected fields are present
+                recycler_company: doc.recycler_company || 'Unknown',
+                plastiks_collection_id: doc.plastiks_collection_id || null,
+                plastiks_collection_address:
+                  doc.plastiks_collection_address || null,
+                plastiks_metadata_hash: doc.plastiks_metadata_hash || null,
+                plastiks_submitted_at: doc.plastiks_submitted_at || null,
+              },
+            }),
+            {}
+          );
+
+          setVerifiedDocs(verifiedMap);
+          console.log(
+            `📋 [BLOCKCHAIN] Verified docs by invoice:`,
+            Object.keys(verifiedMap)
+          );
+        } else {
+          console.log('📭 [BLOCKCHAIN] No verified documents found');
+          setVerifiedDocs({});
+        }
+
+        setHasInitializedVerifiedDocs(true);
+      } catch (error) {
+        console.error('❌ [BLOCKCHAIN] Error loading verified docs:', error);
+        setVerifiedDocs({});
+        setHasInitializedVerifiedDocs(true);
+      } finally {
+        if (!cancelled) {
+          setIsVerifiedDocsLoading(false);
+          console.timeEnd('⏱️ [BLOCKCHAIN] Verified docs loading');
+        }
+      }
+    };
+
+    if (!hasInitializedVerifiedDocs) {
+      loadVerifiedDocs();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    session.user.id,
+    session.user.email,
+    activeTab,
+    hasInitializedVerifiedDocs,
+  ]); // Dependencies for blockchain tab loading
+
   // computeGroupStatus is defined above with more comprehensive implementation
+
+  // 🚀 NEW: Push to Plastiks function for blockchain tab
+  const handlePushToPlastiks = useCallback(async (invoice: string) => {
+    setIsPushingToPlastiks(true);
+    console.log(
+      `🚀 [BLOCKCHAIN] Starting Push to Plastiks for invoice: ${invoice}`
+    );
+
+    try {
+      // Call the existing plastiks submit API
+      const response = await fetch(
+        `/api/plastiks/submit?invoice=${encodeURIComponent(invoice)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        console.log(`✅ [BLOCKCHAIN] Successfully pushed to Plastiks:`, result);
+
+        // Refresh verified docs to show updated status
+        setHasInitializedVerifiedDocs(false);
+
+        alert(
+          `✅ Successfully submitted to Plastiks blockchain!\n\nInvoice: ${invoice}\nProcessed: ${result.processed} document(s)`
+        );
+      } else {
+        console.error(`❌ [BLOCKCHAIN] Push to Plastiks failed:`, result);
+        alert(
+          `❌ Failed to push to Plastiks:\n\n${
+            result.error || 'Unknown error occurred'
+          }`
+        );
+      }
+    } catch (error) {
+      console.error(
+        `💥 [BLOCKCHAIN] Network error pushing to Plastiks:`,
+        error
+      );
+      alert(
+        `💥 Network error occurred while pushing to Plastiks.\n\nPlease check your connection and try again.`
+      );
+    } finally {
+      setIsPushingToPlastiks(false);
+      console.log(
+        `🔄 [BLOCKCHAIN] Push to Plastiks completed for invoice: ${invoice}`
+      );
+    }
+  }, []);
 
   const handleSubmitGroup = useCallback(async (invoice: string) => {
     setSubmitting((prev) => ({ ...prev, [invoice]: true }));
@@ -2842,18 +2996,24 @@ function HomeContent({ session }: HomeContentProps) {
           <Tabs
             value={activeTab}
             onValueChange={(v: string) =>
-              setActiveTab(v as 'upload' | 'results' | 'groups' | 'submit')
+              setActiveTab(
+                v as 'upload' | 'results' | 'groups' | 'submit' | 'blockchain'
+              )
             }
             className='space-y-6'
           >
             <div className='flex justify-center'>
-              <TabsList className='grid w-full grid-cols-2'>
+              <TabsList className='grid w-full grid-cols-3'>
                 <TabsTrigger value='upload' className='text-base py-1'>
                   Upload & Process
                 </TabsTrigger>
 
                 <TabsTrigger value='groups' className='text-base py-1'>
                   Verify & Submit
+                </TabsTrigger>
+
+                <TabsTrigger value='blockchain' className='text-base py-1'>
+                  Blockchain
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -3783,6 +3943,257 @@ function HomeContent({ session }: HomeContentProps) {
                             </div>
                           );
                         })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ===== NEW: Blockchain Tab ===== */}
+            <TabsContent value='blockchain' className='space-y-6'>
+              <Card className='shadow-md border-slate-200'>
+                <CardHeader>
+                  <div className='flex justify-between items-start'>
+                    <div>
+                      <CardTitle>Blockchain Submission</CardTitle>
+                      <CardDescription>
+                        {isVerifiedDocsLoading
+                          ? 'Loading verified documents...'
+                          : 'Submit verified documents to Plastiks blockchain'}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className='p-6'>
+                  {isVerifiedDocsLoading ? (
+                    <div className='flex items-center justify-center py-8'>
+                      <Loader2 className='h-8 w-8 animate-spin text-blue-500' />
+                      <span className='ml-3 text-slate-600'>
+                        Loading verified documents...
+                      </span>
+                    </div>
+                  ) : Object.keys(verifiedDocs).length === 0 ? (
+                    <div className='text-center py-8'>
+                      <div className='text-slate-600 text-sm'>
+                        No verified documents found. Complete human verification
+                        first.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className='space-y-6'>
+                      {Object.entries(verifiedDocs).map(([invoiceKey, doc]) => (
+                        <div
+                          key={invoiceKey}
+                          className='border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-all border-slate-200 w-full max-w-4xl mx-auto'
+                        >
+                          <div className='flex items-start justify-between gap-4'>
+                            <div>
+                              <div className='font-medium text-slate-800'>
+                                Invoice: {invoiceKey}
+                              </div>
+                              <div className='text-xs text-slate-600'>
+                                Status:{' '}
+                                {doc.plastiks_submitted_at
+                                  ? 'Submitted to Blockchain'
+                                  : 'Ready for Blockchain'}
+                              </div>
+                            </div>
+                            <div className='flex items-center gap-2'>
+                              {doc.plastiks_submitted_at ? (
+                                <Badge className='bg-green-100 text-green-700 border-0 flex items-center gap-1'>
+                                  <CheckCircle2 className='h-3 w-3' />
+                                  Submitted
+                                </Badge>
+                              ) : (
+                                <Badge className='bg-blue-100 text-blue-700 border-0 flex items-center gap-1'>
+                                  <FileCheck className='h-3 w-3' />
+                                  Ready
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Document Details - Same as Verify & Submit */}
+                          <div className='mt-6 pt-4 border-t border-slate-100'>
+                            <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
+                              <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
+                                <CheckCircle2 className='h-4 w-4' />
+                                Human Verified Document Data
+                              </h4>
+                              <div className='grid grid-cols-2 gap-6 text-sm'>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    Invoice #
+                                  </div>
+                                  <div className='text-sm text-slate-700'>
+                                    {doc.invoice_number}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    Company
+                                  </div>
+                                  <div className='text-sm text-slate-700'>
+                                    {doc.recycler_company}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    Plastic Type
+                                  </div>
+                                  <div className='text-sm text-slate-700'>
+                                    {doc.plastic_type}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    Weight
+                                  </div>
+                                  <div className='text-sm text-slate-700'>
+                                    {doc.weight_kg
+                                      ? `${doc.weight_kg} kg`
+                                      : `${doc.tonnage_tons} tons`}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    City
+                                  </div>
+                                  <div className='text-sm text-slate-700'>
+                                    {(
+                                      doc as RecyclingDocument & {
+                                        city?: string;
+                                      }
+                                    ).city || 'N/A'}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    Country
+                                  </div>
+                                  <div className='text-sm text-slate-700'>
+                                    {doc.country}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Verification Details */}
+                              <div className='mt-4 pt-4 border-t border-green-200 grid grid-cols-3 gap-6 text-sm'>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    Verified by
+                                  </div>
+                                  <div className='text-sm text-slate-700'>
+                                    {session?.user?.email}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    Verified at
+                                  </div>
+                                  <div className='text-sm text-slate-700'>
+                                    {doc.verified_at
+                                      ? new Date(
+                                          doc.verified_at
+                                        ).toLocaleString()
+                                      : 'N/A'}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className='text-slate-500 text-xs font-medium mb-1'>
+                                    Status
+                                  </div>
+                                  <div className='flex items-center gap-1 text-sm font-medium text-green-700'>
+                                    <CheckCircle2 className='h-3 w-3' />
+                                    {doc.plastiks_submitted_at
+                                      ? 'Submitted to Blockchain'
+                                      : 'Ready for Blockchain'}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Push to Plastiks Button */}
+                            <Button
+                              size='sm'
+                              disabled={
+                                isPushingToPlastiks ||
+                                !!doc.plastiks_submitted_at
+                              }
+                              onClick={() => handlePushToPlastiks(invoiceKey)}
+                              className={`w-full gap-2 mt-4 ${
+                                doc.plastiks_submitted_at
+                                  ? 'bg-gray-400 hover:bg-gray-400 text-white cursor-not-allowed'
+                                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+                              }`}
+                            >
+                              {isPushingToPlastiks ? (
+                                <span className='flex items-center gap-2'>
+                                  <Loader2 className='h-3 w-3 animate-spin' />
+                                  Pushing to Blockchain...
+                                </span>
+                              ) : doc.plastiks_submitted_at ? (
+                                <span className='flex items-center gap-2'>
+                                  <CheckCircle2 className='h-3 w-3' />
+                                  Submitted to Blockchain
+                                </span>
+                              ) : (
+                                <span className='flex items-center gap-2'>
+                                  <ArrowRight className='h-3 w-3' />
+                                  Push to Plastiks
+                                </span>
+                              )}
+                            </Button>
+
+                            {/* Blockchain Details if submitted */}
+                            {doc.plastiks_submitted_at && (
+                              <div className='mt-4 p-4 bg-slate-50 rounded-lg border'>
+                                <h5 className='font-medium text-slate-800 mb-3'>
+                                  Blockchain Details
+                                </h5>
+                                <div className='grid grid-cols-2 gap-4 text-sm'>
+                                  <div>
+                                    <div className='text-slate-500 text-xs font-medium mb-1'>
+                                      Collection ID
+                                    </div>
+                                    <div className='text-sm text-slate-700'>
+                                      {doc.plastiks_collection_id || 'N/A'}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className='text-slate-500 text-xs font-medium mb-1'>
+                                      Collection Address
+                                    </div>
+                                    <div className='text-sm text-slate-700 truncate'>
+                                      {doc.plastiks_collection_address || 'N/A'}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className='text-slate-500 text-xs font-medium mb-1'>
+                                      Metadata Hash
+                                    </div>
+                                    <div className='text-sm text-slate-700 truncate'>
+                                      {doc.plastiks_metadata_hash || 'N/A'}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className='text-slate-500 text-xs font-medium mb-1'>
+                                      Submitted At
+                                    </div>
+                                    <div className='text-sm text-slate-700'>
+                                      {doc.plastiks_submitted_at
+                                        ? new Date(
+                                            doc.plastiks_submitted_at
+                                          ).toLocaleString()
+                                        : 'N/A'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </CardContent>
