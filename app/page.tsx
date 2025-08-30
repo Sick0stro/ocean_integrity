@@ -309,8 +309,33 @@ interface GroupDoc {
 }
 
 type InvoiceGroup = {
+  // Original frontend properties (for compatibility)
   invoice: string;
   docs: Partial<Record<'invoice' | 'eft_receipt' | 'e-way-bill', GroupDoc[]>>;
+
+  // 🚀 NEW: Backend-provided properties
+  invoiceKey?: string;
+  invoiceNumber?: string;
+  isComplete?: boolean;
+  completionCount?: number;
+  requiredCount?: number;
+  missingTypes?: string[];
+  presentTypes?: string[];
+  completionPercentage?: number;
+
+  // Backend metadata
+  country?: string | null;
+  recyclerCompany?: string | null;
+  plasticType?: string | null;
+  appliedRuleName?: string | null;
+  lastProcessedAt?: string;
+  processingLogs?: {
+    backendGrouped?: boolean;
+    groupId?: string;
+    ruleName?: string;
+    requiredTypes?: string[];
+    optionalTypes?: string[];
+  };
 };
 
 // Define the shape of the submit result
@@ -377,6 +402,9 @@ function HomeContent({ session }: HomeContentProps) {
   const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<
     Set<string>
   >(new Set());
+
+  // Backend grouping state
+  const [isGroupingInProgress, setIsGroupingInProgress] = useState(false);
 
   // Submission state
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
@@ -584,6 +612,24 @@ function HomeContent({ session }: HomeContentProps) {
 
   // Calculate the status of a group (complete status, count of files, missing files)
   const computeGroupStatus = (group: InvoiceGroup | undefined) => {
+    if (!group) {
+      return {
+        complete: false,
+        count: 0,
+        missing: ['invoice', 'eft_receipt', 'e-way-bill'],
+      };
+    }
+
+    // 🚀 NEW: Use backend-calculated completion info if available
+    if (group.processingLogs?.backendGrouped) {
+      return {
+        complete: group.isComplete || false,
+        count: group.completionCount || 0,
+        missing: group.missingTypes || [],
+      };
+    }
+
+    // 🔙 FALLBACK: Old frontend calculation for backward compatibility
     if (!group?.docs) {
       return {
         complete: false,
@@ -627,6 +673,138 @@ function HomeContent({ session }: HomeContentProps) {
       });
     }
   }, []); // Removed setProcessedInvoiceNumbers from deps as it's stable
+
+  // 🚀 BACKEND GROUPING SERVICE TRIGGER
+  const triggerDocumentGrouping = useCallback(
+    async (processedCount: number) => {
+      if (isGroupingInProgress) {
+        console.log(
+          `⚠️ Frontend: Grouping already in progress - skipping trigger`
+        );
+        return;
+      }
+
+      setIsGroupingInProgress(true);
+      const groupingId = Math.random().toString(36).substring(2, 15);
+
+      try {
+        console.log(
+          `🚀 Frontend: [grouping:${groupingId}] Triggering backend document grouping...`
+        );
+        console.log(
+          `📊 Frontend: [grouping:${groupingId}] Processed documents count: ${processedCount}`
+        );
+        console.log(
+          `👤 Frontend: [grouping:${groupingId}] User ID: ${session?.user?.id}`
+        );
+
+        const requestPayload = {
+          user_id: session?.user?.id,
+          trigger: 'post_ai_processing',
+          processed_count: processedCount,
+          timestamp: new Date().toISOString(),
+          request_id: groupingId,
+        };
+
+        console.log(
+          `📤 Frontend: [grouping:${groupingId}] Sending grouping request:`,
+          requestPayload
+        );
+
+        const response = await fetch('/api/cron/document-grouping', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify(requestPayload),
+        });
+
+        const result = await response.json();
+
+        console.log(
+          `📥 Frontend: [grouping:${groupingId}] Grouping response:`,
+          {
+            ok: response.ok,
+            status: response.status,
+            result,
+          }
+        );
+
+        if (response.ok && result.success) {
+          console.log(
+            `✅ Frontend: [grouping:${groupingId}] Document grouping completed successfully!`
+          );
+          console.log(
+            `📊 Frontend: [grouping:${groupingId}] Groups processed: ${result.groups_processed}`
+          );
+          console.log(
+            `🆕 Frontend: [grouping:${groupingId}] Groups created: ${result.groups_created}`
+          );
+          console.log(
+            `🔄 Frontend: [grouping:${groupingId}] Groups updated: ${result.groups_updated}`
+          );
+          console.log(
+            `⏱️ Frontend: [grouping:${groupingId}] Processing time: ${result.processing_time_ms}ms`
+          );
+
+          // Reset groups to force refresh from new document_groups table
+          console.log(
+            `🔄 Frontend: [grouping:${groupingId}] Resetting groups state to load from document_groups table`
+          );
+          setHasInitializedGroups(false);
+          setGroups({});
+
+          // Log rules applied
+          if (
+            result.rules_applied &&
+            Object.keys(result.rules_applied).length > 0
+          ) {
+            console.log(
+              `🔧 Frontend: [grouping:${groupingId}] Business rules applied:`
+            );
+            Object.entries(result.rules_applied).forEach(([rule, count]) => {
+              console.log(`   📋 ${rule}: ${count} groups`);
+            });
+          }
+
+          // Log any errors
+          if (result.errors && result.errors.length > 0) {
+            console.warn(
+              `⚠️ Frontend: [grouping:${groupingId}] Grouping errors:`,
+              result.errors
+            );
+          }
+        } else {
+          console.error(
+            `❌ Frontend: [grouping:${groupingId}] Document grouping failed:`,
+            result
+          );
+          console.error(`   Status: ${response.status}`);
+          console.error(`   Error: ${result.error || 'Unknown error'}`);
+
+          // Continue with existing flow even if grouping fails
+          console.log(
+            `🔄 Frontend: [grouping:${groupingId}] Continuing with existing grouping as fallback`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `💥 Frontend: [grouping:${groupingId}] Document grouping trigger failed:`,
+          error
+        );
+        console.log(
+          `🔄 Frontend: [grouping:${groupingId}] Continuing with existing grouping as fallback`
+        );
+      } finally {
+        setIsGroupingInProgress(false);
+        console.log(
+          `🔄 Frontend: [grouping:${groupingId}] Grouping trigger completed`
+        );
+      }
+    },
+    [session?.user?.id, session?.access_token, isGroupingInProgress]
+  );
 
   // Build/merge a single parsed_documents row into groups map
   const mergeRowIntoGroups = useCallback(
@@ -897,22 +1075,48 @@ function HomeContent({ session }: HomeContentProps) {
       console.time('⏱️ [PERFORMANCE] Groups data loading');
 
       try {
-        console.log('📊 [PERFORMANCE] Loading parsed documents for groups...');
         console.log(
-          '📊 [PERFORMANCE] Loading parsed documents for current user:',
+          '📊 [PERFORMANCE] Loading document groups (NEW BACKEND GROUPING)...'
+        );
+        console.log(
+          '📊 [PERFORMANCE] Loading document groups for current user:',
           session.user.email
         );
         console.log('🔍 [DEBUG] User ID for filtering:', session.user.id);
 
+        // 🚀 NEW: Load from document_groups table (created by backend grouping service)
         const { data, error } = await supabase
-          .from('parsed_documents')
-          .select('id, document_type, file_url, created_at, raw_json, user_id')
+          .from('document_groups')
+          .select(
+            `
+            id, 
+            invoice_number, 
+            group_key, 
+            country, 
+            recycler_company, 
+            plastic_type,
+            applied_rule_name,
+            required_document_types,
+            optional_document_types,
+            minimum_required,
+            present_document_types,
+            present_document_ids,
+            completion_count,
+            missing_document_types,
+            is_complete,
+            can_verify,
+            completion_percentage,
+            last_processed_at,
+            created_at,
+            user_id
+          `
+          )
           .eq('user_id', session.user.id) // 👈 FILTER BY USER ID
-          .order('created_at', { ascending: false })
-          .limit(500);
+          .order('last_processed_at', { ascending: false })
+          .limit(100);
 
         if (error) {
-          console.error('❌ [GROUPS] Failed to load parsed_documents:', error);
+          console.error('❌ [GROUPS] Failed to load document_groups:', error);
           console.error('❌ [GROUPS] Error details:', error);
           setIsGroupsLoading(false);
           return;
@@ -921,61 +1125,110 @@ function HomeContent({ session }: HomeContentProps) {
         if (cancelled) return;
 
         console.log(
-          `📊 [GROUPS] Loaded ${data?.length || 0} documents for user`
+          `📊 [GROUPS] Loaded ${data?.length || 0} document groups for user`
         );
         console.log('🔍 [GROUPS] Raw data sample:', data?.slice(0, 2));
 
-        // Check if documents have the correct user_id
+        // Check if groups have the correct user_id
         if (data && data.length > 0) {
           const userIds = [...new Set(data.map((d) => d.user_id))];
-          console.log('🔍 [GROUPS] User IDs in loaded documents:', userIds);
+          console.log('🔍 [GROUPS] User IDs in loaded groups:', userIds);
           console.log('🔍 [GROUPS] Expected user ID:', session.user.id);
-          console.log('🔍 [GROUPS] Document types found:', [
-            ...new Set(data.map((d) => d.document_type)),
+          console.log('🔍 [GROUPS] Group statuses found:', [
+            ...new Set(
+              data.map((d) => (d.is_complete ? 'complete' : 'incomplete'))
+            ),
+          ]);
+          console.log('🔍 [GROUPS] Countries found:', [
+            ...new Set(data.map((d) => d.country).filter(Boolean)),
+          ]);
+          console.log('🔍 [GROUPS] Rules applied:', [
+            ...new Set(data.map((d) => d.applied_rule_name).filter(Boolean)),
           ]);
         }
 
         // Process groups even if data is empty
         if (data) {
-          console.log(`🔄 [GROUPS] Processing ${data.length} documents...`);
+          console.log(
+            `🔄 [GROUPS] Processing ${data.length} document groups...`
+          );
           const map: Record<string, InvoiceGroup> = {};
 
-          (data as unknown as GroupDoc[]).forEach((row) => {
-            if (!row) return;
+          // 🚀 NEW: Convert document_groups data directly to InvoiceGroup format
+          data.forEach((groupRow) => {
+            if (!groupRow || !groupRow.invoice_number) return;
 
-            // Get the primary invoice key from the document
-            const rj = (row.raw_json || {}) as Record<string, unknown>;
-            const primary = (rj.anchor_key || rj.invoice || '') as string;
+            const invoiceKey = groupRow.invoice_number;
 
-            if (!primary) return;
+            // 🚀 NEW: Create InvoiceGroup from document_groups row
+            const group: InvoiceGroup = {
+              // Required original properties (for compatibility with existing UI)
+              invoice: invoiceKey,
+              docs: {}, // We'll populate this if needed for compatibility
 
-            // Ensure we have a valid document type
-            if (!row.document_type) return;
+              // 🚀 NEW: Backend-calculated completion info
+              invoiceKey: invoiceKey,
+              invoiceNumber: invoiceKey,
+              isComplete: groupRow.is_complete || false,
+              completionCount: groupRow.completion_count || 0,
+              requiredCount: groupRow.minimum_required || 3,
+              missingTypes: groupRow.missing_document_types || [],
+              presentTypes: groupRow.present_document_types || [],
+              completionPercentage: groupRow.completion_percentage || 0,
 
-            // Skip if document type is not one we care about
-            if (
-              !['invoice', 'eft_receipt', 'e-way-bill'].includes(
-                row.document_type
-              )
-            ) {
-              return;
-            }
+              // 🚀 NEW: Additional metadata from backend
+              country: groupRow.country || null,
+              recyclerCompany: groupRow.recycler_company || null,
+              plasticType: groupRow.plastic_type || null,
+              appliedRuleName: groupRow.applied_rule_name || null,
 
-            // Merge the row into groups
-            mergeRowIntoGroups(row, map);
+              // Backend processing info
+              lastProcessedAt:
+                groupRow.last_processed_at || groupRow.created_at,
+              processingLogs: {
+                backendGrouped: true,
+                groupId: groupRow.id,
+                ruleName: groupRow.applied_rule_name,
+                requiredTypes: groupRow.required_document_types || [],
+                optionalTypes: groupRow.optional_document_types || [],
+              },
+            };
+
+            // Add to map
+            map[invoiceKey] = group;
+
+            console.log(
+              `📋 [GROUPS] Group "${invoiceKey}": ${
+                group.isComplete ? '✅ Complete' : '⚠️ Incomplete'
+              } (${group.completionCount}/${group.requiredCount})${
+                group.country ? ` - Country: ${group.country}` : ''
+              }${
+                group.appliedRuleName ? ` - Rule: ${group.appliedRuleName}` : ''
+              }`
+            );
           });
 
           // Update the groups state
           console.log(
-            `✅ [GROUPS] Created ${Object.keys(map).length} groups from ${
-              data.length
-            } documents`
+            `✅ [GROUPS] Loaded ${
+              Object.keys(map).length
+            } groups from backend document_groups table`
+          );
+          console.log(
+            `📊 [GROUPS] Complete groups: ${
+              Object.values(map).filter((g) => g.isComplete).length
+            }`
+          );
+          console.log(
+            `📊 [GROUPS] Incomplete groups: ${
+              Object.values(map).filter((g) => !g.isComplete).length
+            }`
           );
           setGroups(map);
           setIsDocumentsLoaded(true);
           setHasInitializedGroups(true);
         } else {
-          console.log('📭 [GROUPS] No documents found for user');
+          console.log('📭 [GROUPS] No document groups found for user');
           setGroups({});
           setIsDocumentsLoaded(true);
           setHasInitializedGroups(true);
@@ -1731,6 +1984,10 @@ function HomeContent({ session }: HomeContentProps) {
       `⏰ [process:${processId}] Timestamp: ${new Date().toISOString()}`
     );
 
+    // 🎯 LOCAL TRACKING FOR BACKEND GROUPING TRIGGER (Fix async state issue)
+    let localCompletedCount = 0;
+    let localErrorCount = 0;
+
     // Fetch documents from single_documents only (preprocessing already done)
     const supabase = getSupabaseBrowser();
 
@@ -2028,6 +2285,9 @@ function HomeContent({ session }: HomeContentProps) {
               `   🆔 databaseId is truthy: ${!!updateValues.databaseId}`
             );
 
+            // 🎯 INCREMENT LOCAL COMPLETED COUNT
+            localCompletedCount++;
+
             setProcessedDocuments((prev) => {
               // Create a new processed document from the result
               const newDoc: ProcessedDocument = {
@@ -2085,6 +2345,9 @@ function HomeContent({ session }: HomeContentProps) {
             console.error(`   Error: ${result.error}`);
             console.error(`   Details:`, result.details);
 
+            // 🎯 INCREMENT LOCAL ERROR COUNT
+            localErrorCount++;
+
             // Update with error
             setProcessedDocuments((prev) =>
               prev.map((doc) =>
@@ -2104,6 +2367,9 @@ function HomeContent({ session }: HomeContentProps) {
             `💥 Frontend: Network error for ${fileName} after ${errorTime}ms`
           );
           console.error(`   Error:`, networkError);
+
+          // 🎯 INCREMENT LOCAL ERROR COUNT
+          localErrorCount++;
 
           // Update with network error
           setProcessedDocuments((prev) =>
@@ -2252,15 +2518,9 @@ function HomeContent({ session }: HomeContentProps) {
 
       console.log(`\n🎯 ===============================================\n`);
 
-      // Calculate success/error counts
-      const completedCount = processedDocuments.filter(
-        (doc) => doc.status === 'completed'
-      ).length;
-      const errorCount = processedDocuments.filter(
-        (doc) => doc.status === 'error'
-      ).length;
+      // Use LOCAL TRACKING instead of async state (fixes timing issue)
       console.log(
-        `📈 Frontend: Results - Completed: ${completedCount}, Errors: ${errorCount}`
+        `📈 Frontend: Results - Completed: ${localCompletedCount}, Errors: ${localErrorCount}`
       );
 
       setActiveTab('results');
@@ -2281,10 +2541,18 @@ function HomeContent({ session }: HomeContentProps) {
       setCurrentProcessingIndex(-1);
       console.log(`🔄 Frontend: Processing state reset`);
 
-      // Auto-redirect to Verify & Submit tab after successful processing
-      if (completedCount > 0) {
+      // 🚀 TRIGGER BACKEND GROUPING SERVICE AFTER AI PROCESSING COMPLETES
+      if (localCompletedCount > 0) {
         console.log(
-          `🔄 Frontend: Auto-redirecting to Verify & Submit tab (${completedCount} pages processed)`
+          `🔧 Frontend: Triggering backend document grouping for ${localCompletedCount} processed documents...`
+        );
+        triggerDocumentGrouping(localCompletedCount);
+      }
+
+      // Auto-redirect to Verify & Submit tab after successful processing
+      if (localCompletedCount > 0) {
+        console.log(
+          `🔄 Frontend: Auto-redirecting to Verify & Submit tab (${localCompletedCount} pages processed)`
         );
         setTimeout(() => {
           setActiveTab('submit');
@@ -2787,7 +3055,7 @@ function HomeContent({ session }: HomeContentProps) {
                       <CardTitle>Group & Verify</CardTitle>
                       <CardDescription>
                         {isDocumentsLoaded
-                          ? 'Groups are built from parsed documents. Complete all three files to enable submission.'
+                          ? 'Groups are built by backend service. Complete groups can be submitted, incomplete groups show missing documents.'
                           : 'Loading document groups...'}
                       </CardDescription>
                     </div>
