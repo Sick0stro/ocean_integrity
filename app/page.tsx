@@ -625,15 +625,21 @@ function HomeContent({ session }: HomeContentProps) {
       return {
         complete: false,
         count: 0,
+        total: 3,
         missing: ['invoice', 'eft_receipt', 'e-way-bill'],
       };
     }
 
     // 🚀 NEW: Use backend-calculated completion info if available
     if (group.processingLogs?.backendGrouped) {
+      // Count ALL present documents (required + optional), not just required ones
+      const actualFilesPresent = group.presentTypes?.length || 0;
+      const totalPossibleFiles = 3; // Always 3 possible document types: invoice, eft_receipt, e-way-bill
+
       return {
         complete: group.isComplete || false,
-        count: group.completionCount || 0,
+        count: actualFilesPresent,
+        total: totalPossibleFiles,
         missing: group.missingTypes || [],
       };
     }
@@ -643,6 +649,7 @@ function HomeContent({ session }: HomeContentProps) {
       return {
         complete: false,
         count: 0,
+        total: 3,
         missing: ['invoice', 'eft_receipt', 'e-way-bill'],
       };
     }
@@ -663,6 +670,7 @@ function HomeContent({ session }: HomeContentProps) {
     return {
       complete: hasInvoice && hasEftReceipt && hasEWayBill,
       count,
+      total: 3, // Fallback to 3 for old frontend calculation
       missing,
     };
   };
@@ -3364,7 +3372,8 @@ function HomeContent({ session }: HomeContentProps) {
                                     Invoice: {group.invoice || 'N/A'}
                                   </div>
                                   <div className='text-xs text-slate-600'>
-                                    Status: {status.count} of 3 files uploaded
+                                    Status: {status.count} of {status.total}{' '}
+                                    files uploaded
                                   </div>
                                 </div>
                                 <div className='flex items-center gap-2'>
