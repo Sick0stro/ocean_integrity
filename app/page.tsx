@@ -54,10 +54,8 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   Card,
-  // CardAction, // Removed with Review tab
   CardContent,
   CardDescription,
-  // CardFooter, // Removed with Review tab
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -66,25 +64,15 @@ import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import FileUploader from '@/components/file-uploader';
 import dynamic from 'next/dynamic';
-// import DataSheet from '@/components/data-sheet'; // Removed with Review tab
-// Import documentTemplates for default document structure
 import { documentTemplates } from '@/constants/document-templates';
-// import { setDocumentField, documentEntries } from "@/types/document-types-util"; // Removed unused imports
 import DocumentTypeCard from '@/components/document-type-card';
 import { documentTypes } from '@/constants/document-types';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-// import {
-//   Tooltip,
-//   TooltipContent,
-//   TooltipProvider,
-//   TooltipTrigger,
-// } from '@/components/ui/tooltip';
 import { VideoText } from '@/components/magicui/video-text';
 import { Session } from '@supabase/supabase-js';
 import { LoginForm } from '@/components/login-form';
 import { GalleryVerticalEnd } from 'lucide-react';
-// import CSVDownloadBtn from '@/components/csv-download-btn'; // Removed with Review tab
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
 import { VerifiedCsvDownload } from '@/components/verified-csv-download';
@@ -92,207 +80,6 @@ import { VerifiedCsvDownload } from '@/components/verified-csv-download';
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
   ssr: false,
 });
-
-// Helper function to create blob URL for database-stored PDFs
-// Removed with Review tab
-/*
-const createPdfBlobUrl = async (databaseId: string): Promise<string | null> => {
-  try {
-    console.log(
-      `🔄 Frontend: Creating blob URL for database document ${databaseId}`
-    );
-
-    const response = await fetch(`/api/serve-document/${databaseId}`);
-    if (!response.ok) {
-      console.error(
-        `❌ Frontend: Failed to fetch database document ${databaseId}`
-      );
-      return null;
-    }
-
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-
-    console.log(`✅ Frontend: Created blob URL for document ${databaseId}`);
-    return blobUrl;
-  } catch (error) {
-    console.error(
-      `💥 Frontend: Error creating blob URL for ${databaseId}:`,
-      error
-    );
-    return null;
-  }
-};
-*/
-
-// Component to handle PDF preview for both Supabase Storage and Database files - Removed with Review tab
-/*
-interface DocumentPdfPreviewProps {
-  doc: ProcessedDocument;
-  blobUrls: Map<string, string>;
-  setBlobUrls: React.Dispatch<React.SetStateAction<Map<string, string>>>;
-}
-*/
-
-// Removed with Review tab
-/*
-const DocumentPdfPreview: React.FC<DocumentPdfPreviewProps> = ({
-  doc,
-  blobUrls,
-  setBlobUrls,
-}) => {
-  const [isLoadingBlob, setIsLoadingBlob] = useState(false);
-  const [blobError, setBlobError] = useState<string | null>(null);
-
-  const getPdfUrl = useCallback(async (): Promise<string | null> => {
-    // Case 1: Supabase Storage file (has fileUrl)
-    if (doc.fileUrl) {
-      console.log(
-        `🔗 Frontend: Using Supabase Storage URL for ${doc.fileName}`
-      );
-      return doc.fileUrl;
-    }
-
-    // Case 2: Database-stored file (has databaseId)
-    if (doc.databaseId) {
-      // Check if we already have a blob URL for this document
-      if (blobUrls.has(doc.databaseId)) {
-        console.log(`♻️ Frontend: Using cached blob URL for ${doc.fileName}`);
-        return blobUrls.get(doc.databaseId)!;
-      }
-
-      // Create new blob URL
-      console.log(
-        `🔄 Frontend: Creating new blob URL for database document ${doc.fileName}`
-      );
-      setIsLoadingBlob(true);
-      setBlobError(null);
-
-      try {
-        const blobUrl = await createPdfBlobUrl(doc.databaseId);
-        if (blobUrl) {
-          // Cache the blob URL
-          setBlobUrls((prev) => new Map(prev).set(doc.databaseId!, blobUrl));
-          console.log(`✅ Frontend: Cached blob URL for ${doc.fileName}`);
-          return blobUrl;
-        } else {
-          setBlobError('Failed to create preview');
-          return null;
-        }
-      } catch (error) {
-        console.error(
-          `💥 Frontend: Error creating blob URL for ${doc.fileName}:`,
-          error
-        );
-        setBlobError('Error loading preview');
-        return null;
-      } finally {
-        setIsLoadingBlob(false);
-      }
-    }
-
-    console.log(`⚠️ Frontend: No file URL or database ID for ${doc.fileName}`);
-    return null;
-  }, [doc.fileUrl, doc.databaseId, doc.fileName, blobUrls, setBlobUrls]);
-
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-
-  // Load PDF URL when component mounts or doc changes
-  useEffect(() => {
-    let mounted = true;
-
-    getPdfUrl().then((url) => {
-      if (mounted) {
-        setPdfUrl(url);
-      }
-    });
-
-    return () => {
-      mounted = false;
-    };
-  }, [getPdfUrl]);
-
-  // Cleanup blob URLs when component unmounts
-  useEffect(() => {
-    return () => {
-      if (doc.databaseId && blobUrls.has(doc.databaseId)) {
-        const blobUrl = blobUrls.get(doc.databaseId);
-        if (blobUrl) {
-          URL.revokeObjectURL(blobUrl);
-          console.log(`🧹 Frontend: Cleaned up blob URL for ${doc.fileName}`);
-        }
-      }
-    };
-  }, [doc.databaseId, blobUrls, doc.fileName]);
-
-  // Render the appropriate state
-  if (isLoadingBlob) {
-    return (
-      <div className='flex flex-col'>
-        <h4 className='font-medium text-slate-800 mb-2 text-sm'>
-          Document Preview
-        </h4>
-        <div className='flex items-center justify-center p-8 bg-slate-50 rounded-lg'>
-          <Loader2 className='h-6 w-6 animate-spin text-blue-500' />
-          <span className='ml-2 text-slate-600'>Loading preview...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (blobError) {
-    return (
-      <div className='flex flex-col'>
-        <h4 className='font-medium text-slate-800 mb-2 text-sm'>
-          Document Preview
-        </h4>
-        <div className='flex items-center justify-center p-8 bg-red-50 rounded-lg'>
-          <AlertCircle className='h-6 w-6 text-red-500' />
-          <span className='ml-2 text-red-600'>{blobError}</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (pdfUrl) {
-    return (
-      <div className='flex flex-col'>
-        <h4 className='font-medium text-slate-800 mb-2 text-sm'>
-          Document Preview
-          {doc.storageType === 'database' && (
-            <Badge variant='outline' className='ml-2 text-xs'>
-              Database
-            </Badge>
-          )}
-        </h4>
-        <PdfPreview fileUrl={pdfUrl} />
-      </div>
-    );
-  }
-
-  // No preview available
-  return (
-    <div className='flex flex-col'>
-      <h4 className='font-medium text-slate-800 mb-2 text-sm'>
-        Document Preview
-      </h4>
-      <div className='flex items-center justify-center p-8 bg-slate-50 rounded-lg'>
-        <FileText className='h-6 w-6 text-slate-400' />
-        <span className='ml-2 text-slate-500'>
-          Preview not available
-          {doc.databaseId && (
-            <div className='mt-2 text-xs'>
-              <p>Database ID: {doc.databaseId}</p>
-              <p>Storage Type: {doc.storageType}</p>
-              <p>Has fileUrl: {doc.fileUrl ? 'Yes' : 'No'}</p>
-            </div>
-          )}
-        </span>
-      </div>
-    </div>
-  );
-};
-*/
 
 interface GroupDoc {
   id: string;
@@ -619,6 +406,126 @@ function HomeContent({ session }: HomeContentProps) {
 
   // Blob URLs for PDF previews - moved to the main state section
 
+  // Helper function to detect if a recycler company is Indian
+  const isIndianRecycler = (
+    recyclerCompany: string | null | undefined
+  ): boolean => {
+    if (!recyclerCompany) return false;
+
+    const company = recyclerCompany.toLowerCase();
+
+    // Common Indian company indicators
+    const indianIndicators = [
+      'private limited',
+      'pvt ltd',
+      'limited',
+      'ltd',
+      'enterprises',
+      'industries',
+      'india',
+      'indian',
+      'mumbai',
+      'delhi',
+      'bangalore',
+      'chennai',
+      'kolkata',
+      'hyderabad',
+      'pune',
+      'ahmedabad',
+      'surat',
+      'jaipur',
+      'lucknow',
+      'kanpur',
+      'nagpur',
+      'indore',
+      'bhopal',
+      'visakhapatnam',
+      'patna',
+      'vadodara',
+      'ludhiana',
+      'agra',
+      'nashik',
+      'faridabad',
+      'meerut',
+      'rajkot',
+      'kalyan',
+      'vasai-virar',
+      'varanasi',
+      'srinagar',
+      'aurangabad',
+      'dhanbad',
+      'amritsar',
+      'navi mumbai',
+      'allahabad',
+      'howrah',
+      'gwalior',
+      'jabalpur',
+      'coimbatore',
+      'vijayawada',
+      'jodhpur',
+      'madurai',
+      'raipur',
+      'kota',
+      'guwahati',
+      'chandigarh',
+      'solapur',
+      'hubli-dharwad',
+      'bareilly',
+      'moradabad',
+      'mysore',
+      'gurgaon',
+      'aligarh',
+      'jalandhar',
+      'tiruchirappalli',
+      'bhubaneswar',
+      'salem',
+      'mira-bhayandar',
+      'warangal',
+      'thiruvananthapuram',
+      'guntur',
+      'bhiwandi',
+      'saharanpur',
+      'gorakhpur',
+      'bikaner',
+      'amravati',
+      'noida',
+      'jamshedpur',
+      'bhilai',
+      'cuttack',
+      'firozabad',
+      'kochi',
+      'bhavnagar',
+      'dehradun',
+      'durgapur',
+      'asansol',
+      'nanded',
+      'kolhapur',
+      'ajmer',
+      'gulbarga',
+      'jamnagar',
+      'ujjain',
+      'loni',
+      'siliguri',
+      'jhansi',
+      'ulhasnagar',
+      'nellore',
+      'jammu',
+      'sangli-miraj & kupwad',
+      'belgaum',
+      'mangalore',
+      'ambattur',
+      'tirunelveli',
+      'malegaon',
+      'gaya',
+      'jalgaon',
+      'udaipur',
+      'maheshtala',
+      'rangpar',
+    ];
+
+    return indianIndicators.some((indicator) => company.includes(indicator));
+  };
+
   // Calculate the status of a group (complete status, count of files, missing files)
   const computeGroupStatus = (group: InvoiceGroup | undefined) => {
     if (!group) {
@@ -634,12 +541,43 @@ function HomeContent({ session }: HomeContentProps) {
     if (group.processingLogs?.backendGrouped) {
       // Count ALL present documents (required + optional), not just required ones
       const actualFilesPresent = group.presentTypes?.length || 0;
-      const totalPossibleFiles = 3; // Always 3 possible document types: invoice, eft_receipt, e-way-bill
+      const isIndian =
+        group.country === 'IN' && isIndianRecycler(group.recyclerCompany);
+
+      let complete = false;
+      let total = 3;
+
+      if (isIndian) {
+        // For Indian recyclers: flexible completion rules
+        const hasInvoice = group.presentTypes?.includes('invoice') || false;
+        const hasEWayBill = group.presentTypes?.includes('e-way-bill') || false;
+        const hasEFT = group.presentTypes?.includes('eft_receipt') || false;
+
+        // Indian recyclers can verify with just invoice + e-way-bill
+        complete = hasInvoice && hasEWayBill;
+
+        // Dynamic total based on what they actually uploaded
+        if (actualFilesPresent === 2 && hasInvoice && hasEWayBill && !hasEFT) {
+          total = 2; // Show "2 of 2" when they uploaded exactly invoice + e-way-bill
+        } else if (actualFilesPresent >= 3) {
+          total = 3; // Show "3 of 3" when they uploaded all 3 documents
+        } else {
+          total = 3; // Show "X of 3" for incomplete uploads
+        }
+      } else {
+        // For non-Indian recyclers: strict 3-file requirement
+        complete =
+          actualFilesPresent >= 3 &&
+          (group.presentTypes?.includes('invoice') || false) &&
+          (group.presentTypes?.includes('eft_receipt') || false) &&
+          (group.presentTypes?.includes('e-way-bill') || false);
+        total = 3; // Always show "X of 3"
+      }
 
       return {
-        complete: group.isComplete || false,
+        complete,
         count: actualFilesPresent,
-        total: totalPossibleFiles,
+        total,
         missing: group.missingTypes || [],
       };
     }
@@ -667,10 +605,31 @@ function HomeContent({ session }: HomeContentProps) {
       !hasEWayBill && 'e-way-bill',
     ].filter(Boolean) as string[];
 
+    // For fallback, apply similar logic but with limited data
+    const isIndian =
+      group.country === 'IN' && isIndianRecycler(group.recyclerCompany);
+    let complete = false;
+    let total = 3;
+
+    if (isIndian) {
+      // Indian recyclers can verify with invoice + e-way-bill
+      complete = hasInvoice && hasEWayBill;
+      // Dynamic total for fallback
+      if (count === 2 && hasInvoice && hasEWayBill && !hasEftReceipt) {
+        total = 2;
+      } else {
+        total = 3;
+      }
+    } else {
+      // Non-Indian recyclers need all 3
+      complete = hasInvoice && hasEftReceipt && hasEWayBill;
+      total = 3;
+    }
+
     return {
-      complete: hasInvoice && hasEftReceipt && hasEWayBill,
+      complete,
       count,
-      total: 3, // Fallback to 3 for old frontend calculation
+      total,
       missing,
     };
   };
@@ -3424,13 +3383,37 @@ function HomeContent({ session }: HomeContentProps) {
                               {expandedGroups[invoiceKey] && (
                                 <>
                                   <div className='space-y-6 mt-6'>
-                                    {(
-                                      [
-                                        'invoice',
-                                        'eft_receipt',
-                                        'e-way-bill',
-                                      ] as const
-                                    ).map((t) => {
+                                    {(() => {
+                                      // Determine which document sections to show
+                                      const isIndian =
+                                        group.country === 'IN' &&
+                                        isIndianRecycler(group.recyclerCompany);
+                                      const hasEFT = Boolean(
+                                        group.docs?.eft_receipt?.length
+                                      );
+
+                                      // For Indian recyclers: only show sections for documents they actually have
+                                      let documentsToShow: Array<
+                                        'invoice' | 'eft_receipt' | 'e-way-bill'
+                                      >;
+
+                                      if (isIndian && !hasEFT) {
+                                        // Indian recycler with only 2 files: show only invoice and e-way-bill
+                                        documentsToShow = [
+                                          'invoice',
+                                          'e-way-bill',
+                                        ];
+                                      } else {
+                                        // All other cases: show all 3 sections
+                                        documentsToShow = [
+                                          'invoice',
+                                          'eft_receipt',
+                                          'e-way-bill',
+                                        ];
+                                      }
+
+                                      return documentsToShow;
+                                    })().map((t) => {
                                       const latest = group.docs?.[t]?.[0];
                                       const tTitle =
                                         documentTypes[t]?.title || t;

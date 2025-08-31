@@ -3,6 +3,75 @@ import { getSupabaseAdmin } from '@/utils/supabase';
 
 type DocType = 'invoice' | 'eft_receipt' | 'e-way-bill';
 
+// Helper function to detect if a recycler company is Indian
+function isIndianRecycler(recyclerCompany: string | null | undefined): boolean {
+  if (!recyclerCompany) return false;
+
+  const company = recyclerCompany.toLowerCase();
+
+  // Common Indian company indicators
+  const indianIndicators = [
+    'private limited',
+    'pvt ltd',
+    'limited',
+    'ltd',
+    'enterprises',
+    'industries',
+    'india',
+    'indian',
+    'mumbai',
+    'delhi',
+    'bangalore',
+    'chennai',
+    'kolkata',
+    'hyderabad',
+    'pune',
+    'ahmedabad',
+    'surat',
+    'jaipur',
+    'lucknow',
+    'kanpur',
+    'nagpur',
+    'indore',
+    'bhopal',
+    'visakhapatnam',
+    'patna',
+    'vadodara',
+    'ludhiana',
+    'agra',
+    'nashik',
+    'faridabad',
+    'meerut',
+    'rajkot',
+    'kalyan',
+    'vasai-virar',
+    'varanasi',
+    'srinagar',
+    'aurangabad',
+    'dhanbad',
+    'amritsar',
+    'navi mumbai',
+    'allahabad',
+    'howrah',
+    'gwalior',
+    'jabalpur',
+    'coimbatore',
+    'vijayawada',
+    'jodhpur',
+    'madurai',
+    'raipur',
+    'kota',
+    'guwahati',
+    'chandigarh',
+    'solapur',
+    'noida',
+    'gurgaon',
+    'rangpar',
+  ];
+
+  return indianIndicators.some((indicator) => company.includes(indicator));
+}
+
 function normalizeUnitToKg(
   value: number | null | undefined,
   unit?: string | null
@@ -159,26 +228,90 @@ export async function POST(req: Request) {
     const eftRow = latestByType.get('eft_receipt');
     const ewbRow = latestByType.get('e-way-bill');
 
-    if (!invRow || !eftRow || !ewbRow) {
-      const present = required.filter((t) => latestByType.has(t));
-      const missing = required.filter((t) => !present.includes(t));
-      console.warn(
-        `🟠 [promote:${requestId}] Incomplete group for invoice='${invoice}'. Present=${present.join(
-          ','
-        )} Missing=${missing.join(',')}`
-      );
+    // ========== EXTRACT COUNTRY AND RECYCLER COMPANY EARLY ==========
+    const ewbJson = (ewbRow?.raw_json || {}) as Record<string, unknown>;
+    const invJson = (invRow?.raw_json || {}) as Record<string, unknown>;
+
+    const country = ((ewbJson['ship_to_country_code'] as string) || '')
+      .toString()
+      .trim()
+      .toUpperCase();
+
+    const recyclerCompany = (
+      (invJson['bill_to_company_name'] as string) ||
+      (ewbJson['ship_to_company_name'] as string) ||
+      ''
+    )
+      .toString()
+      .trim();
+
+    // ========== APPLY BUSINESS RULES BASED ON RECYCLER TYPE ==========
+    const isIndian = country === 'IN' && isIndianRecycler(recyclerCompany);
+
+    let validationError = false;
+    const present = required.filter((t) => latestByType.has(t));
+    const missing = required.filter((t) => !present.includes(t));
+
+    if (isIndian) {
+      // Indian recyclers: Invoice + E-way Bill required, EFT optional
+      if (!invRow || !ewbRow) {
+        validationError = true;
+        console.warn(
+          `🟠 [promote:${requestId}] Incomplete Indian group for invoice='${invoice}' (recycler: ${recyclerCompany}). Present=${present.join(
+            ','
+          )} Missing=${missing.join(
+            ','
+          )}. Indian recyclers need Invoice + E-way Bill.`
+        );
+      } else {
+        console.log(
+          `🇮🇳 [promote:${requestId}] Valid Indian recycler group for invoice='${invoice}' (recycler: ${recyclerCompany}). Present=${present.join(
+            ','
+          )}${
+            missing.length ? `, Missing=${missing.join(',')}` : ''
+          }. EFT is optional for Indian recyclers.`
+        );
+      }
+    } else {
+      // Non-Indian recyclers: All 3 documents required
+      if (!invRow || !eftRow || !ewbRow) {
+        validationError = true;
+        console.warn(
+          `🟠 [promote:${requestId}] Incomplete non-Indian group for invoice='${invoice}' (recycler: ${recyclerCompany}, country: ${country}). Present=${present.join(
+            ','
+          )} Missing=${missing.join(
+            ','
+          )}. Non-Indian recyclers need all 3 documents.`
+        );
+      } else {
+        console.log(
+          `🌍 [promote:${requestId}] Valid non-Indian recycler group for invoice='${invoice}' (recycler: ${recyclerCompany}, country: ${country}). All 3 documents present.`
+        );
+      }
+    }
+
+    if (validationError) {
       return NextResponse.json(
         {
           error: 'Incomplete group',
           missing,
           present,
+          isIndian,
+          recyclerCompany,
+          country,
+          businessRule: isIndian
+            ? 'Indian recyclers need Invoice + E-way Bill (EFT optional)'
+            : 'Non-Indian recyclers need all 3 documents',
         },
         { status: 400 }
       );
     }
 
     // ========== USER OWNERSHIP CHECK ==========
-    const allUserIds = [invRow.user_id, eftRow.user_id, ewbRow.user_id];
+    const allUserIds: string[] = [];
+    if (invRow) allUserIds.push(invRow.user_id);
+    if (ewbRow) allUserIds.push(ewbRow.user_id);
+    if (eftRow) allUserIds.push(eftRow.user_id); // Only include EFT if present
     const uniqueUserIds = [...new Set(allUserIds)];
 
     if (uniqueUserIds.length > 1) {
@@ -201,31 +334,31 @@ export async function POST(req: Request) {
       `🔐 [promote:${requestId}] All documents belong to user: ${documentUserId}`
     );
 
-    const inv = (invRow.raw_json || {}) as Record<string, unknown>;
-    const eft = (eftRow.raw_json || {}) as Record<string, unknown>;
-    const ewb = (ewbRow.raw_json || {}) as Record<string, unknown>;
+    const inv = (invRow?.raw_json || {}) as Record<string, unknown>;
+    const eft = (eftRow?.raw_json || {}) as Record<string, unknown>;
+    const ewb = (ewbRow?.raw_json || {}) as Record<string, unknown>;
 
     // Derive fields
-    const invoice_url = invRow.file_url || '';
-    const eft_url = eftRow.file_url || '';
-    const ewaybill_url = ewbRow.file_url || '';
+    const invoice_url = invRow?.file_url || '';
+    const eft_url = eftRow?.file_url || ''; // EFT might be missing for Indian recyclers
+    const ewaybill_url = ewbRow?.file_url || '';
 
-    // Prefer company name from invoice; fallback to e-way bill ship_to_company_name or recipient/supplier
-    const recycler_company = (
-      (inv['bill_to_company_name'] as string) ||
-      ((inv['recipient'] as Record<string, unknown> | undefined)?.[
-        'name'
-      ] as string) ||
-      (ewb['ship_to_company_name'] as string) ||
-      ((
-        (ewb['address_details'] as Record<string, unknown> | undefined)?.[
-          'to'
-        ] as Record<string, unknown> | undefined
-      )?.['name'] as string) ||
-      ''
-    )
-      .toString()
-      .trim();
+    // Use recycler_company already extracted (with fallback for additional sources)
+    const final_recycler_company =
+      recyclerCompany ||
+      (
+        ((inv['recipient'] as Record<string, unknown> | undefined)?.[
+          'name'
+        ] as string) ||
+        ((
+          (ewb['address_details'] as Record<string, unknown> | undefined)?.[
+            'to'
+          ] as Record<string, unknown> | undefined
+        )?.['name'] as string) ||
+        ''
+      )
+        .toString()
+        .trim();
 
     const network_operator_company = (
       (inv['bill_from_company_name'] as string) ||
@@ -257,23 +390,22 @@ export async function POST(req: Request) {
       'kg') as string;
     const tonnage_kg = normalizeUnitToKg(weightVal, weightUnit) || 0;
 
-    // Country/city
-    const country = ((ewb['ship_to_country_code'] as string) || '')
-      .toString()
-      .trim();
+    // Use country already extracted
+    const final_country = country;
     // Get city from invoice or e-way bill, with fallback to empty string
     const city = ((inv['city'] as string) || (ewb['city'] as string) || '')
       .toString()
       .trim();
 
-    const currency =
-      (
-        ((eft['transaction_details'] as Record<string, unknown> | undefined)?.[
-          'currency'
-        ] as string) || ''
-      )
-        .toString()
-        .trim() || 'INR';
+    const currency = eftRow
+      ? (
+          ((
+            eft['transaction_details'] as Record<string, unknown> | undefined
+          )?.['currency'] as string) || ''
+        )
+          .toString()
+          .trim() || 'INR'
+      : 'INR'; // Default to INR if no EFT (for Indian recyclers)
     const upload_date = new Date().toISOString().slice(0, 10);
 
     const upsertRow = {
@@ -281,13 +413,13 @@ export async function POST(req: Request) {
       invoice_url,
       eft_url,
       ewaybill_url,
-      recycler_company: recycler_company || 'Unknown',
+      recycler_company: final_recycler_company || 'Unknown',
       network_operator_company: network_operator_company || 'Unknown',
       plastic_type,
       tonnage_tons: tonnage_kg / 1000,
       weight_kg: tonnage_kg, // Fixed: use weight_kg instead of tonnage_kg
-      origin: country,
-      country,
+      origin: final_country,
+      country: final_country,
       city,
       currency,
       upload_date,
@@ -305,9 +437,13 @@ export async function POST(req: Request) {
     if (upsertError) throw upsertError;
 
     console.log(
-      `🟢 [promote:${requestId}] Upserted recycling_docs for invoice='${invoice}' | user_id='${documentUserId}' | plastic_type='${plastic_type}' | weight_kg=${tonnage_kg} | urls: inv=${Boolean(
+      `🟢 [promote:${requestId}] Upserted recycling_docs for invoice='${invoice}' | user_id='${documentUserId}' | recycler_type=${
+        isIndian ? 'Indian' : 'Non-Indian'
+      } | recycler='${final_recycler_company}' | country='${final_country}' | plastic_type='${plastic_type}' | weight_kg=${tonnage_kg} | urls: inv=${Boolean(
         invoice_url
-      )}, eft=${Boolean(eft_url)}, ewb=${Boolean(ewaybill_url)}`
+      )}, eft=${Boolean(eft_url)}, ewb=${Boolean(
+        ewaybill_url
+      )} | EFT_required=${!isIndian}`
     );
 
     return NextResponse.json({
