@@ -4,7 +4,7 @@ A comprehensive document processing and management system for handling invoices,
 
 ## Recent Updates
 
-### 🚀 Major System Enhancement: Backend Grouping & Blockchain Integration (January 2025)
+### 🚀 Major System Enhancement: Backend Grouping & Blockchain Integration ()
 
 - **✅ Backend Document Grouping**: Moved document grouping logic from frontend to backend for better scalability and rule management
 - **✅ Business Rules Engine**: Added `business_rules` table to define country-specific document requirements
@@ -15,7 +15,21 @@ A comprehensive document processing and management system for handling invoices,
 - **✅ Comprehensive Backend Logging**: Added extensive logging to Plastiks submission endpoint for debugging and monitoring
 - **✅ Staging Environment**: Confirmed using Plastiks staging environment for safe development and testing
 
-### 🚀 Previous Updates: Human Verification System (January 2025)
+### 🇮🇳 Indian Recycler Business Logic Enhancement ()
+
+- **✅ Smart Indian Recycler Detection**: Advanced detection based on company names, Indian cities, and business suffixes
+- **✅ Dynamic File Counting**: Status display adapts based on recycler type and actual files present
+  - Indian recyclers: Shows "2 of 2" when only Invoice + E-way Bill uploaded
+  - Indian recyclers: Shows "3 of 3" when all documents uploaded
+  - Non-Indian recyclers: Always shows "X of 3" (strict 3-file requirement)
+- **✅ Context-Aware UI**: Document sections dynamically show/hide based on recycler type
+  - Indian recyclers with 2 files: Only shows Invoice + E-way Bill sections
+  - All other cases: Shows all 3 document sections
+- **✅ Backend Validation Enhancement**: `/api/recycling-docs/promote` endpoint enforces recycler-specific rules
+- **✅ Human Verification Rules**: Only Indian recyclers can verify with 2 files, all others need 3
+- **✅ Enhanced Error Messages**: Clear business rule context in API responses with recycler type detection
+
+### 🚀 Previous Updates: Human Verification System ()
 
 - **✅ Human Verification Workflow**: Replaced direct Plastiks submission with human verification process for document quality control
 - **✅ Real-Time Dashboard**: Added sticky header with live stats (Total Tons, Processed Docs, Verified Credits) that stay visible when scrolling
@@ -34,7 +48,7 @@ A comprehensive document processing and management system for handling invoices,
 - **✅ Infinite Loop Fixes**: Eliminated infinite polling loops and re-render issues for dramatically improved performance
 - **✅ Production Ready**: All critical bugs resolved - system is now stable for production use
 
-### 🔐 Authentication System (January 2025)
+### 🔐 Authentication System ()
 
 - **Complete User Authentication**: Full sign-up/sign-in system with Supabase Auth
 - **Email Verification**: Users must verify their email before accessing the application
@@ -92,7 +106,8 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 - **🔐 User Authentication**: Secure sign-up/sign-in with email verification, password reset, and complete user isolation
 - **📄 Document Processing**: Upload and process invoices, EFT receipts, and e-way bills using Google Gemini 2.0 Flash
 - **🧠 Backend Grouping**: Server-side document grouping with intelligent business rules engine for scalable processing
-- **📋 Business Rules Engine**: Country-specific document requirements (e.g., Indian recyclers need only 2 documents)
+- **📋 Business Rules Engine**: Advanced country-specific document requirements with smart recycler detection
+- **🇮🇳 Dynamic Document Logic**: Indian recyclers can verify with 2 documents (Invoice + E-way Bill), with smart UI adaptation
 - **📊 Smart Grouping**: Automatically groups related documents by invoice number with real-time completion tracking
 - **🛡️ User Data Isolation**: Each user only sees and manages their own documents with strict privacy controls
 - **✅ Human Verification**: Manual verification workflow to ensure document accuracy before blockchain submission
@@ -139,18 +154,26 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 
 - **Server-Side Grouping**: Document grouping moved to backend for better scalability and consistency
 - **Business Rules Engine**: Flexible country-specific document requirements stored in database
-- **Indian Recycler Exception**: Special rule allowing Indian recyclers to proceed with only Invoice + E-way Bill (2 documents)
-- **Automatic Rule Application**: System automatically detects country and applies appropriate business rules
+- **🇮🇳 Enhanced Indian Recycler Logic**:
+  - **Smart Detection**: Advanced algorithm detects Indian companies based on names, cities, and business suffixes
+  - **Flexible Requirements**: Indian recyclers can proceed with Invoice + E-way Bill (2 documents) OR all 3 documents
+  - **Dynamic UI**: Shows "2 of 2" or "3 of 3" based on actual files uploaded by Indian recyclers
+  - **Strict Non-Indian Rules**: All non-Indian recyclers must have all 3 documents (no exceptions)
+- **Automatic Rule Application**: System automatically detects country AND recycler type to apply appropriate business rules
 - **Pre-Computed Groups**: Groups are calculated server-side and cached for better performance
-- **Comprehensive Logging**: Detailed logs track grouping decisions and rule applications
+- **Comprehensive Logging**: Detailed logs track grouping decisions, rule applications, and recycler type detection
 
 ### 📊 Invoice Management & Verification
 
 - **Intelligent Grouping**: Groups related documents by invoice number using backend grouping service
-- **Country-Specific Rules**: Different document requirements based on detected country (e.g., India needs only 2 documents)
+- **🇮🇳 Smart Recycler Rules**:
+  - **Indian Recyclers**: Can verify with 2 documents (Invoice + E-way Bill) OR 3 documents (all)
+  - **Non-Indian Recyclers**: Must have all 3 documents (Invoice + EFT + E-way Bill) - no exceptions
+  - **Dynamic Status Display**: Shows accurate file counts ("2 of 2" vs "3 of 3") based on recycler type
 - **Reference Validation**: Validates invoice references in EFT receipts
 - **Status Tracking**: Tracks processing status of each document group (Incomplete → Complete → Verified)
 - **Human Verification**: Manual verification process to ensure data accuracy and completeness
+- **Context-Aware UI**: Document sections show/hide based on recycler type and files present
 - **Blockchain Integration**: Verified documents can be pushed to Plastiks blockchain through dedicated tab
 - **Real-Time Analytics**: Dashboard shows verified tonnage, processed documents, and verification counts
 - **User-Specific Views**: Each user only sees their own document groups and statistics
@@ -272,8 +295,11 @@ PRIVATE_KEY=your_private_key
 2. **Upload**: Authenticated users upload documents through the web interface
 3. **AI Processing**: Documents are processed using Google Gemini 2.0 Flash to extract key information and associated with the user
 4. **Backend Grouping**: Automated backend service groups related documents by invoice number and applies business rules
-5. **Rule Application**: System applies country-specific business rules (e.g., Indian recyclers need only Invoice + E-way Bill)
-6. **Group Validation**: Each group is validated for completeness based on applicable business rules
+5. **Smart Rule Application**:
+   - **Country Detection**: Identifies country from E-way Bill (ship_to_country_code) or document addresses
+   - **Recycler Detection**: Advanced algorithm detects Indian companies vs international companies
+   - **Dynamic Rules**: Indian recyclers can verify with 2 documents, all others need 3
+6. **Group Validation**: Each group is validated for completeness based on recycler type and applicable business rules
 7. **Human Verification**: Users manually verify document data accuracy and completeness in "Verify & Submit" tab
 8. **Blockchain Submission**: Verified documents move to "Blockchain" tab where they can be pushed to Plastiks blockchain
 9. **Analytics**: Real-time dashboard tracks verified tonnage and document counts
@@ -296,6 +322,10 @@ All API endpoints now require valid JWT authentication tokens passed via `Author
 
 - `POST /api/recycling-docs/promote` - Promote parsed documents to recycling_docs table for verification workflow
   - **Authentication**: Via cron secrets for automated processing
+  - **🇮🇳 Enhanced Business Logic**:
+    - **Smart Recycler Detection**: Identifies Indian vs non-Indian companies using advanced algorithms
+    - **Dynamic Validation**: Indian recyclers need Invoice + E-way Bill (2 docs), others need all 3
+    - **Contextual Error Messages**: Returns clear business rule explanations with recycler type details
   - **User Isolation**: Ensures all documents in a group belong to the same user
   - **Data Integrity**: Validates user ownership before promotion
 
@@ -427,7 +457,10 @@ CREATE TABLE IF NOT EXISTS public.business_rules (
 -- Initial business rules
 INSERT INTO business_rules (rule_name, country, required_documents, optional_documents, minimum_required, description) VALUES
 ('global_default', NULL, ARRAY['invoice', 'eft_receipt', 'e-way-bill'], '{}', 3, 'Default rule for all countries'),
-('indian_recyclers', 'IN', ARRAY['invoice', 'e-way-bill'], ARRAY['eft_receipt'], 2, 'Indian recyclers only need Invoice + E-way Bill');
+('indian_recyclers', 'IN', ARRAY['invoice', 'e-way-bill'], ARRAY['eft_receipt'], 2, 'Indian domestic recyclers: Invoice + E-way Bill required, EFT optional');
+
+-- Note: The system combines country detection (IN) with advanced recycler company detection
+-- to determine if the 2-document rule applies. Only Indian domestic companies get this exception.
 
 -- Enable Row Level Security
 ALTER TABLE public.business_rules ENABLE ROW LEVEL SECURITY;
@@ -824,7 +857,7 @@ Ensure your Supabase project has email authentication enabled:
 
 - Documents automatically grouped by invoice number using backend grouping service
 - Status badges: Incomplete → Complete → Verified
-- Country-specific business rules (e.g., Indian recyclers need only 2 documents)
+- 🇮🇳 Smart recycler-specific business rules (Indian domestic recyclers: flexible 2 or 3 documents, others: strict 3 documents)
 - Human verification button for quality control
 - Combined verification status display with dynamic visual feedback
 - CSV export for verified documents only
@@ -846,6 +879,7 @@ Ensure your Supabase project has email authentication enabled:
 
 ### Change Log
 
+- **v5.1 **: 🇮🇳 **ENHANCED INDIAN RECYCLER LOGIC** - Advanced Indian recycler detection, dynamic file counting (2 of 2 vs 3 of 3), context-aware UI sections, backend validation enhancement, and smart human verification rules
 - **v5.0 **: 🚀 **BACKEND GROUPING & BLOCKCHAIN INTEGRATION** - Moved document grouping to backend with business rules engine, added Indian recycler 2-document exception, new Blockchain tab with Push to Plastiks functionality, comprehensive backend logging, and staging environment confirmation
 - **v4.0 **: 🚀 **HUMAN VERIFICATION WORKFLOW** - Replaced direct Plastiks submission with human verification, added real-time dashboard with sticky header, date range analytics, CSV export for verified docs, and streamlined 4-tab UI
 - **v3.1 **: 🚀 **PRODUCTION READY** - Fixed all critical Plastiks submission issues, eliminated infinite loops, added password reset, collapsible groups, smart file processing, and comprehensive error handling
