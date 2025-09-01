@@ -4202,23 +4202,39 @@ export default function Home() {
   useEffect(() => {
     console.log('🔄 [HOME] Initializing session...');
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error('❌ [HOME] Session error:', error);
-        // Clear invalid session data
-        if (
-          error.message.includes('refresh_token_not_found') ||
-          error.message.includes('Invalid Refresh Token')
-        ) {
-          console.log('🧹 [HOME] Clearing invalid tokens...');
-          supabase.auth.signOut();
-        }
-      }
-      console.log('📥 [HOME] Initial session:', !!session);
-      setSession(session);
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.log(
+        '⏰ [HOME] Session initialization timeout - forcing completion'
+      );
       setLoading(false);
-    });
+    }, 10000); // 10 second timeout
+
+    // Get initial session
+    supabase.auth
+      .getSession()
+      .then(({ data: { session }, error }) => {
+        clearTimeout(timeoutId);
+        if (error) {
+          console.error('❌ [HOME] Session error:', error);
+          // Clear invalid session data
+          if (
+            error.message.includes('refresh_token_not_found') ||
+            error.message.includes('Invalid Refresh Token')
+          ) {
+            console.log('🧹 [HOME] Clearing invalid tokens...');
+            supabase.auth.signOut();
+          }
+        }
+        console.log('📥 [HOME] Initial session:', !!session);
+        setSession(session);
+        setLoading(false);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        console.error('💥 [HOME] Session initialization failed:', error);
+        setLoading(false);
+      });
 
     // Listen for auth changes
     const {
@@ -4238,6 +4254,7 @@ export default function Home() {
 
     return () => {
       console.log('🔚 [HOME] Cleaning up auth subscription');
+      clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
   }, []);

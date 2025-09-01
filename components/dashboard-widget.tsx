@@ -45,7 +45,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
       const supabase = getSupabaseBrowser();
 
       // Orange (Total Tons) & Blue (Verified Credit) - from recycling_docs
-      const { data: recyclingData, error: recyclingError } = await supabase
+      const { data: recyclingData } = await supabase
         .from('recycling_docs')
         .select('tonnage_tons, human_verified, created_at')
         .eq('user_id', session.user.id)
@@ -59,11 +59,6 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .eq('user_id', session.user.id)
         .gte('created_at', dateRange.from + 'T00:00:00.000Z')
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
-
-      if (recyclingError) {
-        console.error('Error fetching recycling docs:', recyclingError);
-        return;
-      }
 
       if (parsedError) {
         console.error('Error fetching parsed documents:', parsedError);
