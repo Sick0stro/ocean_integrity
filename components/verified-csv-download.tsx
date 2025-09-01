@@ -30,7 +30,7 @@ export function VerifiedCsvDownload({ session }: VerifiedCsvDownloadProps) {
         .order('verified_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching verified documents:', error);
+        alert('Error fetching verified documents. Please try again.');
         return;
       }
 

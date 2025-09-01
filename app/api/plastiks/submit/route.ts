@@ -210,30 +210,55 @@ export async function POST(req: Request) {
     `🚀 [BLOCKCHAIN:${requestId}] =======================================`
   );
   console.log(
-    `🚀 [BLOCKCHAIN:${requestId}] Request timestamp: ${new Date().toISOString()}`
+    `🧪 [TEST:${requestId}] API Route called for Plastiks submission`
   );
-  console.log(`🚀 [BLOCKCHAIN:${requestId}] Request method: ${req.method}`);
-  console.log(`🚀 [BLOCKCHAIN:${requestId}] Request URL: ${req.url}`);
+  console.log(
+    `🧪 [TEST:${requestId}] Request timestamp: ${new Date().toISOString()}`
+  );
+  console.log(`🧪 [TEST:${requestId}] Request method: ${req.method}`);
+  console.log(`🧪 [TEST:${requestId}] Request URL: ${req.url}`);
+  console.log(
+    `🧪 [TEST:${requestId}] Plastiks Base URL env: ${
+      process.env.PLASTIKS_BASE_URL || 'NOT_SET'
+    }`
+  );
+  console.log(
+    `🧪 [TEST:${requestId}] API Token present: ${!!process.env.API_TOKEN_CALL}`
+  );
+  console.log(
+    `🧪 [TEST:${requestId}] API Token length: ${
+      process.env.API_TOKEN_CALL?.length || 'N/A'
+    }`
+  );
+  console.log(
+    `🧪 [TEST:${requestId}] User Address present: ${!!process.env.USER_ADDRESS}`
+  );
+  console.log(
+    `🧪 [TEST:${requestId}] User Address (first 10 chars): ${
+      process.env.USER_ADDRESS?.substring(0, 10) || 'N/A'
+    }...`
+  );
+  console.log(
+    `🧪 [TEST:${requestId}] Private Key present: ${!!process.env.PRIVATE_KEY}`
+  );
+  console.log(
+    `🧪 [TEST:${requestId}] Private Key starts with 0x: ${
+      process.env.PRIVATE_KEY?.startsWith('0x') || false
+    }`
+  );
+  console.log(
+    `🧪 [TEST:${requestId}] Private Key length: ${
+      process.env.PRIVATE_KEY?.length || 'N/A'
+    }`
+  );
 
   const url = new URL(req.url);
-  console.log(`🔍 [BLOCKCHAIN:${requestId}] Parsed URL components:`);
-  console.log(`   📍 Origin: ${url.origin}`);
-  console.log(`   🛤️  Pathname: ${url.pathname}`);
-  console.log(`   🔗 Search params: ${url.searchParams.toString()}`);
-
-  // Log all headers for debugging
-  console.log(`📋 [BLOCKCHAIN:${requestId}] Request headers:`);
-  req.headers.forEach((value, key) => {
-    // Don't log sensitive data
-    if (
-      key.toLowerCase().includes('secret') ||
-      key.toLowerCase().includes('authorization')
-    ) {
-      console.log(`   ${key}: [REDACTED]`);
-    } else {
-      console.log(`   ${key}: ${value}`);
-    }
-  });
+  // Keep minimal header logging for security
+  console.log(
+    `📋 [BLOCKCHAIN:${requestId}] Content-Type: ${
+      req.headers.get('content-type') || 'NOT_SET'
+    }`
+  );
 
   const headerSecret =
     req.headers.get('x-cron-secret') || req.headers.get('x-submit-secret');
@@ -243,11 +268,11 @@ export async function POST(req: Request) {
     process.env.CRON_SUBMIT_SECRET || process.env.CRON_INGEST_SECRET;
   const allowDevBypass = process.env.NODE_ENV !== 'production' && !expected;
 
-  console.log(`🔐 [BLOCKCHAIN:${requestId}] Authentication check:`);
-  console.log(`   🌍 Environment: ${process.env.NODE_ENV}`);
-  console.log(`   🚫 Allow dev bypass: ${allowDevBypass}`);
-  console.log(`   🔑 Has expected secret: ${!!expected}`);
-  console.log(`   📤 Has provided secret: ${!!secret}`);
+  console.log(
+    `🔐 [BLOCKCHAIN:${requestId}] Authentication: ${
+      secret ? 'SECRET_PROVIDED' : 'NO_SECRET'
+    }`
+  );
 
   if (!allowDevBypass) {
     if (!expected || secret !== expected) {
@@ -472,6 +497,26 @@ export async function POST(req: Request) {
         } fields`
       );
       console.log(`   ⏰ API call starting at: ${new Date().toISOString()}`);
+      console.log(
+        `   🌍 External API: ${
+          process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io'
+        }/api/collections/prg`
+      );
+      console.log(
+        `   🔑 API Token: ${
+          process.env.API_TOKEN_CALL ? '✅ PRESENT' : '❌ MISSING'
+        }`
+      );
+      console.log(
+        `   👤 User Address: ${
+          process.env.USER_ADDRESS ? '✅ PRESENT' : '❌ MISSING'
+        }`
+      );
+      console.log(
+        `   🔐 Private Key: ${
+          process.env.PRIVATE_KEY ? '✅ PRESENT' : '❌ MISSING'
+        }`
+      );
 
       const plastiks_start = Date.now();
       const prg = await submitToPlastiks(submissionRow);

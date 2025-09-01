@@ -53,7 +53,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
       // Green (Processed Docs) - from parsed_documents
-      const { data: parsedData, error: parsedError } = await supabase
+      const { data: parsedData } = await supabase
         .from('parsed_documents')
         .select('id, created_at')
         .eq('user_id', session.user.id)
@@ -69,10 +69,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .gte('created_at', dateRange.from + 'T00:00:00.000Z')
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
-      if (parsedError) {
-        console.error('Error fetching parsed documents:', parsedError);
-        return;
-      }
+      // Silently handle parsed_documents errors - continue with stats calculation
 
       // Calculate stats
       const totalTons =

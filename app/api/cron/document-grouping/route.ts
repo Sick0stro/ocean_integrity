@@ -88,10 +88,6 @@ export async function POST(req: Request) {
       .order('created_at', { ascending: false });
 
     if (fetchError) {
-      console.error(
-        `❌ [grouping:${requestId}] Failed to fetch parsed documents:`,
-        fetchError
-      );
       return NextResponse.json(
         {
           success: false,

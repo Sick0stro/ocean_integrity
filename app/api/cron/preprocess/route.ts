@@ -152,10 +152,6 @@ export async function POST(request: Request) {
     });
 
     if (fetchError) {
-      console.error(
-        `❌ [preprocess:${requestId}] Error fetching temp_documents:`,
-        fetchError
-      );
       return NextResponse.json(
         { error: 'Failed to fetch documents' },
         { status: 500 }

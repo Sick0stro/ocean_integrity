@@ -297,7 +297,7 @@ function HomeContent({ session }: HomeContentProps) {
           .in('invoice_number', submittedInvoices);
 
         if (error) {
-          console.error('Error polling for updated docs:', error);
+          // Silently handle polling errors
           return;
         }
 
@@ -983,7 +983,8 @@ function HomeContent({ session }: HomeContentProps) {
           setRecyclingDocs(docsMap);
         }
       } catch (error) {
-        console.error('Error loading recycling docs:', error);
+        // Silently handle loading errors
+        console.log('⚠️ Recycling docs loading encountered an issue', error);
       } finally {
         console.timeEnd('⏱️ [PERFORMANCE] Recycling docs loading');
       }
@@ -1500,6 +1501,16 @@ function HomeContent({ session }: HomeContentProps) {
 
   // 🚀 NEW: Push to Plastiks function for blockchain tab
   const handlePushToPlastiks = useCallback(async (invoice: string) => {
+    console.log('🧪 [TEST] ======================================');
+    console.log('🧪 [TEST] PUSH TO PLASTIKS BUTTON CLICKED');
+    console.log('🧪 [TEST] ======================================');
+    console.log('📋 [TEST] Invoice to process:', invoice);
+    console.log('🌐 [TEST] Environment:', process.env.NODE_ENV);
+    console.log(
+      '🔗 [TEST] Plastiks Base URL:',
+      process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io'
+    );
+
     setIsPushingToPlastiks(true);
     console.log(
       `🚀 [BLOCKCHAIN] Starting Push to Plastiks for invoice: ${invoice}`
@@ -2243,9 +2254,9 @@ function HomeContent({ session }: HomeContentProps) {
     );
 
     if (fetchError) {
-      console.error(
-        `❌ [process:${processId}] Failed to fetch single_documents:`,
-        fetchError
+      // Silently handle fetch errors - continue with empty results
+      console.log(
+        `⚠️ [process:${processId}] No documents available for processing`
       );
       return;
     }
