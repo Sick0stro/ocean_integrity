@@ -1093,7 +1093,9 @@ function HomeContent({ session }: HomeContentProps) {
             completion_percentage,
             last_processed_at,
             created_at,
-            user_id
+            user_id,
+            human_verified,
+            verified_at
           `
           )
           .eq('user_id', session.user.id) // 👈 FILTER BY USER ID
@@ -1240,6 +1242,10 @@ function HomeContent({ session }: HomeContentProps) {
               recyclerCompany: groupRow.recycler_company || null,
               plasticType: groupRow.plastic_type || null,
               appliedRuleName: groupRow.applied_rule_name || null,
+
+              // 🚀 NEW: Human verification status (moved from recycling_docs)
+              human_verified: groupRow.human_verified || false,
+              verified_at: groupRow.verified_at || null,
 
               // Backend processing info
               lastProcessedAt:
@@ -1578,6 +1584,21 @@ function HomeContent({ session }: HomeContentProps) {
           }));
           console.log(
             `[UI] Human verification succeeded for invoice='${invoice}'`
+          );
+
+          // Update the local state to reflect the verification (no page reload)
+          console.log(`[UI] Updating group state after human verification...`);
+          setGroups((prevGroups) => ({
+            ...prevGroups,
+            [invoice]: {
+              ...(prevGroups[invoice] || {}),
+              human_verified: true,
+              verified_at: new Date().toISOString(),
+            },
+          }));
+
+          console.log(
+            `[UI] Updated group state for invoice='${invoice}' - human_verified: true`
           );
         } else {
           // HTTP 200 but internal failure
