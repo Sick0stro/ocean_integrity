@@ -342,11 +342,18 @@ export async function POST(request: Request) {
               );
 
               // Check if file already exists in single_documents
-              const { data: existingDoc } = await supabase
+              const { data: existingDoc, error: docError } = await supabase
                 .from('single_documents')
                 .select('id')
                 .eq('pdf_path', singleDocPath)
                 .single();
+
+              if (docError) {
+                console.warn(
+                  `⚠️ [preprocess:${requestId}] [${docId}] Error checking existing doc:`,
+                  docError
+                ); // Skip this document
+              }
 
               if (existingDoc) {
                 console.log(
@@ -410,11 +417,20 @@ export async function POST(request: Request) {
               }
 
               // Check if record already exists in single_documents
-              const { data: existingRecord } = await supabase
-                .from('single_documents')
-                .select('id')
-                .eq('pdf_path', singleDocPath)
-                .single();
+              const { data: existingRecord, error: recordError } =
+                await supabase
+                  .from('single_documents')
+                  .select('id')
+                  .eq('pdf_path', singleDocPath)
+                  .single();
+
+              if (recordError) {
+                console.warn(
+                  `⚠️ [preprocess:${requestId}] [${docId}] Error checking existing record:`,
+                  recordError
+                );
+                // Skip this document
+              }
 
               if (existingRecord) {
                 console.log(

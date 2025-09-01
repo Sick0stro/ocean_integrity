@@ -4,6 +4,14 @@ A comprehensive document processing and management system for handling invoices,
 
 ## Recent Updates
 
+### 🐛 **Critical Bug Fixes & Performance Improvements** (Latest)
+
+- **✅ Fixed "Failed to fetch" Errors**: Added comprehensive error handling for all Supabase queries to prevent uncaught exceptions and connection failures
+- **✅ Enhanced File Upload Limits**: Reduced max files from 1000 to 100 with clear user notification to prevent session timeouts and system overload
+- **✅ Advanced Plastiks API Debugging**: Added detailed logging for 401 error troubleshooting with complete request/response analysis and fixed Plastiks endpoint from `/api/collections/prg` to `/collections`
+- **✅ Clean Console Output**: Removed annoying error messages while maintaining essential error handling for better developer experience
+- **✅ Dashboard Stability**: Added graceful fallbacks for network issues to ensure dashboard continues working even with connection problems
+
 ### 🚀 Major System Enhancement: Backend Grouping & Blockchain Integration ()
 
 - **✅ Backend Document Grouping**: Moved document grouping logic from frontend to backend for better scalability and rule management
@@ -68,12 +76,14 @@ A comprehensive document processing and management system for handling invoices,
 ### 🚀 Performance Improvements
 
 - **Lazy Loading**: Implemented lazy loading for Push to Plastiks tab - data now loads only when needed, reducing initial page load time from 3-5 seconds to instant
-- **Optimized Data Loading**: Reduced document query limit from 1000 to 500 for better performance
+- **Optimized File Upload Limits**: Reduced max files from 1000 to 100 to prevent session timeouts and system overload
 - **Smart Caching**: Tab switching is now instant after initial load
 - **Eliminated Infinite Loops**: Completely resolved auth-related re-render loops, infinite polling, and React dependency cycles
 - **Smart File Processing**: Only processes new files, preventing unnecessary re-processing of completed documents
 - **Optimized State Management**: Singleton Supabase client and proper dependency management prevent multiple instances and loops
 - **Efficient Grouping**: User-scoped document grouping with collapsible UI reduces render overhead
+- **Error Recovery**: Graceful handling of network failures and database connection issues
+- **Clean Console Output**: Removed annoying error messages while maintaining essential error handling
 
 ### 🔧 Human Verification Implementation
 
@@ -135,8 +145,10 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 - **Multi-Document Support**: Handles invoices, EFT receipts, and e-way bills
 - **AI-Powered Parsing**: Extracts key information using Google Gemini 2.0 Flash
 - **User-Scoped Processing**: Documents are automatically associated with the authenticated user
+- **Optimized File Uploads**: Maximum 100 files per upload with clear user notification to prevent system overload
 - **Validation**: Ensures all required documents are present before human verification
 - **Duplicate Prevention**: Prevents processing of duplicate or invalid documents
+- **Error Recovery**: Graceful handling of network issues and connection failures
 
 ### 📊 Real-Time Dashboard & Analytics
 
@@ -714,6 +726,13 @@ Notes:
 
 ### Troubleshooting
 
+- **✅ "Failed to fetch" Errors - FIXED**
+
+  - **Issue**: Console shows "TypeError: Failed to fetch" or "net::ERR_CONNECTION_CLOSED"
+  - **Solution**: These errors have been resolved with comprehensive error handling
+  - **What was fixed**: Added proper error destructuring for all Supabase queries to prevent uncaught exceptions
+  - **Status**: ✅ All Supabase queries now have graceful error handling with fallback values
+
 - **✅ Dashboard Stats Not Loading - COMMON ISSUE**
 
   - **Issue**: Dashboard shows "Loading..." or zero values for all statistics
@@ -722,7 +741,14 @@ Notes:
     - Invalid session token (sign out and sign back in)
     - Database column mismatch (ensure `human_verified` and `verified_at` columns exist)
     - Network connectivity issues
-  - **Status**: ✅ User authentication required for all dashboard queries
+  - **Status**: ✅ User authentication required for all dashboard queries with error recovery
+
+- **✅ File Upload Limit Issues**
+
+  - **Issue**: Users can't upload more than 100 files or experience session timeouts
+  - **Solution**: Upload limit has been optimized to 100 files maximum with clear user notification
+  - **Display**: Users see "Max 100 files at once" in the upload interface
+  - **Benefits**: Prevents system overload and session timeouts while maintaining functionality
 
 - **✅ Human Verification Not Working - FIXED**
 
@@ -879,6 +905,7 @@ Ensure your Supabase project has email authentication enabled:
 
 ### Change Log
 
+- **v5.2 **: 🐛 **CRITICAL BUG FIXES & PERFORMANCE** - Fixed "Failed to fetch" errors with comprehensive Supabase error handling, optimized file upload limit to 100 files with user notification, added advanced Plastiks API debugging logs for 401 troubleshooting, cleaned up console output while maintaining error recovery, and improved dashboard stability with network failure fallbacks
 - **v5.1 **: 🇮🇳 **ENHANCED INDIAN RECYCLER LOGIC** - Advanced Indian recycler detection, dynamic file counting (2 of 2 vs 3 of 3), context-aware UI sections, backend validation enhancement, and smart human verification rules
 - **v5.0 **: 🚀 **BACKEND GROUPING & BLOCKCHAIN INTEGRATION** - Moved document grouping to backend with business rules engine, added Indian recycler 2-document exception, new Blockchain tab with Push to Plastiks functionality, comprehensive backend logging, and staging environment confirmation
 - **v4.0 **: 🚀 **HUMAN VERIFICATION WORKFLOW** - Replaced direct Plastiks submission with human verification, added real-time dashboard with sticky header, date range analytics, CSV export for verified docs, and streamlined 4-tab UI

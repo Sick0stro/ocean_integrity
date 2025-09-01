@@ -3029,7 +3029,7 @@ function HomeContent({ session }: HomeContentProps) {
 
                   <FileUploader
                     onFilesAdded={handleFilesAdded}
-                    maxFiles={1000}
+                    maxFiles={100}
                     acceptedFileTypes={['.pdf']}
                   />
 

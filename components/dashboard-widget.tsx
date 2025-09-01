@@ -45,7 +45,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
       const supabase = getSupabaseBrowser();
 
       // Orange (Total Processed Tons) - from recycling_docs
-      const { data: recyclingData } = await supabase
+      const { data: recyclingData, error: recyclingError } = await supabase
         .from('recycling_docs')
         .select('tonnage_tons, created_at')
         .eq('user_id', session.user.id)
@@ -53,7 +53,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
       // Green (Processed Docs) - from parsed_documents
-      const { data: parsedData } = await supabase
+      const { data: parsedData, error: parsedError } = await supabase
         .from('parsed_documents')
         .select('id, created_at')
         .eq('user_id', session.user.id)
@@ -61,7 +61,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
       // Blue (Verified Credits) - from document_groups
-      const { data: verifiedGroupsData } = await supabase
+      const { data: verifiedGroupsData, error: groupsError } = await supabase
         .from('document_groups')
         .select('id, created_at')
         .eq('user_id', session.user.id)
@@ -69,7 +69,22 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .gte('created_at', dateRange.from + 'T00:00:00.000Z')
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
-      // Silently handle parsed_documents errors - continue with stats calculation
+      // Handle database connection errors gracefully
+      if (recyclingError) {
+        console.warn(
+          '⚠️ Dashboard: Could not fetch recycling docs - using fallback values'
+        );
+      }
+      if (parsedError) {
+        console.warn(
+          '⚠️ Dashboard: Could not fetch parsed documents - using fallback values'
+        );
+      }
+      if (groupsError) {
+        console.warn(
+          '⚠️ Dashboard: Could not fetch verified groups - using fallback values'
+        );
+      }
 
       // Calculate stats
       const totalTons =
