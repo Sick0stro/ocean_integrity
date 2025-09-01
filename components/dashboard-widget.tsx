@@ -44,10 +44,10 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
     try {
       const supabase = getSupabaseBrowser();
 
-      // Orange (Total Tons) & Blue (Verified Credit) - from recycling_docs
+      // Orange (Total Processed Tons) - from recycling_docs
       const { data: recyclingData } = await supabase
         .from('recycling_docs')
-        .select('tonnage_tons, human_verified, created_at')
+        .select('tonnage_tons, created_at')
         .eq('user_id', session.user.id)
         .gte('created_at', dateRange.from + 'T00:00:00.000Z')
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
@@ -60,19 +60,27 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .gte('created_at', dateRange.from + 'T00:00:00.000Z')
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
+      // Blue (Verified Credits) - from document_groups
+      const { data: verifiedGroupsData } = await supabase
+        .from('document_groups')
+        .select('id, created_at')
+        .eq('user_id', session.user.id)
+        .eq('human_verified', true)
+        .gte('created_at', dateRange.from + 'T00:00:00.000Z')
+        .lte('created_at', dateRange.to + 'T23:59:59.999Z');
+
       if (parsedError) {
         console.error('Error fetching parsed documents:', parsedError);
         return;
       }
 
       // Calculate stats
-      const verifiedDocs =
-        recyclingData?.filter((doc) => doc.human_verified) || [];
-      const totalTons = verifiedDocs.reduce(
-        (sum, doc) => sum + (Number(doc.tonnage_tons) || 0),
-        0
-      );
-      const verifiedCount = verifiedDocs.length;
+      const totalTons =
+        recyclingData?.reduce(
+          (sum, doc) => sum + (Number(doc.tonnage_tons) || 0),
+          0
+        ) || 0;
+      const verifiedCount = verifiedGroupsData?.length || 0;
       const processedCount = parsedData?.length || 0;
 
       setStats({
