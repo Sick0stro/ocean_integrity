@@ -116,6 +116,11 @@ type InvoiceGroup = {
   plasticType?: string | null;
   appliedRuleName?: string | null;
   lastProcessedAt?: string;
+
+  // Human verification (moved from recycling_docs)
+  human_verified?: boolean;
+  verified_at?: string | null;
+
   processingLogs?: {
     backendGrouped?: boolean;
     groupId?: string;
@@ -926,8 +931,12 @@ function HomeContent({ session }: HomeContentProps) {
     let cancelled = false;
 
     const loadRecyclingDocs = async () => {
-      // Only load recycling docs when groups tab is active and we have documents loaded
-      if (activeTab !== 'groups' || !isDocumentsLoaded) return;
+      // Only load recycling docs when on verification/blockchain tabs (not during document processing)
+      if (
+        !['groups', 'submit', 'blockchain'].includes(activeTab) ||
+        !isDocumentsLoaded
+      )
+        return;
 
       try {
         console.log('📊 [PERFORMANCE] Loading recycling docs...');
@@ -1394,10 +1403,10 @@ function HomeContent({ session }: HomeContentProps) {
         console.log('🔗 [BLOCKCHAIN] Loading human-verified recycling docs...');
         console.log('👤 [BLOCKCHAIN] User:', session.user.email);
 
-        // Load human-verified recycling docs
+        // Load human-verified document groups
         const supabase = getSupabaseBrowser();
         const { data, error } = await supabase
-          .from('recycling_docs')
+          .from('document_groups')
           .select('*')
           .eq('user_id', session.user.id) // Filter by current user
           .eq('human_verified', true) // Only verified documents
@@ -1533,33 +1542,10 @@ function HomeContent({ session }: HomeContentProps) {
       [invoice]: { ok: false, message: '' },
     }));
     try {
-      console.log(`[UI] Promote starting for invoice='${invoice}'`);
-      const devSecret = process.env.NEXT_PUBLIC_LOCAL_CRON_SECRET;
-      const promoteUrl = devSecret
-        ? `/api/recycling-docs/promote?secret=${encodeURIComponent(
-            devSecret
-          )}&invoice=${encodeURIComponent(invoice)}`
-        : `/api/recycling-docs/promote?invoice=${encodeURIComponent(invoice)}`;
-      // Step 1: Promote latest parsed_documents rows into recycling_docs
-      const promoteResp = await fetch(promoteUrl, { method: 'POST' });
-      const promoteJson = await promoteResp.json().catch(() => ({}));
-      console.log(`[UI] Promote response ok=${promoteResp.ok}`, promoteJson);
-      if (!promoteResp.ok) {
-        setSubmitResult((prev) => ({
-          ...prev,
-          [invoice]: {
-            ok: false,
-            message: promoteJson?.error
-              ? `Promote failed: ${promoteJson.error}`
-              : 'Promote failed',
-          },
-        }));
-        console.warn(`[UI] Promote failed for invoice='${invoice}'`);
-        return;
-      }
-
-      // Step 2: Human Verification (Replaced Plastiks submission)
-      console.log(`[UI] Human verification starting for invoice='${invoice}'`);
+      // Human Verification (No promote step - recycling_docs populated only on Push to Plastiks)
+      console.log(
+        `[UI] Human verification starting for invoice='${invoice}' (no recycling_docs promotion)`
+      );
 
       // Get auth token from session
       const {
@@ -3336,8 +3322,7 @@ function HomeContent({ session }: HomeContentProps) {
                                   </div>
                                 </div>
                                 <div className='flex items-center gap-2'>
-                                  {recyclingDocs[group.invoice]
-                                    ?.human_verified ? (
+                                  {group.human_verified ? (
                                     <Badge className='bg-green-100 text-green-700 border-0 flex items-center gap-1'>
                                       <CheckCircle2 className='h-3 w-3' />
                                       Verified
@@ -3683,8 +3668,7 @@ function HomeContent({ session }: HomeContentProps) {
                                     {/* Combined Data & Verification Section */}
                                     <div
                                       className={`p-6 border rounded-lg mt-4 ${
-                                        recyclingDocs[group.invoice]
-                                          ?.human_verified
+                                        group.human_verified
                                           ? 'border-green-200 bg-green-50'
                                           : 'border-blue-200 bg-blue-50'
                                       }`}
@@ -3693,13 +3677,11 @@ function HomeContent({ session }: HomeContentProps) {
                                         {/* Header */}
                                         <div className='flex items-center justify-between'>
                                           <h4 className='font-medium text-slate-800'>
-                                            {recyclingDocs[group.invoice]
-                                              ?.human_verified
+                                            {group.human_verified
                                               ? 'Verified Document Data'
                                               : 'Document Data for Verification'}
                                           </h4>
-                                          {recyclingDocs[group.invoice]
-                                            ?.human_verified && (
+                                          {group.human_verified && (
                                             <div className='flex items-center gap-2 text-green-800'>
                                               <CheckCircle2 className='h-4 w-4' />
                                               <span className='text-sm font-semibold'>
@@ -3832,8 +3814,7 @@ function HomeContent({ session }: HomeContentProps) {
                                         </div>
 
                                         {/* Verification Details (if verified) */}
-                                        {recyclingDocs[group.invoice]
-                                          ?.human_verified ? (
+                                        {group.human_verified ? (
                                           <div className='pt-3 border-t border-green-200'>
                                             <div className='grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-green-700'>
                                               <div>
@@ -3850,12 +3831,9 @@ function HomeContent({ session }: HomeContentProps) {
                                                   Verified at
                                                 </div>
                                                 <div className='font-medium'>
-                                                  {recyclingDocs[group.invoice]
-                                                    ?.verified_at
+                                                  {group.verified_at
                                                     ? new Date(
-                                                        recyclingDocs[
-                                                          group.invoice
-                                                        ].verified_at!
+                                                        group.verified_at
                                                       ).toLocaleString()
                                                     : 'Unknown'}
                                                 </div>
@@ -3887,16 +3865,14 @@ function HomeContent({ session }: HomeContentProps) {
                                       disabled={
                                         !status.complete ||
                                         submitting[group.invoice] ||
-                                        recyclingDocs[group.invoice]
-                                          ?.human_verified
+                                        group.human_verified
                                       }
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleSubmitGroup(group.invoice);
                                       }}
                                       className={`w-full gap-2 mt-2 ${
-                                        recyclingDocs[group.invoice]
-                                          ?.human_verified
+                                        group.human_verified
                                           ? 'bg-green-600 hover:bg-green-700 text-white'
                                           : submitResult[group.invoice] &&
                                             !submitResult[group.invoice]?.ok
@@ -3909,8 +3885,7 @@ function HomeContent({ session }: HomeContentProps) {
                                           <Loader2 className='h-3 w-3 animate-spin' />
                                           Verifying...
                                         </span>
-                                      ) : recyclingDocs[group.invoice]
-                                          ?.human_verified ? (
+                                      ) : group.human_verified ? (
                                         <span className='flex items-center gap-2'>
                                           <CheckCircle2 className='h-3 w-3' />
                                           Human Verified

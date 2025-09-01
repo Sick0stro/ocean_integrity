@@ -10,7 +10,7 @@ interface VerifyResult {
 async function markHumanVerified(invoice_number: string, user_id: string) {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
-    .from('recycling_docs')
+    .from('document_groups')
     .update({
       human_verified: true,
       verified_at: new Date().toISOString(),

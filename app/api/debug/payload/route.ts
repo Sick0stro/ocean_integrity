@@ -23,14 +23,6 @@ export async function GET() {
     network_operator_company: 'RECITY Network Private Limited',
   };
 
-  // EXACT preparation logic from submitToPlastiks (lines 449-465)
-  // const name = `${document.recycler_company} – ${document.invoice_number}`;
-  // const description = `Recycling proof ${document.plastic_type} ${
-  //   document.tonnage_kg
-  // }kg, ${document.city || ''} ${
-  //   document.country || document.origin || ''
-  // }`.trim();
-
   // EXACT plastic type mapping from submitToPlastiks (lines 457-464)
   const typeMap: Record<string, string> = {
     PET: 'PET 1',
