@@ -2904,6 +2904,21 @@ function HomeContent({ session }: HomeContentProps) {
     }
   };
 
+  // Cleanup session management on component unmount
+  useEffect(() => {
+    return () => {
+      console.log(
+        '🧹 [CLEANUP] Component unmounting - cleaning up session management'
+      );
+      if (sessionManagerRef.current.keepAliveInterval) {
+        clearInterval(sessionManagerRef.current.keepAliveInterval);
+      }
+      if (sessionManagerRef.current.warningTimeout) {
+        clearTimeout(sessionManagerRef.current.warningTimeout);
+      }
+      setSessionActive(false);
+    };
+  }, []);
   // Removed with Review tab
   /*
   const handleDownloadCSV = () => {
