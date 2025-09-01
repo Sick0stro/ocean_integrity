@@ -1814,6 +1814,77 @@ function HomeContent({ session }: HomeContentProps) {
     [session?.user?.id]
   );
 
+  // Session management for long uploads
+  const [sessionActive, setSessionActive] = useState(false);
+  const sessionManagerRef = useRef<{
+    keepAliveInterval?: NodeJS.Timeout;
+    warningTimeout?: NodeJS.Timeout;
+    lastRefreshTime: number;
+  }>({
+    lastRefreshTime: Date.now(),
+  });
+
+  // Start session keep-alive for long operations
+  const startSessionKeepAlive = useCallback(() => {
+    console.log(
+      '🔄 [SESSION] Starting session keep-alive for upload operation'
+    );
+    setSessionActive(true); // Update UI state
+
+    // Clear any existing timers
+    if (sessionManagerRef.current.keepAliveInterval) {
+      clearInterval(sessionManagerRef.current.keepAliveInterval);
+    }
+    if (sessionManagerRef.current.warningTimeout) {
+      clearTimeout(sessionManagerRef.current.warningTimeout);
+    }
+
+    // Refresh session every 5 minutes during upload
+    sessionManagerRef.current.keepAliveInterval = setInterval(async () => {
+      try {
+        console.log('🔄 [SESSION] Refreshing session to prevent expiration...');
+        const { data, error } = await supabase.auth.refreshSession();
+
+        if (error) {
+          console.error('❌ [SESSION] Failed to refresh session:', error);
+          // Show user warning about potential session expiration
+          alert(
+            '⚠️ Your session may expire soon. Please save your work and consider refreshing the page.'
+          );
+        } else if (data.session) {
+          sessionManagerRef.current.lastRefreshTime = Date.now();
+          console.log('✅ [SESSION] Session refreshed successfully');
+        }
+      } catch (err) {
+        console.error('❌ [SESSION] Session refresh error:', err);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+
+    // Show warning 2 minutes before session typically expires (assuming 10 minute sessions)
+    sessionManagerRef.current.warningTimeout = setTimeout(() => {
+      console.log('⚠️ [SESSION] Session expiration warning');
+      alert(
+        '⚠️ Your session is about to expire. Please complete your upload soon or it may be interrupted.'
+      );
+    }, 8 * 60 * 1000); // 8 minutes (2 minutes before typical expiration)
+  }, []);
+
+  // Stop session keep-alive
+  const stopSessionKeepAlive = useCallback(() => {
+    console.log('🛑 [SESSION] Stopping session keep-alive');
+    setSessionActive(false); // Update UI state
+
+    if (sessionManagerRef.current.keepAliveInterval) {
+      clearInterval(sessionManagerRef.current.keepAliveInterval);
+      sessionManagerRef.current.keepAliveInterval = undefined;
+    }
+
+    if (sessionManagerRef.current.warningTimeout) {
+      clearTimeout(sessionManagerRef.current.warningTimeout);
+      sessionManagerRef.current.warningTimeout = undefined;
+    }
+  }, []);
+
   // Helper function to upload files to temp_documents and trigger preprocessing
   const uploadToTempDocuments = useCallback(
     async (files: File[]) => {
@@ -1829,304 +1900,342 @@ function HomeContent({ session }: HomeContentProps) {
         return;
       }
 
-      // Prevent duplicate uploads
-      if (isUploadingRef.current) {
-        console.log(
-          `⏳ [upload:${uploadId}] Upload already in progress, skipping...`
-        );
-        return;
-      }
-      isUploadingRef.current = true;
+      // Start session management for this upload batch
+      startSessionKeepAlive();
 
-      // Check for duplicates before uploading
-      const { filesToUpload, skippedFiles } = await checkForDuplicates(
-        files,
-        uploadId
-      );
-
-      if (filesToUpload.length === 0) {
-        console.log(
-          `⚠️ [upload:${uploadId}] All files are duplicates, nothing to upload`
-        );
-        isUploadingRef.current = false;
-        setPreprocessingProgress(
-          `All ${files.length} files were already uploaded. No new files to process.`
-        );
-        setTimeout(() => setPreprocessingProgress(''), 5000);
-        return;
-      }
-
-      const supabase = getSupabaseBrowser();
-      const uploadedPaths: string[] = [];
-
-      console.log(
-        `📤 [upload:${uploadId}] Starting upload to Storage and temp_documents...`
-      );
-      console.log(
-        `📊 [upload:${uploadId}] Processing ${filesToUpload.length} new files (${skippedFiles.length} duplicates skipped)`
-      );
-
-      // Log all files being processed in this batch
-      console.log(`🔍 [upload:${uploadId}] Files in this batch:`);
-      filesToUpload.forEach((file, idx) => {
-        console.log(
-          `   ${idx}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`
-        );
-      });
-
-      const uploadPromises = filesToUpload.map(async (file, index) => {
-        const fileId = `file${index + 1}`;
-        try {
+      try {
+        // Prevent duplicate uploads
+        if (isUploadingRef.current) {
           console.log(
-            `📄 [upload:${uploadId}] [${fileId}] Processing file: ${
-              file.name
-            } (${(file.size / 1024).toFixed(2)} KB)`
+            `⏳ [upload:${uploadId}] Upload already in progress, skipping...`
           );
+          stopSessionKeepAlive(); // Clean up session management
+          return;
+        }
+        isUploadingRef.current = true;
 
-          // Generate unique path for storage (timestamp + index + random to prevent collisions)
-          const timestamp = Date.now();
-          const randomSuffix = Math.random().toString(36).substring(2, 8);
-          const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const pdfPath = `temp/${session.user.id}/${timestamp}_${index}_${randomSuffix}_${safeName}`;
+        // Check for duplicates before uploading
+        const { filesToUpload, skippedFiles } = await checkForDuplicates(
+          files,
+          uploadId
+        );
 
+        if (filesToUpload.length === 0) {
           console.log(
-            `📁 [upload:${uploadId}] [${fileId}] Target path: ${pdfPath}`
+            `⚠️ [upload:${uploadId}] All files are duplicates, nothing to upload`
           );
-          console.log(`🔍 [upload:${uploadId}] [${fileId}] Path components:`, {
-            timestamp,
-            index,
-            randomSuffix,
-            safeName,
-            originalName: file.name,
-            userId: session.user.id,
-          });
+          isUploadingRef.current = false;
+          setPreprocessingProgress(
+            `All ${files.length} files were already uploaded. No new files to process.`
+          );
+          setTimeout(() => setPreprocessingProgress(''), 5000);
+          return;
+        }
 
-          // Upload to Supabase storage
+        const supabase = getSupabaseBrowser();
+        const uploadedPaths: string[] = [];
+
+        console.log(
+          `📤 [upload:${uploadId}] Starting upload to Storage and temp_documents...`
+        );
+        console.log(
+          `📊 [upload:${uploadId}] Processing ${filesToUpload.length} new files (${skippedFiles.length} duplicates skipped)`
+        );
+
+        // Log all files being processed in this batch
+        console.log(`🔍 [upload:${uploadId}] Files in this batch:`);
+        filesToUpload.forEach((file, idx) => {
           console.log(
-            `☁️ [upload:${uploadId}] [${fileId}] Uploading to Storage...`
+            `   ${idx}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`
           );
-          console.log(`🔍 [upload:${uploadId}] [${fileId}] Storage details:`, {
-            bucket: 'documents',
-            path: pdfPath,
-            fileSize: file.size,
-            fileName: file.name,
-            contentType: file.type,
-          });
+        });
 
-          const { error: uploadError } = await supabase.storage
-            .from('documents')
-            .upload(pdfPath, file, {
-              cacheControl: '3600',
-              upsert: false, // Fail if file exists (we want unique paths)
-            });
-
-          if (uploadError) {
-            console.error(
-              `❌ [upload:${uploadId}] [${fileId}] Failed to upload ${file.name}:`,
-              uploadError
+        const uploadPromises = filesToUpload.map(async (file, index) => {
+          const fileId = `file${index + 1}`;
+          try {
+            console.log(
+              `📄 [upload:${uploadId}] [${fileId}] Processing file: ${
+                file.name
+              } (${(file.size / 1024).toFixed(2)} KB)`
             );
-            console.error(
-              `🔍 [upload:${uploadId}] [${fileId}] Upload error details:`,
+
+            // Generate unique path for storage (timestamp + index + random to prevent collisions)
+            const timestamp = Date.now();
+            const randomSuffix = Math.random().toString(36).substring(2, 8);
+            const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const pdfPath = `temp/${session.user.id}/${timestamp}_${index}_${randomSuffix}_${safeName}`;
+
+            console.log(
+              `📁 [upload:${uploadId}] [${fileId}] Target path: ${pdfPath}`
+            );
+            console.log(
+              `🔍 [upload:${uploadId}] [${fileId}] Path components:`,
               {
-                message: uploadError.message,
+                timestamp,
+                index,
+                randomSuffix,
+                safeName,
+                originalName: file.name,
+                userId: session.user.id,
+              }
+            );
+
+            // Upload to Supabase storage
+            console.log(
+              `☁️ [upload:${uploadId}] [${fileId}] Uploading to Storage...`
+            );
+            console.log(
+              `🔍 [upload:${uploadId}] [${fileId}] Storage details:`,
+              {
+                bucket: 'documents',
                 path: pdfPath,
                 fileSize: file.size,
                 fileName: file.name,
-                fullError: uploadError,
+                contentType: file.type,
               }
             );
-            // Don't return - let the upload continue for other files
-            return;
-          }
 
-          console.log(
-            `✅ [upload:${uploadId}] [${fileId}] Storage upload successful`
-          );
+            const { error: uploadError } = await supabase.storage
+              .from('documents')
+              .upload(pdfPath, file, {
+                cacheControl: '3600',
+                upsert: false, // Fail if file exists (we want unique paths)
+              });
 
-          // Verify the file actually exists in storage
-          const { data: fileExists, error: checkError } = await supabase.storage
-            .from('documents')
-            .list(pdfPath.substring(0, pdfPath.lastIndexOf('/')), {
-              search: pdfPath.substring(pdfPath.lastIndexOf('/') + 1),
-            });
-
-          console.log(
-            `🔍 [upload:${uploadId}] [${fileId}] File verification:`,
-            {
-              path: pdfPath,
-              exists: !checkError && fileExists && fileExists.length > 0,
-              checkError: checkError?.message,
-              foundFiles: fileExists?.map((f) => f.name) || [],
+            if (uploadError) {
+              console.error(
+                `❌ [upload:${uploadId}] [${fileId}] Failed to upload ${file.name}:`,
+                uploadError
+              );
+              console.error(
+                `🔍 [upload:${uploadId}] [${fileId}] Upload error details:`,
+                {
+                  message: uploadError.message,
+                  path: pdfPath,
+                  fileSize: file.size,
+                  fileName: file.name,
+                  fullError: uploadError,
+                }
+              );
+              // Don't return - let the upload continue for other files
+              return;
             }
-          );
 
-          // Insert into temp_documents
-          console.log(
-            `💾 [upload:${uploadId}] [${fileId}] Inserting record into temp_documents...`
-          );
-          const { error: insertError } = await supabase
-            .from('temp_documents')
-            .insert({
-              user_id: session.user.id,
-              pdf_path: pdfPath,
-              upload_date: new Date().toISOString(),
+            console.log(
+              `✅ [upload:${uploadId}] [${fileId}] Storage upload successful`
+            );
+
+            // Verify the file actually exists in storage
+            const { data: fileExists, error: checkError } =
+              await supabase.storage
+                .from('documents')
+                .list(pdfPath.substring(0, pdfPath.lastIndexOf('/')), {
+                  search: pdfPath.substring(pdfPath.lastIndexOf('/') + 1),
+                });
+
+            console.log(
+              `🔍 [upload:${uploadId}] [${fileId}] File verification:`,
+              {
+                path: pdfPath,
+                exists: !checkError && fileExists && fileExists.length > 0,
+                checkError: checkError?.message,
+                foundFiles: fileExists?.map((f) => f.name) || [],
+              }
+            );
+
+            // Insert into temp_documents
+            console.log(
+              `💾 [upload:${uploadId}] [${fileId}] Inserting record into temp_documents...`
+            );
+            const { error: insertError } = await supabase
+              .from('temp_documents')
+              .insert({
+                user_id: session.user.id,
+                pdf_path: pdfPath,
+                upload_date: new Date().toISOString(),
+              });
+
+            if (insertError) {
+              console.error(
+                `❌ [upload:${uploadId}] [${fileId}] Failed to insert ${file.name} to temp_documents:`,
+                insertError
+              );
+              // Clean up uploaded file
+              console.log(
+                `🧹 [upload:${uploadId}] [${fileId}] Cleaning up orphaned storage file...`
+              );
+              await supabase.storage.from('documents').remove([pdfPath]);
+              return;
+            }
+
+            console.log(
+              `✅ [upload:${uploadId}] [${fileId}] Successfully uploaded ${file.name} to temp_documents`
+            );
+            uploadedPaths.push(pdfPath);
+          } catch (error) {
+            console.error(
+              `❌ [upload:${uploadId}] [${fileId}] Error uploading ${file.name}:`,
+              error
+            );
+          }
+        });
+
+        await Promise.all(uploadPromises);
+        console.log(
+          `✅ [upload:${uploadId}] Upload to temp_documents completed`
+        );
+        console.log(
+          `📊 [upload:${uploadId}] Successfully uploaded paths:`,
+          uploadedPaths
+        );
+
+        // Log current storage bucket contents for debugging
+        try {
+          const { data: allFiles, error: listError } = await supabase.storage
+            .from('documents')
+            .list('temp/' + session.user.id, {
+              limit: 100,
+              sortBy: { column: 'created_at', order: 'desc' },
             });
 
-          if (insertError) {
-            console.error(
-              `❌ [upload:${uploadId}] [${fileId}] Failed to insert ${file.name} to temp_documents:`,
-              insertError
-            );
-            // Clean up uploaded file
-            console.log(
-              `🧹 [upload:${uploadId}] [${fileId}] Cleaning up orphaned storage file...`
-            );
-            await supabase.storage.from('documents').remove([pdfPath]);
-            return;
-          }
-
-          console.log(
-            `✅ [upload:${uploadId}] [${fileId}] Successfully uploaded ${file.name} to temp_documents`
-          );
-          uploadedPaths.push(pdfPath);
-        } catch (error) {
-          console.error(
-            `❌ [upload:${uploadId}] [${fileId}] Error uploading ${file.name}:`,
-            error
+          console.log(`🗂️ [upload:${uploadId}] Current temp folder contents:`, {
+            userId: session.user.id,
+            folderPath: 'temp/' + session.user.id,
+            fileCount: allFiles?.length || 0,
+            files:
+              allFiles?.map((f) => ({
+                name: f.name,
+                size: f.metadata?.size,
+                created: f.created_at,
+              })) || [],
+            listError: listError?.message,
+          });
+        } catch (e) {
+          console.warn(
+            `⚠️ [upload:${uploadId}] Could not list storage contents:`,
+            e
           );
         }
-      });
 
-      await Promise.all(uploadPromises);
-      console.log(`✅ [upload:${uploadId}] Upload to temp_documents completed`);
-      console.log(
-        `📊 [upload:${uploadId}] Successfully uploaded paths:`,
-        uploadedPaths
-      );
-
-      // Log current storage bucket contents for debugging
-      try {
-        const { data: allFiles, error: listError } = await supabase.storage
-          .from('documents')
-          .list('temp/' + session.user.id, {
-            limit: 100,
-            sortBy: { column: 'created_at', order: 'desc' },
-          });
-
-        console.log(`🗂️ [upload:${uploadId}] Current temp folder contents:`, {
-          userId: session.user.id,
-          folderPath: 'temp/' + session.user.id,
-          fileCount: allFiles?.length || 0,
-          files:
-            allFiles?.map((f) => ({
-              name: f.name,
-              size: f.metadata?.size,
-              created: f.created_at,
-            })) || [],
-          listError: listError?.message,
-        });
-      } catch (e) {
-        console.warn(
-          `⚠️ [upload:${uploadId}] Could not list storage contents:`,
-          e
-        );
-      }
-
-      // Store current batch paths for logging
-      console.log(
-        `📊 [upload:${uploadId}] Current batch paths:`,
-        uploadedPaths
-      );
-
-      // Reset upload flag
-      isUploadingRef.current = false;
-
-      // Trigger preprocessing immediately if we have successful uploads
-      if (uploadedPaths.length > 0) {
+        // Store current batch paths for logging
         console.log(
-          `🔄 [upload:${uploadId}] Triggering immediate preprocessing for ${uploadedPaths.length} files...`
+          `📊 [upload:${uploadId}] Current batch paths:`,
+          uploadedPaths
         );
-        // Update preprocessing status (isPreprocessing already set to true in handleFilesAdded)
-        const statusMessage =
-          skippedFiles.length > 0
-            ? `Preparing ${uploadedPaths.length} new documents (${skippedFiles.length} duplicates skipped)...`
-            : `Preparing ${uploadedPaths.length} documents for processing...`;
-        setPreprocessingProgress(statusMessage);
 
-        try {
-          const cronSecret =
-            process.env.NEXT_PUBLIC_LOCAL_CRON_SECRET || 'local-dev-submit-123';
+        // Reset upload flag
+        isUploadingRef.current = false;
+
+        // Trigger preprocessing immediately if we have successful uploads
+        if (uploadedPaths.length > 0) {
           console.log(
-            `🔑 [preprocess-trigger:${uploadId}] Using cron secret: ${
-              cronSecret === process.env.NEXT_PUBLIC_LOCAL_CRON_SECRET
-                ? 'env-variable'
-                : 'fallback'
-            }`
+            `🔄 [upload:${uploadId}] Triggering immediate preprocessing for ${uploadedPaths.length} files...`
           );
+          // Update preprocessing status (isPreprocessing already set to true in handleFilesAdded)
+          const statusMessage =
+            skippedFiles.length > 0
+              ? `Preparing ${uploadedPaths.length} new documents (${skippedFiles.length} duplicates skipped)...`
+              : `Preparing ${uploadedPaths.length} documents for processing...`;
+          setPreprocessingProgress(statusMessage);
 
-          const response = await fetch('/api/cron/preprocess', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${cronSecret}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              pdf_paths: uploadedPaths,
-              user_id: session.user.id,
-            }),
-          });
-
-          const result = await response.json();
-          console.log(
-            `📊 [preprocess-trigger:${uploadId}] Preprocessing result:`,
-            result
-          );
-
-          if (!result.success) {
-            console.error(
-              `❌ [preprocess-trigger:${uploadId}] Preprocessing failed:`,
-              result.error
+          try {
+            const cronSecret =
+              process.env.NEXT_PUBLIC_LOCAL_CRON_SECRET ||
+              'local-dev-submit-123';
+            console.log(
+              `🔑 [preprocess-trigger:${uploadId}] Using cron secret: ${
+                cronSecret === process.env.NEXT_PUBLIC_LOCAL_CRON_SECRET
+                  ? 'env-variable'
+                  : 'fallback'
+              }`
             );
-            setPreprocessingProgress(`Preprocessing failed: ${result.error}`);
-            return;
+
+            const response = await fetch('/api/cron/preprocess', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${cronSecret}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                pdf_paths: uploadedPaths,
+                user_id: session.user.id,
+              }),
+            });
+
+            const result = await response.json();
+            console.log(
+              `📊 [preprocess-trigger:${uploadId}] Preprocessing result:`,
+              result
+            );
+
+            if (!result.success) {
+              console.error(
+                `❌ [preprocess-trigger:${uploadId}] Preprocessing failed:`,
+                result.error
+              );
+              setPreprocessingProgress(`Preprocessing failed: ${result.error}`);
+              return;
+            }
+
+            console.log(
+              `✅ [preprocess-trigger:${uploadId}] Preprocessing completed: ${result.processed} processed, ${result.errors} errors`
+            );
+            setPreprocessingProgress(
+              `Preprocessing completed: ${result.processed} processed, ${result.errors} errors`
+            );
+
+            // Start readiness polling
+            setTimeout(() => {
+              const successMessage =
+                result.processed > uploadedPaths.length
+                  ? `Ready! ${uploadedPaths.length} files split into ${result.processed} pages for AI processing`
+                  : `Ready! ${result.processed} pages prepared for AI processing`;
+              setPreprocessingProgress(successMessage);
+              setIsPreprocessing(false);
+            }, 2000);
+          } catch (error) {
+            console.error(
+              `❌ [preprocess-trigger:${uploadId}] Preprocessing error:`,
+              error
+            );
+            setPreprocessingProgress(`Preprocessing error: ${error}`);
           }
-
+        } else {
+          console.warn(
+            `⚠️ [upload:${uploadId}] No files were successfully uploaded; skipping preprocessing`
+          );
+          // Re-enable the button since no preprocessing is needed
+          setIsPreprocessing(false);
+          setPreprocessingProgress('');
           console.log(
-            `✅ [preprocess-trigger:${uploadId}] Preprocessing completed: ${result.processed} processed, ${result.errors} errors`
+            `🔓 Frontend: Button re-enabled - no files to preprocess`
           );
-          setPreprocessingProgress(
-            `Preprocessing completed: ${result.processed} processed, ${result.errors} errors`
-          );
-
-          // Start readiness polling
-          setTimeout(() => {
-            const successMessage =
-              result.processed > uploadedPaths.length
-                ? `Ready! ${uploadedPaths.length} files split into ${result.processed} pages for AI processing`
-                : `Ready! ${result.processed} pages prepared for AI processing`;
-            setPreprocessingProgress(successMessage);
-            setIsPreprocessing(false);
-          }, 2000);
-        } catch (error) {
-          console.error(
-            `❌ [preprocess-trigger:${uploadId}] Preprocessing error:`,
-            error
-          );
-          setPreprocessingProgress(`Preprocessing error: ${error}`);
         }
-      } else {
-        console.warn(
-          `⚠️ [upload:${uploadId}] No files were successfully uploaded; skipping preprocessing`
-        );
-        // Re-enable the button since no preprocessing is needed
-        setIsPreprocessing(false);
-        setPreprocessingProgress('');
-        console.log(`🔓 Frontend: Button re-enabled - no files to preprocess`);
-      }
 
-      console.log(`🏁 [upload:${uploadId}] === UPLOAD BATCH COMPLETED ===`);
+        console.log(`🏁 [upload:${uploadId}] === UPLOAD BATCH COMPLETED ===`);
+
+        // Stop session keep-alive after upload completes
+        stopSessionKeepAlive();
+      } catch (error) {
+        console.error(
+          `❌ [upload:${uploadId}] Upload failed with error:`,
+          error
+        );
+        // Ensure session management is cleaned up even on error
+        stopSessionKeepAlive();
+        // Reset upload flag on error
+        isUploadingRef.current = false;
+        // Show error to user
+        setPreprocessingProgress(`Upload failed: ${error}`);
+        setIsPreprocessing(false);
+      }
     },
-    [session?.user?.id, checkForDuplicates]
+    [
+      session?.user?.id,
+      checkForDuplicates,
+      startSessionKeepAlive,
+      stopSessionKeepAlive,
+    ]
   );
 
   const handleFilesAdded = useCallback(
@@ -3031,6 +3140,7 @@ function HomeContent({ session }: HomeContentProps) {
                     onFilesAdded={handleFilesAdded}
                     maxFiles={100}
                     acceptedFileTypes={['.pdf']}
+                    sessionActive={sessionActive}
                   />
 
                   {files.length > 0 && (

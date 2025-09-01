@@ -10,12 +10,14 @@ interface FileUploaderProps {
   onFilesAdded: (files: File[]) => void;
   maxFiles?: number;
   acceptedFileTypes?: string[];
+  sessionActive?: boolean; // Indicates if session keep-alive is active
 }
 
 export default function FileUploader({
   onFilesAdded,
   maxFiles = 4,
   acceptedFileTypes = ['.pdf'],
+  sessionActive = false,
 }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>(
@@ -257,6 +259,13 @@ export default function FileUploader({
             <File className='h-8 w-8 text-blue-600' />
           </div>
           <h3 className='text-lg font-medium'>Uploading documents...</h3>
+
+          {sessionActive && (
+            <div className='flex items-center justify-center space-x-2 text-sm text-green-600 bg-green-50 px-3 py-2 rounded-md'>
+              <div className='w-2 h-2 bg-green-500 rounded-full animate-pulse'></div>
+              <span>Session active - Auto-refreshing to prevent timeout</span>
+            </div>
+          )}
 
           <div className='space-y-3 max-w-md mx-auto'>
             {Object.entries(uploadProgress).map(([fileName, progress]) => (
