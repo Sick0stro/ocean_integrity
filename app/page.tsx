@@ -1062,8 +1062,8 @@ function HomeContent({ session }: HomeContentProps) {
 
   // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
   useEffect(() => {
-    // Only load groups data when the groups tab is active
-    if (activeTab !== 'groups') return;
+    // Only load groups data when the groups tab OR blockchain tab is active
+    if (activeTab !== 'groups' && activeTab !== 'blockchain') return;
 
     let cancelled = false;
 
@@ -4116,236 +4116,312 @@ function HomeContent({ session }: HomeContentProps) {
                     </div>
                   ) : (
                     <div className='space-y-6'>
-                      {Object.entries(verifiedDocs).map(([invoiceKey, doc]) => (
-                        <div
-                          key={invoiceKey}
-                          className='border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-all border-slate-200 w-full max-w-4xl mx-auto'
-                        >
-                          <div className='flex items-start justify-between gap-4'>
-                            <div className='flex-1'>
-                              <div className='font-medium text-slate-800'>
-                                Invoice: {invoiceKey}
-                              </div>
-                              <div className='text-xs text-slate-600'>
-                                Status:{' '}
-                                {doc.plastiks_submitted_at
-                                  ? 'Submitted to Blockchain'
-                                  : 'Ready for Blockchain'}
-                              </div>
-                            </div>
-                            <div className='flex items-center gap-2'>
-                              {doc.plastiks_submitted_at ? (
-                                <Badge className='bg-green-100 text-green-700 border-0 flex items-center gap-1'>
-                                  <CheckCircle2 className='h-3 w-3' />
-                                  Submitted
-                                </Badge>
-                              ) : (
-                                <Badge className='bg-blue-100 text-blue-700 border-0 flex items-center gap-1'>
-                                  <FileCheck className='h-3 w-3' />
-                                  Ready
-                                </Badge>
-                              )}
-                              <Button
-                                variant='ghost'
-                                size='sm'
-                                onClick={() =>
-                                  toggleBlockchainInvoiceExpansion(invoiceKey)
-                                }
-                                className='h-8 w-8 p-0'
-                              >
-                                {expandedBlockchainInvoices[invoiceKey] ? (
-                                  <ChevronUp className='h-4 w-4' />
-                                ) : (
-                                  <ChevronDown className='h-4 w-4' />
-                                )}
-                              </Button>
-                            </div>
-                          </div>
+                      {Object.entries(verifiedDocs).map(([invoiceKey, doc]) => {
+                        // Get the same data source as Human Verify card
+                        const group = groups[invoiceKey];
+                        const latestByType = group
+                          ? {
+                              invoice: group.docs?.['invoice']?.[0],
+                              'e-way-bill': group.docs?.['e-way-bill']?.[0],
+                              eft_receipt: group.docs?.['eft_receipt']?.[0],
+                            }
+                          : null;
 
-                          {/* Collapsible Document Details */}
-                          {expandedBlockchainInvoices[invoiceKey] && (
-                            <div className='mt-6 pt-4 border-t border-slate-100'>
-                              <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
-                                <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
-                                  <CheckCircle2 className='h-4 w-4' />
-                                  Human Verified Document Data
-                                </h4>
-                                <div className='grid grid-cols-2 gap-6 text-sm'>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      Invoice #
-                                    </div>
-                                    <div className='text-sm text-slate-700'>
-                                      {doc.invoice_number}
-                                    </div>
+                        // Show loading state if groups data isn't ready yet
+                        if (!latestByType || !latestByType.invoice) {
+                          return (
+                            <div
+                              key={invoiceKey}
+                              className='border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-all border-slate-200 w-full max-w-4xl mx-auto'
+                            >
+                              <div className='flex items-start justify-between gap-4'>
+                                <div className='flex-1'>
+                                  <div className='font-medium text-slate-800'>
+                                    Invoice: {invoiceKey}
                                   </div>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      Company
-                                    </div>
-                                    <div className='text-sm text-slate-700'>
-                                      {doc.recycler_company}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      Plastic Type
-                                    </div>
-                                    <div className='text-sm text-slate-700'>
-                                      {doc.plastic_type}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      Weight
-                                    </div>
-                                    <div className='text-sm text-slate-700'>
-                                      {doc.weight_kg
-                                        ? `${doc.weight_kg} kg`
-                                        : `${doc.tonnage_tons} tons`}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      City
-                                    </div>
-                                    <div className='text-sm text-slate-700'>
-                                      {(
-                                        doc as RecyclingDocument & {
-                                          city?: string;
-                                        }
-                                      ).city || 'N/A'}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      Country
-                                    </div>
-                                    <div className='text-sm text-slate-700'>
-                                      {doc.country}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Verification Details */}
-                                <div className='mt-4 pt-4 border-t border-green-200 grid grid-cols-3 gap-6 text-sm'>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      Verified by
-                                    </div>
-                                    <div className='text-sm text-slate-700'>
-                                      {session?.user?.email}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      Verified at
-                                    </div>
-                                    <div className='text-sm text-slate-700'>
-                                      {doc.verified_at
-                                        ? new Date(
-                                            doc.verified_at
-                                          ).toLocaleString()
-                                        : 'N/A'}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className='text-slate-500 text-xs font-medium mb-1'>
-                                      Status
-                                    </div>
-                                    <div className='flex items-center gap-1 text-sm font-medium text-green-700'>
-                                      <CheckCircle2 className='h-3 w-3' />
-                                      {doc.plastiks_submitted_at
-                                        ? 'Submitted to Blockchain'
-                                        : 'Ready for Blockchain'}
-                                    </div>
+                                  <div className='text-xs text-slate-600 mt-2'>
+                                    Loading document data...
                                   </div>
                                 </div>
                               </div>
+                            </div>
+                          );
+                        }
 
-                              {/* Push to Plastiks Button */}
-                              <Button
-                                size='sm'
-                                disabled={
-                                  isPushingToPlastiks ||
-                                  !!doc.plastiks_submitted_at
-                                }
-                                onClick={() => handlePushToPlastiks(invoiceKey)}
-                                className={`w-full gap-2 mt-4 ${
-                                  doc.plastiks_submitted_at
-                                    ? 'bg-gray-400 hover:bg-gray-400 text-white cursor-not-allowed'
-                                    : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                }`}
-                              >
-                                {isPushingToPlastiks ? (
-                                  <span className='flex items-center gap-2'>
-                                    <Loader2 className='h-3 w-3 animate-spin' />
-                                    Pushing to Blockchain...
-                                  </span>
-                                ) : doc.plastiks_submitted_at ? (
-                                  <span className='flex items-center gap-2'>
+                        return (
+                          <div
+                            key={invoiceKey}
+                            className='border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-all border-slate-200 w-full max-w-4xl mx-auto'
+                          >
+                            <div className='flex items-start justify-between gap-4'>
+                              <div className='flex-1'>
+                                <div className='font-medium text-slate-800'>
+                                  Invoice: {invoiceKey}
+                                </div>
+                                <div className='text-xs text-slate-600'>
+                                  Status:{' '}
+                                  {doc.plastiks_submitted_at
+                                    ? 'Submitted to Blockchain'
+                                    : 'Ready for Blockchain'}
+                                </div>
+                              </div>
+                              <div className='flex items-center gap-2'>
+                                {doc.plastiks_submitted_at ? (
+                                  <Badge className='bg-green-100 text-green-700 border-0 flex items-center gap-1'>
                                     <CheckCircle2 className='h-3 w-3' />
-                                    Submitted to Blockchain
-                                  </span>
+                                    Submitted
+                                  </Badge>
                                 ) : (
-                                  <span className='flex items-center gap-2'>
-                                    <ArrowRight className='h-3 w-3' />
-                                    Push to Plastiks
-                                  </span>
+                                  <Badge className='bg-blue-100 text-blue-700 border-0 flex items-center gap-1'>
+                                    <FileCheck className='h-3 w-3' />
+                                    Ready
+                                  </Badge>
                                 )}
-                              </Button>
+                                <Button
+                                  variant='ghost'
+                                  size='sm'
+                                  onClick={() =>
+                                    toggleBlockchainInvoiceExpansion(invoiceKey)
+                                  }
+                                  className='h-8 w-8 p-0'
+                                >
+                                  {expandedBlockchainInvoices[invoiceKey] ? (
+                                    <ChevronUp className='h-4 w-4' />
+                                  ) : (
+                                    <ChevronDown className='h-4 w-4' />
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
 
-                              {/* Blockchain Details if submitted */}
-                              {doc.plastiks_submitted_at && (
-                                <div className='mt-4 p-4 bg-slate-50 rounded-lg border'>
-                                  <h5 className='font-medium text-slate-800 mb-3'>
-                                    Blockchain Details
-                                  </h5>
-                                  <div className='grid grid-cols-2 gap-4 text-sm'>
+                            {/* Collapsible Document Details */}
+                            {expandedBlockchainInvoices[invoiceKey] && (
+                              <div className='mt-6 pt-4 border-t border-slate-100'>
+                                <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
+                                  <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
+                                    <CheckCircle2 className='h-4 w-4' />
+                                    Human Verified Document Data
+                                  </h4>
+                                  <div className='grid grid-cols-2 gap-6 text-sm'>
                                     <div>
                                       <div className='text-slate-500 text-xs font-medium mb-1'>
-                                        Collection ID
+                                        Invoice #
                                       </div>
                                       <div className='text-sm text-slate-700'>
-                                        {doc.plastiks_collection_id || 'N/A'}
+                                        {latestByType?.invoice
+                                          ? String(
+                                              latestByType.invoice.raw_json
+                                                ?.invoice_number ||
+                                                latestByType.invoice.raw_json
+                                                  ?.invoice ||
+                                                'N/A'
+                                            )
+                                          : invoiceKey}
                                       </div>
                                     </div>
                                     <div>
                                       <div className='text-slate-500 text-xs font-medium mb-1'>
-                                        Collection Address
-                                      </div>
-                                      <div className='text-sm text-slate-700 truncate'>
-                                        {doc.plastiks_collection_address ||
-                                          'N/A'}
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <div className='text-slate-500 text-xs font-medium mb-1'>
-                                        Metadata Hash
-                                      </div>
-                                      <div className='text-sm text-slate-700 truncate'>
-                                        {doc.plastiks_metadata_hash || 'N/A'}
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <div className='text-slate-500 text-xs font-medium mb-1'>
-                                        Submitted At
+                                        Company
                                       </div>
                                       <div className='text-sm text-slate-700'>
-                                        {doc.plastiks_submitted_at
+                                        {String(
+                                          latestByType?.invoice?.raw_json
+                                            ?.bill_to_company_name ||
+                                            latestByType?.['e-way-bill']
+                                              ?.raw_json
+                                              ?.ship_to_company_name ||
+                                            'N/A'
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        Plastic Type
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {String(
+                                          latestByType?.invoice?.raw_json
+                                            ?.plastic_type ||
+                                            latestByType?.['e-way-bill']
+                                              ?.raw_json?.plastic_type ||
+                                            'N/A'
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        Weight
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {latestByType?.invoice?.raw_json?.weight
+                                          ? `${String(
+                                              latestByType.invoice.raw_json
+                                                .weight
+                                            )} ${String(
+                                              latestByType.invoice.raw_json
+                                                .weight_unit || 'kg'
+                                            )}`
+                                          : 'N/A'}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        City
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {String(
+                                          latestByType?.['e-way-bill']?.raw_json
+                                            ?.from_location ||
+                                            latestByType?.['e-way-bill']
+                                              ?.raw_json?.city ||
+                                            latestByType?.invoice?.raw_json
+                                              ?.city ||
+                                            'N/A'
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        Country
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {String(
+                                          latestByType?.['e-way-bill']?.raw_json
+                                            ?.ship_to_country_code ||
+                                            latestByType?.['e-way-bill']
+                                              ?.raw_json?.origin_country ||
+                                            latestByType?.['e-way-bill']
+                                              ?.raw_json?.country ||
+                                            latestByType?.invoice?.raw_json
+                                              ?.country ||
+                                            'N/A'
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Verification Details */}
+                                  <div className='mt-4 pt-4 border-t border-green-200 grid grid-cols-3 gap-6 text-sm'>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        Verified by
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {session?.user?.email}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        Verified at
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {doc.verified_at
                                           ? new Date(
-                                              doc.plastiks_submitted_at
+                                              doc.verified_at
                                             ).toLocaleString()
                                           : 'N/A'}
                                       </div>
                                     </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        Status
+                                      </div>
+                                      <div className='flex items-center gap-1 text-sm font-medium text-green-700'>
+                                        <CheckCircle2 className='h-3 w-3' />
+                                        {doc.plastiks_submitted_at
+                                          ? 'Submitted to Blockchain'
+                                          : 'Ready for Blockchain'}
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+
+                                {/* Push to Plastiks Button */}
+                                <Button
+                                  size='sm'
+                                  disabled={
+                                    isPushingToPlastiks ||
+                                    !!doc.plastiks_submitted_at
+                                  }
+                                  onClick={() =>
+                                    handlePushToPlastiks(invoiceKey)
+                                  }
+                                  className={`w-full gap-2 mt-4 ${
+                                    doc.plastiks_submitted_at
+                                      ? 'bg-gray-400 hover:bg-gray-400 text-white cursor-not-allowed'
+                                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                  }`}
+                                >
+                                  {isPushingToPlastiks ? (
+                                    <span className='flex items-center gap-2'>
+                                      <Loader2 className='h-3 w-3 animate-spin' />
+                                      Pushing to Blockchain...
+                                    </span>
+                                  ) : doc.plastiks_submitted_at ? (
+                                    <span className='flex items-center gap-2'>
+                                      <CheckCircle2 className='h-3 w-3' />
+                                      Submitted to Blockchain
+                                    </span>
+                                  ) : (
+                                    <span className='flex items-center gap-2'>
+                                      <ArrowRight className='h-3 w-3' />
+                                      Push to Plastiks
+                                    </span>
+                                  )}
+                                </Button>
+
+                                {/* Blockchain Details if submitted */}
+                                {doc.plastiks_submitted_at && (
+                                  <div className='mt-4 p-4 bg-slate-50 rounded-lg border'>
+                                    <h5 className='font-medium text-slate-800 mb-3'>
+                                      Blockchain Details
+                                    </h5>
+                                    <div className='grid grid-cols-2 gap-4 text-sm'>
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Collection ID
+                                        </div>
+                                        <div className='text-sm text-slate-700'>
+                                          {doc.plastiks_collection_id || 'N/A'}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Collection Address
+                                        </div>
+                                        <div className='text-sm text-slate-700 truncate'>
+                                          {doc.plastiks_collection_address ||
+                                            'N/A'}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Metadata Hash
+                                        </div>
+                                        <div className='text-sm text-slate-700 truncate'>
+                                          {doc.plastiks_metadata_hash || 'N/A'}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className='text-slate-500 text-xs font-medium mb-1'>
+                                          Submitted At
+                                        </div>
+                                        <div className='text-sm text-slate-700'>
+                                          {doc.plastiks_submitted_at
+                                            ? new Date(
+                                                doc.plastiks_submitted_at
+                                              ).toLocaleString()
+                                            : 'N/A'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
