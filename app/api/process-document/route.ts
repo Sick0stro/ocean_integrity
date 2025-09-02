@@ -234,7 +234,7 @@ Instructions:
 
 1. Classify Document:
    Determine if the document is an invoice, eft_receipt, e-way-bill, or additional_document.
-   * If the document does not match the first three categories, classify it as additional_document.
+   * If the document does not match the invoice or eft_receipt or e-way-bill categories, classify it as additional_document.
 
 2. Extract Data:
    Populate the corresponding JSON template with data extracted from the document.
@@ -246,53 +246,50 @@ Instructions:
 
 ---
 
-### JSON TEMPLATES
+**JSON TEMPLATES**
 
-
-Template for eft_receipt
+**Template for \`eft_receipt\`**
 {
   "document_type": "eft_receipt",
-  "invoice": "string", // generate invoice from Agst Ref, exsample MAT/UP/12-30/054
-  "second_invoice": "string", // generate only if available
-  "third_invoice": "string",  // generate only if available
+  "invoice": "string",// generate invoice from Agst Ref, exsample MAT/UP/12-30/054
+  "second_invoice": "string",// generate second_invoice from Agst Ref, exsample MAT/UP/12-30/054, generate "second_invoice" only if its avelible.
+  "third_invoice": "string",// generate third_invoice from Agst Ref, exsample MAT/UP/12-30/054, generate "third_invoice" only if its avelible.    
   "bank_name": "string",
   "etf_date": "string (dd/mm/yyyy)",
   "sender_name": "string",
-  "reciver_name": "string"
+  "reciver_name": "string",
 }
 
-
-Template for invoice
+**Template for \`invoice\`**
 {
   "document_type": "invoice",
-  "invoice": "string", // from invoice #, format MAT/UP/12-30/054 not MAT-UP-12-30-054
+  "invoice": "string",// generate invoice from invoice #, like exsample MAT/UP/12-30/054 not like this exsample MAT-UP-12-30-054
   "invoice_date": "string (dd-mm-yyyy)",
   "bill_to_address": "string", 
   "bill_to_company_name": "string",
   "bill_from_company_name": "string",
   "vehicle_number": "string",
-  "weight": "number", // generate from Qty
+  "weight": "number",// generate weight from Qty
   "weight_unit_of_mesurement": "string", // exsample KG
-  "plastic_type": "string" // from items, exsample PET, HDPE, PVC, LDPE, PP, PS, OTHER, MIXED, ALU, PAP, GLASS, PAPER, TP, TEX, TEXN, TEX
+  "plastic_type": "string",// generate plastic type from items, exsample  PET, HDPE , PVC , LDPE , PP , PS , OTHER , MIXED , ALU , PAP , GLASS , PAPER , TP , TEX , TEXN , TEX 
 }
 
-
-Template for e-way-bill
+**Template for \`e-way-bill\`**
 {
   "document_type": "e-way-bill",
   "eway_bill_no": "string",
-  "invoice": "string", // format MAT/UP/12-30/054 (exclude date and words like 'Tax Invoice')
+  "invoice": "string",// exsample MAT/UP/12-30/054 and do not add date (dd-mm-yyyy) and do not add Tax Invoice in the begining  
   "generated_date": "string (dd/mm/yyyy hh:mm pm/am)",
-  "plastic_type": "string", // from product name or description
+  "plastic_type": "string",// generate plastic type from product name and discription, exsample  PET, HDPE , PVC , LDPE , PP , PS , OTHER , MIXED , ALU , PAP , GLASS , PAPER , TP , TEX , TEXN , TEX 
   "weight": "number",
   "weight_unit_of_mesurement": "string", // exsample KG
   "mode": "string",
-  "city": "string", // from ship_to_address
+  "city": "string",// generate city from ship_to_address,
   "ship_to_address": "string", 
   "ship_to_company_name": "string",
   "ship_from_company_name": "string",
-  "ship_to_country_code": "string", // exsample IN, BR, US, CA, GB
-  "vehicle_number": "string"
+  "ship_to_country_code": "string",// generate country code from ship to address, exsample IN,BR,US,CA,GB
+  "vehicle_number": "string",
 }
 
 Template for additional_document
