@@ -1519,7 +1519,9 @@ function HomeContent({ session }: HomeContentProps) {
     try {
       // Call the existing plastiks submit API
       const response = await fetch(
-        `/api/plastiks/submit?invoice=${encodeURIComponent(invoice)}`,
+        `/api/plastiks/submit?invoice=${encodeURIComponent(
+          invoice
+        )}&secret=local-dev-submit-123`,
         {
           method: 'POST',
           headers: {

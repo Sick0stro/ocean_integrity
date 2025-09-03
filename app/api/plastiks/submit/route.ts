@@ -23,7 +23,7 @@ async function getPendingRows(userFilter?: string) {
   let query = supabase
     .from('recycling_docs')
     .select('*')
-    .in('ngtus', ['new', 'updated'])
+    .in('status', ['new', 'updated'])
     .limit(100);
 
   console.log(
@@ -267,17 +267,40 @@ export async function POST(req: Request) {
   const expected =
     process.env.CRON_SUBMIT_SECRET || process.env.CRON_INGEST_SECRET;
   const allowDevBypass = process.env.NODE_ENV !== 'production' && !expected;
+  const isDevMode = process.env.NODE_ENV !== 'production';
 
   console.log(
     `🔐 [BLOCKCHAIN:${requestId}] Authentication: ${
       secret ? 'SECRET_PROVIDED' : 'NO_SECRET'
     }`
   );
+  console.log(
+    `🔐 [BLOCKCHAIN:${requestId}] Dev Mode: ${isDevMode ? 'YES' : 'NO'}`
+  );
+  console.log(
+    `🔐 [BLOCKCHAIN:${requestId}] Expected Secret: ${
+      expected ? 'SET' : 'NOT_SET'
+    }`
+  );
 
   if (!allowDevBypass) {
-    if (!expected || secret !== expected) {
+    if (!expected) {
+      console.log(`❌ [BLOCKCHAIN:${requestId}] No expected secret configured`);
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (secret !== expected) {
       console.log(
-        `❌ [BLOCKCHAIN:${requestId}] Authentication failed - unauthorized request`
+        `❌ [BLOCKCHAIN:${requestId}] Authentication failed - secret mismatch`
+      );
+      console.log(
+        `🔐 [BLOCKCHAIN:${requestId}] Provided: '${secret.substring(0, 5)}...'`
+      );
+      console.log(
+        `🔐 [BLOCKCHAIN:${requestId}] Expected: '${expected.substring(
+          0,
+          5
+        )}...'`
       );
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

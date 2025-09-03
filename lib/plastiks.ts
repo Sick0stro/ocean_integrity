@@ -49,7 +49,8 @@ export type PlastiksCollection = {
 
 export function getPlastiksConfig(): PlastiksConfig {
   const baseUrl =
-    process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io';
+    // process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io';
+    process.env.PLASTIKS_BASE_URL || 'https://c15d0a96de53.ngrok-free.app';
   const apiToken = process.env.API_TOKEN_CALL || '';
   const userAddress = process.env.USER_ADDRESS || '';
   const privateKey = process.env.PRIVATE_KEY || '';
@@ -177,10 +178,10 @@ export async function createPrgCollection(
   console.log('📊 [PLASTIKS_REQUEST] Request Method: POST');
   console.log(
     '📦 [PLASTIKS_REQUEST] Full Target URL:',
-    client.defaults.baseURL + '/collections'
+    client.defaults.baseURL + '/collections/prg'
   );
   console.log('🌐 [PLASTIKS_REQUEST] Base URL:', client.defaults.baseURL);
-  console.log('📍 [PLASTIKS_REQUEST] Endpoint Path: /collections');
+  console.log('📍 [PLASTIKS_REQUEST] Endpoint Path: /collections/prg');
   console.log('⏰ [PLASTIKS_REQUEST] Timestamp:', new Date().toISOString());
 
   // Log all client default headers
@@ -256,7 +257,10 @@ export async function createPrgCollection(
 
   try {
     console.log('🚀 [PLASTIKS_REQUEST] EXECUTING HTTP REQUEST...');
-    console.log('   📡 Final URL:', client.defaults.baseURL + '/collections');
+    console.log(
+      '   📡 Final URL:',
+      client.defaults.baseURL + '/collections/prg'
+    );
     console.log(
       '   📊 Payload Size:',
       JSON.stringify(body).length,
@@ -271,7 +275,7 @@ export async function createPrgCollection(
       client.defaults.headers['User-Address'] ? '✅ SET' : '❌ MISSING'
     );
 
-    const resp = await client.post('/collections', body);
+    const resp = await client.post('/collections/prg', body);
 
     // 🔍 SUCCESS RESPONSE LOGGING
     console.log(
