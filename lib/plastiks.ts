@@ -72,15 +72,7 @@ export function getPlastiksConfig(): PlastiksConfig {
 }
 
 export function createPlastiksClient(config: PlastiksConfig) {
-  console.log('🔧 [CLIENT] Creating Plastiks HTTP client...');
-  console.log('   🌐 Base URL:', config.baseUrl);
-  console.log('   🔑 API Token present:', !!config.apiToken);
-  console.log('   🔑 API Token length:', config.apiToken?.length || 'N/A');
-  console.log('   👤 User Address present:', !!config.userAddress);
-  console.log(
-    '   👤 User Address (first 10):',
-    config.userAddress?.substring(0, 10) + '...' || 'N/A'
-  );
+  console.log(`🔧 [PLASTIKS_CLIENT] Creating client for ${config.baseUrl}`);
 
   const client = axios.create({
     baseURL: config.baseUrl,
@@ -92,7 +84,6 @@ export function createPlastiksClient(config: PlastiksConfig) {
     timeout: 60000,
   });
 
-  console.log('✅ [CLIENT] Plastiks HTTP client created successfully');
   return client;
 }
 
@@ -171,265 +162,37 @@ export async function createPrgCollection(
     network_operator_company: params.network_operator_company || '',
   };
 
-  // 🔍 DEBUG LOGGING: Complete request details for 401 debugging
-  console.log('🚀 [PLASTIKS_REQUEST] ======================================');
-  console.log('🚀 [PLASTIKS_REQUEST] PLASTIKS API REQUEST DEBUG LOG');
-  console.log('🚀 [PLASTIKS_REQUEST] ======================================');
-  console.log('📊 [PLASTIKS_REQUEST] Request Method: POST');
   console.log(
-    '📦 [PLASTIKS_REQUEST] Full Target URL:',
-    client.defaults.baseURL + '/collections/prg'
-  );
-  console.log('🌐 [PLASTIKS_REQUEST] Base URL:', client.defaults.baseURL);
-  console.log('📍 [PLASTIKS_REQUEST] Endpoint Path: /collections/prg');
-  console.log('⏰ [PLASTIKS_REQUEST] Timestamp:', new Date().toISOString());
-
-  // Log all client default headers
-  console.log('📋 [PLASTIKS_REQUEST] CLIENT DEFAULT HEADERS:');
-  Object.entries(client.defaults.headers).forEach(([key, value]) => {
-    if (
-      key.toLowerCase().includes('api-key') ||
-      key.toLowerCase().includes('authorization')
-    ) {
-      console.log(`   ${key}: [REDACTED_FOR_SECURITY]`);
-    } else {
-      console.log(`   ${key}: ${value}`);
-    }
-  });
-
-  // Log specific important headers
-  console.log('🔐 [PLASTIKS_REQUEST] AUTHENTICATION HEADERS:');
-  console.log(
-    '   API-key:',
-    client.defaults.headers['API-key']
-      ? '✅ PRESENT (length: ' +
-          String(client.defaults.headers['API-key']).length +
-          ')'
-      : '❌ MISSING'
-  );
-  console.log(
-    '   User-Address:',
-    client.defaults.headers['User-Address']
-      ? '✅ PRESENT (' + client.defaults.headers['User-Address'] + ')'
-      : '❌ MISSING'
-  );
-  console.log(
-    '   Content-Type:',
-    client.defaults.headers['Content-Type'] || 'NOT_SET'
+    `🚀 [PLASTIKS_API] Creating PRG collection for ${params.invoice_number}`
   );
 
-  // Log complete payload
-  console.log('📋 [PLASTIKS_REQUEST] COMPLETE REQUEST PAYLOAD:');
-  console.log(JSON.stringify(body, null, 2));
-
-  // Log payload summary
-  console.log('📊 [PLASTIKS_REQUEST] PAYLOAD SUMMARY:');
-  console.log('   📄 Invoice Number:', body.invoice_number);
-  console.log('   🏢 Recycler Company:', body.recycler_company);
-  console.log('   🔬 Plastic Type:', body.plastik_type);
-  console.log('   ⚖️  Weight (kg):', body.weight);
-  console.log('   💰 Instant Sale Price:', body.instant_sale_price);
-  console.log('   📋 Number of Copies:', body.no_of_copies);
-  console.log('   🎨 Use Auto Gen Image:', body.use_autogen_image);
-
-  // Log attachments
-  console.log('📎 [PLASTIKS_REQUEST] ATTACHMENTS IN PAYLOAD:');
   console.log(
-    '   📄 Invoice URL:',
-    body.invoice_url ? '✅ INCLUDED' : '❌ EMPTY'
-  );
-  console.log('   💳 EFT URL:', body.eft_url ? '✅ INCLUDED' : '❌ EMPTY');
-  console.log(
-    '   🚛 E-way Bill URL:',
-    body.ewaybill_url ? '✅ INCLUDED' : '❌ EMPTY'
-  );
-
-  // Log business fields
-  console.log('🏢 [PLASTIKS_REQUEST] BUSINESS FIELDS:');
-  console.log('   🌍 Origin:', body.origin || 'NOT_SET');
-  console.log('   🌍 Country:', body.country || 'NOT_SET');
-  console.log('   🏙️  City:', body.city || 'NOT_SET');
-  console.log('   💰 Currency:', body.currency || 'NOT_SET');
-  console.log(
-    '   🏢 Network Operator:',
-    body.network_operator_company || 'NOT_SET'
+    `📋 [PLASTIKS_API] Payload: ${body.weight}kg ${body.plastik_type} from ${body.recycler_company}`
   );
 
   try {
-    console.log('🚀 [PLASTIKS_REQUEST] EXECUTING HTTP REQUEST...');
-    console.log(
-      '   📡 Final URL:',
-      client.defaults.baseURL + '/collections/prg'
-    );
-    console.log(
-      '   📊 Payload Size:',
-      JSON.stringify(body).length,
-      'characters'
-    );
-    console.log(
-      '   🔑 API Key Status:',
-      client.defaults.headers['API-key'] ? '✅ SET' : '❌ MISSING'
-    );
-    console.log(
-      '   👤 User Address Status:',
-      client.defaults.headers['User-Address'] ? '✅ SET' : '❌ MISSING'
-    );
-
     const resp = await client.post('/collections/prg', body);
 
-    // 🔍 SUCCESS RESPONSE LOGGING
     console.log(
-      '✅ [PLASTIKS_RESPONSE] ======================================'
-    );
-    console.log('✅ [PLASTIKS_RESPONSE] SUCCESSFUL RESPONSE RECEIVED');
-    console.log(
-      '✅ [PLASTIKS_RESPONSE] ======================================'
-    );
-    console.log('📊 [PLASTIKS_RESPONSE] HTTP Status Code:', resp.status);
-    console.log('📊 [PLASTIKS_RESPONSE] HTTP Status Text:', resp.statusText);
-    console.log(
-      '⏰ [PLASTIKS_RESPONSE] Response Time:',
-      new Date().toISOString()
-    );
-
-    // Log response headers
-    console.log('📋 [PLASTIKS_RESPONSE] RESPONSE HEADERS:');
-    Object.entries(resp.headers).forEach(([key, value]) => {
-      console.log(`   ${key}: ${value}`);
-    });
-
-    // Log response data
-    console.log('📦 [PLASTIKS_RESPONSE] COMPLETE RESPONSE BODY:');
-    console.log(JSON.stringify(resp.data, null, 2));
-
-    // Log key response details
-    console.log('🔍 [PLASTIKS_RESPONSE] RESPONSE ANALYSIS:');
-    console.log('   ✅ Success Flag:', resp.data?.success);
-    console.log(
-      '   🆔 Collection ID:',
-      resp.data?.collection?.id || 'NOT_FOUND'
-    );
-    console.log(
-      '   📍 Collection Address:',
-      resp.data?.collection?.address || 'NOT_FOUND'
-    );
-    console.log('   ⚖️  Weight:', resp.data?.collection?.weight || 'NOT_FOUND');
-    console.log(
-      '   🔗 Metadata Hash:',
-      resp.data?.collection?.metadata_hash || 'NOT_FOUND'
-    );
-    console.log(
-      '   🖼️  Image Hash:',
-      resp.data?.collection?.image_hash || 'NOT_FOUND'
-    );
-
-    console.log(
-      '🧪 [TEST] SUCCESS: Plastiks API call completed with status',
-      resp.status
+      `✅ [PLASTIKS_API] Success: Collection ID ${resp.data?.collection?.id} created`
     );
 
     if (!resp.data?.success) throw new Error('plastiks: PRG creation failed');
     return resp.data.collection as PlastiksCollection;
   } catch (e) {
-    console.error('❌ [PLASTIKS_ERROR] ======================================');
-    console.error('❌ [PLASTIKS_ERROR] PLASTIKS API REQUEST FAILED');
-    console.error('❌ [PLASTIKS_ERROR] ======================================');
-    console.error('⏰ [PLASTIKS_ERROR] Error Time:', new Date().toISOString());
     console.error(
-      '🔥 [PLASTIKS_ERROR] Error Type:',
-      e instanceof Error ? e.constructor.name : typeof e
-    );
-    console.error(
-      '📝 [PLASTIKS_ERROR] Error Message:',
+      `❌ [PLASTIKS_API] Error creating collection:`,
       e instanceof Error ? e.message : String(e)
     );
 
-    // 🔍 COMPREHENSIVE ERROR LOGGING FOR 401 DEBUGGING
     if (axios.isAxiosError(e)) {
-      console.error('📡 [PLASTIKS_ERROR] HTTP ERROR ANALYSIS:');
       console.error(
-        '   🚫 HTTP Status Code:',
-        e.response?.status || 'NO_RESPONSE'
+        `❌ [PLASTIKS_API] HTTP ${e.response?.status}: ${e.response?.statusText}`
       );
-      console.error(
-        '   🚫 HTTP Status Text:',
-        e.response?.statusText || 'NO_RESPONSE'
-      );
-
-      // Special handling for 401 errors
-      if (e.response?.status === 401) {
-        console.error('🚨 [PLASTIKS_ERROR] 401 UNAUTHORIZED ERROR DETECTED!');
-        console.error('   💡 Possible causes:');
-        console.error('      - Missing or invalid API key');
-        console.error('      - Missing or invalid User-Address');
-        console.error('      - Wrong endpoint URL');
-        console.error('      - API key expired');
-        console.error('      - User address format incorrect');
-      }
-
-      // Log response headers
-      console.error('📋 [PLASTIKS_ERROR] RESPONSE HEADERS:');
-      if (e.response?.headers) {
-        Object.entries(e.response.headers).forEach(([key, value]) => {
-          console.error(`   ${key}: ${value}`);
-        });
-      } else {
-        console.error('   (No response headers received)');
-      }
-
-      // Log response data
-      console.error('📦 [PLASTIKS_ERROR] RESPONSE BODY:');
       if (e.response?.data) {
-        console.error(JSON.stringify(e.response.data, null, 2));
-      } else {
-        console.error('   (No response body received)');
-      }
-
-      // Log request configuration
-      console.error('🔧 [PLASTIKS_ERROR] REQUEST CONFIGURATION:');
-      console.error('   🔗 Request URL:', e.config?.url || 'NOT_SET');
-      console.error('   📤 Request Method:', e.config?.method || 'NOT_SET');
-      console.error('   🌍 Base URL:', e.config?.baseURL || 'NOT_SET');
-      console.error('   ⏱️  Timeout:', e.config?.timeout || 'NOT_SET');
-
-      // Log request headers (with security)
-      console.error('📊 [PLASTIKS_ERROR] REQUEST HEADERS:');
-      if (e.config?.headers) {
-        Object.entries(e.config.headers).forEach(([key, value]) => {
-          if (
-            key.toLowerCase().includes('api-key') ||
-            key.toLowerCase().includes('authorization')
-          ) {
-            console.error(`   ${key}: [REDACTED_FOR_SECURITY]`);
-          } else {
-            console.error(`   ${key}: ${value}`);
-          }
-        });
-      } else {
-        console.error('   (No request headers found)');
-      }
-
-      // Log request data
-      console.error('📝 [PLASTIKS_ERROR] REQUEST PAYLOAD:');
-      if (e.config?.data) {
-        console.error(JSON.stringify(JSON.parse(e.config.data), null, 2));
-      } else {
-        console.error('   (No request data found)');
-      }
-    } else {
-      console.error('📡 [PLASTIKS_ERROR] NON-HTTP ERROR:');
-      console.error(
-        '   This error is not an HTTP error, might be network or configuration issue'
-      );
-      if (e instanceof Error && e.stack) {
-        console.error('   📚 Stack Trace:');
-        console.error(e.stack);
+        console.error(`❌ [PLASTIKS_API] Response:`, e.response.data);
       }
     }
-
-    console.error(
-      '🧪 [TEST] FAILURE: Plastiks API call failed - check logs above for details'
-    );
 
     throw new Error(`plastiks: PRG creation error: ${axiosErrorToString(e)}`);
   }
@@ -599,28 +362,14 @@ export async function signVoucher(
 }
 
 export async function submitToPlastiks(document: RecyclingDocRow) {
-  console.log('🚀 [PLASTIKS] =================================');
-  console.log('🚀 [PLASTIKS] STARTING SUBMISSION TO PLASTIKS');
-  console.log('🚀 [PLASTIKS] =================================');
   console.log(
-    '🧪 [TEST] Plastiks submission initiated for invoice:',
-    document.invoice_number
-  );
-  console.log(
-    '🧪 [TEST] Full document data:',
-    JSON.stringify(document, null, 2)
+    `🚀 [PLASTIKS_SUBMIT] Starting submission for ${document.invoice_number}`
   );
 
-  // 📋 VALIDATION & TRACKING: Check document completeness
   const validationResults = validateDocumentForSubmission(document);
-  console.log(
-    '🔍 [VALIDATION] Document validation results:',
-    validationResults
-  );
-
   if (!validationResults.isValid) {
     console.error(
-      '❌ [VALIDATION] Document failed validation:',
+      `❌ [PLASTIKS_SUBMIT] Validation failed:`,
       validationResults.errors
     );
     throw new Error(
@@ -628,43 +377,14 @@ export async function submitToPlastiks(document: RecyclingDocRow) {
     );
   }
 
-  console.log('✅ [VALIDATION] Document passed all validation checks');
-
-  // 🔧 CONFIGURATION: Initialize Plastiks connection
-  console.log('🔧 [CONFIG] Initializing Plastiks configuration...');
   const cfg = getPlastiksConfig();
   const client = createPlastiksClient(cfg);
   const chain = await getBlockchainConfig(client);
   const wallet = new ethers.Wallet(cfg.privateKey);
-  console.log('✅ [CONFIG] Plastiks configuration initialized successfully');
 
-  // 📊 DOCUMENT SUMMARY: Log key document data for testing
   console.log(
-    '📊 [DOCUMENT] Invoice:',
-    document.invoice_number,
-    '| Company:',
-    document.recycler_company,
-    '| Weight:',
-    document.tonnage_kg,
-    'kg'
+    `📊 [PLASTIKS_SUBMIT] Document: ${document.recycler_company} | ${document.tonnage_kg}kg | ${document.plastic_type}`
   );
-
-  // 📎 ATTACHMENTS: Track attachments status
-  const attachmentCount = [
-    document.invoice_url,
-    document.eft_url,
-    document.ewaybill_url,
-  ].filter(Boolean).length;
-  console.log(`📎 [ATTACHMENTS] ${attachmentCount}/3 attachments provided`);
-
-  // 🎯 PREPARATION: Build submission payload
-  console.log('🎯 [PREPARATION] Building submission payload...');
-  const name = `${document.recycler_company} – ${document.invoice_number}`;
-  const description = `Recycling proof ${document.plastic_type} ${
-    document.tonnage_kg
-  }kg, ${document.city || ''} ${
-    document.country || document.origin || ''
-  }`.trim();
 
   // Map to Plastiks expected labels when possible
   const typeMap: Record<string, string> = {
@@ -676,17 +396,6 @@ export async function submitToPlastiks(document: RecyclingDocRow) {
   const normalizedType = document.plastic_type?.toUpperCase?.() || '';
   const plastiksType = typeMap[normalizedType] || document.plastic_type;
 
-  console.log('📝 [PREPARATION] Payload details:');
-  console.log('   📛 Collection Name:', name);
-  console.log('   📖 Description:', description);
-  console.log(
-    '   🔬 Mapped Plastic Type:',
-    `${document.plastic_type} → ${plastiksType}`
-  );
-  console.log('   ⚖️  Weight (kg):', document.tonnage_kg);
-
-  // 🚀 SUBMISSION: Create PRG Collection
-  console.log('🚀 [SUBMISSION] Creating PRG Collection...');
   const submissionPayload = {
     recycler_company: document.recycler_company || '',
     invoice_number: document.invoice_number || '',
@@ -702,42 +411,15 @@ export async function submitToPlastiks(document: RecyclingDocRow) {
     network_operator_company: document.network_operator_company || '',
   };
 
-  console.log(
-    '📤 [SUBMISSION] Final payload being sent:',
-    JSON.stringify(submissionPayload, null, 2)
-  );
-
   const prg = await createPrgCollection(client, submissionPayload);
 
-  console.log('✅ [SUBMISSION] PRG Collection created successfully:', {
-    id: prg.id,
-    address: prg.address,
-    weight: prg.weight,
-  });
-
-  // 🔐 BLOCKCHAIN: Start signing process
-  console.log('🔐 [BLOCKCHAIN] =================================');
-  console.log('🔐 [BLOCKCHAIN] STARTING BLOCKCHAIN SIGNING');
-  console.log('🔐 [BLOCKCHAIN] =================================');
-
-  console.log('🔐 [BLOCKCHAIN] Step 1/3: Signing metadata hash...');
+  console.log('🔐 [PLASTIKS_SUBMIT] Starting blockchain signing process...');
   await signMetadataHash(client, chain, wallet, prg.address);
-  console.log('✅ [BLOCKCHAIN] Step 1/3: Metadata hash signed successfully');
-
-  console.log('🔐 [BLOCKCHAIN] Step 2/3: Signing fixed price...');
   await signFixedPrice(client, chain, wallet, prg);
-  console.log('✅ [BLOCKCHAIN] Step 2/3: Fixed price signed successfully');
-
-  console.log('🔐 [BLOCKCHAIN] Step 3/3: Signing voucher...');
   await signVoucher(client, chain, wallet, prg);
-  console.log('✅ [BLOCKCHAIN] Step 3/3: Voucher signed successfully');
 
-  // 🎉 SUCCESS: Final results
-  console.log('🎉 [SUCCESS] Plastiks submission completed!');
-  console.log('   🆔 Collection ID:', prg.id, '| Address:', prg.address);
   console.log(
-    '🧪 [TEST] SUCCESS: Plastiks submission completed for invoice:',
-    document.invoice_number
+    `🎉 [PLASTIKS_SUBMIT] Completed! Collection ID: ${prg.id} | Address: ${prg.address}`
   );
 
   return prg;

@@ -1418,17 +1418,79 @@ function HomeContent({ session }: HomeContentProps) {
       console.time('⏱️ [BLOCKCHAIN] Verified docs loading');
 
       try {
-        console.log('🔗 [BLOCKCHAIN] Loading human-verified recycling docs...');
+        console.log(
+          '🔗 [BLOCKCHAIN] Loading recycling docs for blockchain processing...'
+        );
         console.log('👤 [BLOCKCHAIN] User:', session.user.email);
 
-        // Load human-verified document groups
+        // Load human-verified document groups with plastiks submission status
         const supabase = getSupabaseBrowser();
-        const { data, error } = await supabase
+
+        // First get verified document groups
+        const { data: groups, error: groupError } = await supabase
           .from('document_groups')
           .select('*')
           .eq('user_id', session.user.id) // Filter by current user
           .eq('human_verified', true) // Only verified documents
           .order('verified_at', { ascending: false }); // Most recent first
+
+        if (groupError) {
+          console.error(
+            '❌ [BLOCKCHAIN] Failed to load verified groups:',
+            groupError
+          );
+          return;
+        }
+
+        // Then get plastiks submission status from recycling_docs
+        const { data: recyclingDocs, error: recyclingError } = await supabase
+          .from('recycling_docs')
+          .select(
+            'invoice_number, plastiks_submitted_at, plastiks_collection_id, plastiks_collection_address, plastiks_metadata_hash'
+          )
+          .eq('user_id', session.user.id);
+
+        if (recyclingError) {
+          console.error(
+            '❌ [BLOCKCHAIN] Failed to load recycling docs:',
+            recyclingError
+          );
+        }
+
+        // Create a map of plastiks submission data
+        const plastiksMap = (recyclingDocs || []).reduce(
+          (acc, doc) => ({
+            ...acc,
+            [doc.invoice_number]: doc,
+          }),
+          {} as Record<
+            string,
+            {
+              plastiks_submitted_at: string | null;
+              plastiks_collection_id: string | null;
+              plastiks_collection_address: string | null;
+              plastiks_metadata_hash: string | null;
+            }
+          >
+        );
+
+        // Merge the data
+        const data =
+          groups?.map((group) => ({
+            ...group,
+            // Add plastiks submission data if it exists
+            plastiks_submitted_at:
+              plastiksMap[group.invoice_number]?.plastiks_submitted_at || null,
+            plastiks_collection_id:
+              plastiksMap[group.invoice_number]?.plastiks_collection_id || null,
+            plastiks_collection_address:
+              plastiksMap[group.invoice_number]?.plastiks_collection_address ||
+              null,
+            plastiks_metadata_hash:
+              plastiksMap[group.invoice_number]?.plastiks_metadata_hash || null,
+          })) || [];
+
+        const error = groupError;
 
         if (error) {
           console.error('❌ [BLOCKCHAIN] Failed to load verified docs:', error);
@@ -1500,70 +1562,94 @@ function HomeContent({ session }: HomeContentProps) {
   // computeGroupStatus is defined above with more comprehensive implementation
 
   // 🚀 NEW: Push to Plastiks function for blockchain tab
-  const handlePushToPlastiks = useCallback(async (invoice: string) => {
-    console.log('🧪 [TEST] ======================================');
-    console.log('🧪 [TEST] PUSH TO PLASTIKS BUTTON CLICKED');
-    console.log('🧪 [TEST] ======================================');
-    console.log('📋 [TEST] Invoice to process:', invoice);
-    console.log('🌐 [TEST] Environment:', process.env.NODE_ENV);
-    console.log(
-      '🔗 [TEST] Plastiks Base URL:',
-      process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io'
-    );
+  const handlePushToPlastiks = useCallback(
+    async (invoice: string) => {
+      console.log(`\n🚀 [PLASTIKS_FLOW] ===== STARTING PUSH TO PLASTIKS =====`);
+      console.log(`📋 [PLASTIKS_FLOW] Invoice: ${invoice}`);
+      console.log(`👤 [PLASTIKS_FLOW] User: ${session.user?.email}`);
+      console.log(`⏰ [PLASTIKS_FLOW] Started at: ${new Date().toISOString()}`);
 
-    setIsPushingToPlastiks(true);
-    console.log(
-      `🚀 [BLOCKCHAIN] Starting Push to Plastiks for invoice: ${invoice}`
-    );
+      setIsPushingToPlastiks(true);
 
-    try {
-      // Call the existing plastiks submit API
-      const response = await fetch(
-        `/api/plastiks/submit?invoice=${encodeURIComponent(
-          invoice
-        )}&secret=local-dev-submit-123`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      try {
+        console.log(`🔄 [PLASTIKS_FLOW] Step 1: Calling /api/plastiks/submit`);
 
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        console.log(`✅ [BLOCKCHAIN] Successfully pushed to Plastiks:`, result);
-
-        // Refresh verified docs to show updated status
-        setHasInitializedVerifiedDocs(false);
-
-        alert(
-          `✅ Successfully submitted to Plastiks blockchain!\n\nInvoice: ${invoice}\nProcessed: ${result.processed} document(s)`
+        // Call the existing plastiks submit API
+        const response = await fetch(
+          `/api/plastiks/submit?invoice=${encodeURIComponent(
+            invoice
+          )}&user_id=${encodeURIComponent(
+            session.user?.id || ''
+          )}&secret=local-dev-submit-123`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
         );
-      } else {
-        console.error(`❌ [BLOCKCHAIN] Push to Plastiks failed:`, result);
+
+        console.log(
+          `📊 [PLASTIKS_FLOW] API Response Status: ${response.status}`
+        );
+
+        const result = await response.json();
+        console.log(`📋 [PLASTIKS_FLOW] API Response Data:`, {
+          success: result.success,
+          processed: result.processed,
+          hasResults: !!result.results,
+          resultCount: result.results?.length || 0,
+        });
+
+        if (response.ok && result.success) {
+          console.log(`✅ [PLASTIKS_FLOW] Step 2: API call successful`);
+          console.log(
+            `📊 [PLASTIKS_FLOW] Processed ${result.processed} document(s)`
+          );
+
+          // Immediately update local state to disable button
+          console.log(`🔄 [PLASTIKS_FLOW] Step 3: Updating local state`);
+          setVerifiedDocs((prev) => ({
+            ...prev,
+            [invoice]: {
+              ...prev[invoice],
+              plastiks_submitted_at: new Date().toISOString(),
+            },
+          }));
+
+          console.log(
+            `✅ [PLASTIKS_FLOW] Step 4: Button state updated (disabled)`
+          );
+          console.log(
+            `🎉 [PLASTIKS_FLOW] ===== PUSH TO PLASTIKS COMPLETED =====\n`
+          );
+
+          alert(
+            `✅ Successfully submitted to Plastiks blockchain!\n\nInvoice: ${invoice}\nProcessed: ${result.processed} document(s)`
+          );
+        } else {
+          console.error(`❌ [PLASTIKS_FLOW] Step 2: API call failed`);
+          console.error(`📋 [PLASTIKS_FLOW] Error details:`, result);
+          alert(
+            `❌ Failed to push to Plastiks:\n\n${
+              result.error || 'Unknown error occurred'
+            }`
+          );
+        }
+      } catch (error) {
+        console.error(`💥 [PLASTIKS_FLOW] Step 1: Network error:`, error);
         alert(
-          `❌ Failed to push to Plastiks:\n\n${
-            result.error || 'Unknown error occurred'
-          }`
+          `💥 Network error occurred while pushing to Plastiks.\n\nPlease check your connection and try again.`
+        );
+      } finally {
+        setIsPushingToPlastiks(false);
+        console.log(
+          `🔄 [PLASTIKS_FLOW] Cleanup: isPushingToPlastiks set to false`
         );
       }
-    } catch (error) {
-      console.error(
-        `💥 [BLOCKCHAIN] Network error pushing to Plastiks:`,
-        error
-      );
-      alert(
-        `💥 Network error occurred while pushing to Plastiks.\n\nPlease check your connection and try again.`
-      );
-    } finally {
-      setIsPushingToPlastiks(false);
-      console.log(
-        `🔄 [BLOCKCHAIN] Push to Plastiks completed for invoice: ${invoice}`
-      );
-    }
-  }, []);
+    },
+    [session.user?.email, session.user?.id]
+  );
 
   const handleSubmitGroup = useCallback(async (invoice: string) => {
     setSubmitting((prev) => ({ ...prev, [invoice]: true }));
@@ -1572,10 +1658,8 @@ function HomeContent({ session }: HomeContentProps) {
       [invoice]: { ok: false, message: '' },
     }));
     try {
-      // Human Verification (No promote step - recycling_docs populated only on Push to Plastiks)
-      console.log(
-        `[UI] Human verification starting for invoice='${invoice}' (no recycling_docs promotion)`
-      );
+      // Human Verification (recycling_docs populated only on Push to Plastiks)
+      console.log(`[UI] Human verification starting for invoice='${invoice}'`);
 
       // Get auth token from session
       const {
