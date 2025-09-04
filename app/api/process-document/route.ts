@@ -1,7 +1,8 @@
 // route.ts - Enhanced version with comprehensive diagnostics and logging
 import { NextResponse } from 'next/server';
 import fetch from 'node-fetch';
-import { getSupabaseAdmin, getSupabaseClient } from '@/utils/supabase';
+import { getSupabaseAdmin } from '@/utils/supabaseAdmin';
+
 import {
   generateBusinessFingerprint,
   parseFingerprintForDisplay,
@@ -10,7 +11,7 @@ import {
 // Diagnostics removed
 
 export async function POST(req: Request) {
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseAdmin();
   const startTime = Date.now();
   const requestId = Math.random().toString(36).substring(2, 15);
 
@@ -19,15 +20,8 @@ export async function POST(req: Request) {
   console.log(`🌐 [${requestId}] Request method: ${req.method}`);
   console.log(`📍 [${requestId}] Request URL: ${req.url}`);
   console.log(`🔧 [${requestId}] Environment: ${process.env.NODE_ENV}`);
-  console.log(
-    `🗄️ [${requestId}] Supabase URL: ${
-      process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
-    }`
-  );
-  console.log(
-    `🔑 [${requestId}] Has Service Role Key: ${!!process.env
-      .SUPABASE_SERVICE_ROLE_KEY}`
-  );
+  
+ 
   console.log(
     `🔑 [${requestId}] Has Anon Key: ${!!process.env.SUPABASE_ANON_KEY}`
   );
@@ -962,7 +956,7 @@ Template for additional_document
 
 // ============ SEPARATE ENDPOINT TO RETRIEVE FILES FROM DATABASE ============
 export async function GET(req: Request) {
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseAdmin();
   const { searchParams } = new URL(req.url);
   const databaseId = searchParams.get('id');
 
