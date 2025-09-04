@@ -1244,7 +1244,7 @@ function HomeContent({ session }: HomeContentProps) {
               invoiceNumber: invoiceKey,
               isComplete: groupRow.is_complete || false,
               completionCount: groupRow.completion_count || 0,
-              requiredCount: groupRow.minimum_required || 3,
+              requiredCount: groupRow.minimum_required ?? 3,  // Change from `||` to `??` to properly handle 0
               missingTypes: groupRow.missing_document_types || [],
               presentTypes: groupRow.present_document_types || [],
               completionPercentage: groupRow.completion_percentage || 0,
