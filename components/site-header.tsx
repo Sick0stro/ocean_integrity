@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getSupabaseBrowser } from '@/utils/supabase-browser';
+import { getSupabaseBrowser, clearSupabaseClient } from '@/utils/supabase-browser';
 import { Loader2, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DashboardWidget } from '@/components/dashboard-widget';
@@ -60,7 +60,10 @@ export function SiteHeader() {
                 variant='ghost'
                 size='sm'
                 className='gap-1.5 text-sm'
-                onClick={() => getSupabaseBrowser().auth.signOut()}
+                onClick={async () => {
+                  await getSupabaseBrowser().auth.signOut();
+                  clearSupabaseClient();
+                }}
               >
                 <LogOut className='h-3.5 w-3.5' />
                 Sign out

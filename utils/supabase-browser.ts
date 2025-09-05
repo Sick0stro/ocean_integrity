@@ -1,3 +1,4 @@
+// utils/supabase-browser.ts
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Singleton Supabase client to prevent multiple instances
@@ -21,7 +22,7 @@ export function getSupabaseBrowser(): SupabaseClient {
   // Create and cache the instance
   supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      persistSession: true, // 👈 CHANGED: Enable session persistence
+      persistSession: true, // persist sessions in localStorage
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
@@ -32,5 +33,13 @@ export function getSupabaseBrowser(): SupabaseClient {
   return supabaseInstance;
 }
 
-// Export singleton instance directly
 export const supabase = getSupabaseBrowser();
+
+// Optional: helper to clear the session if needed (multi-user safety)
+export function clearSupabaseClient() {
+  if (supabaseInstance) {
+    supabaseInstance.auth.signOut().catch(console.error);
+    supabaseInstance = null;
+    console.log('🗑️ [SUPABASE] Browser client cleared');
+  }
+}
