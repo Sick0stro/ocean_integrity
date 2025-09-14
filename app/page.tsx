@@ -188,6 +188,167 @@ function HomeContent({ session }: HomeContentProps) {
   const [showAlreadyProcessedAlert, setShowAlreadyProcessedAlert] =
     useState(false);
 
+  // 🚀 PHASE 1: Database-driven state for button control
+  const [readyDocumentsCount, setReadyDocumentsCount] = useState(0);
+  const [tempDocumentsCount, setTempDocumentsCount] = useState(0);
+  const [duplicateFilesCount, setDuplicateFilesCount] = useState(0);
+
+  // 🚀 PHASE 2: Track skipped files for duplicate status display
+  const [skippedFilesInfo, setSkippedFilesInfo] = useState<
+    { name: string; reason: string }[]
+  >([]);
+
+  // 🚀 PHASE 2: Helper function to check if file is duplicate
+  const getFileStatus = useCallback(
+    (file: File) => {
+      const isDuplicate = skippedFilesInfo.some((sf) => sf.name === file.name);
+      return {
+        isDuplicate,
+        reason: isDuplicate
+          ? skippedFilesInfo.find((sf) => sf.name === file.name)?.reason
+          : null,
+      };
+    },
+    [skippedFilesInfo]
+  );
+
+  // 🚀 PHASE 5: Enhanced status message function
+  const getDetailedStatus = useCallback(() => {
+    // Handle preprocessing state
+    if (isPreprocessing) {
+      if (duplicateFilesCount === files.length && files.length > 0) {
+        return {
+          message: `All ${files.length} files are duplicates`,
+          color: 'text-orange-600',
+          bgColor: 'bg-orange-50',
+          borderColor: 'border-orange-200',
+        };
+      }
+      if (duplicateFilesCount > 0) {
+        return {
+          message: `${duplicateFilesCount} of ${
+            files.length
+          } files are duplicates. Processing ${
+            files.length - duplicateFilesCount
+          } new files...`,
+          color: 'text-blue-600',
+          bgColor: 'bg-blue-50',
+          borderColor: 'border-blue-200',
+        };
+      }
+      return {
+        message: `Processing ${files.length} files...`,
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+      };
+    }
+
+    // Handle workflow states based on database
+    if (tempDocumentsCount > 0 && readyDocumentsCount === 0) {
+      return {
+        message: `${tempDocumentsCount} files preprocessing...`,
+        color: 'text-yellow-600',
+        bgColor: 'bg-yellow-50',
+        borderColor: 'border-yellow-200',
+      };
+    }
+
+    if (tempDocumentsCount > 0 && readyDocumentsCount > 0) {
+      return {
+        message: `${tempDocumentsCount} files preprocessing, ${readyDocumentsCount} pages ready for AI`,
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+      };
+    }
+
+    if (readyDocumentsCount > 0) {
+      return {
+        message: `${readyDocumentsCount} pages ready for AI processing`,
+        color: 'text-green-600',
+        bgColor: 'bg-green-50',
+        borderColor: 'border-green-200',
+      };
+    }
+
+    if (duplicateFilesCount > 0 && files.length > 0) {
+      return {
+        message: `${duplicateFilesCount} duplicate files detected`,
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-50',
+        borderColor: 'border-orange-200',
+      };
+    }
+
+    return {
+      message: 'Ready to upload documents',
+      color: 'text-slate-600',
+      bgColor: 'bg-slate-50',
+      borderColor: 'border-slate-200',
+    };
+  }, [
+    isPreprocessing,
+    duplicateFilesCount,
+    files.length,
+    tempDocumentsCount,
+    readyDocumentsCount,
+  ]);
+
+  // 🚀 PHASE 1: Database check function for button state
+  const checkDocumentsStatus = useCallback(async () => {
+    if (!session?.user?.id) {
+      console.log('🔍 [checkDocumentsStatus] No user session, skipping check');
+      return { temp: 0, ready: 0 };
+    }
+
+    const supabase = getSupabaseBrowser();
+    console.log('🔍 [checkDocumentsStatus] Checking database status...');
+
+    try {
+      // Check temp_documents (preprocessing queue)
+      const { data: tempDocs, error: tempError } = await supabase
+        .from('temp_documents')
+        .select('id')
+        .eq('user_id', session.user.id);
+
+      // Check single_documents (ready for AI)
+      const { data: singleDocs, error: singleError } = await supabase
+        .from('single_documents')
+        .select('id')
+        .eq('status', 'uploaded')
+        .eq('user_id', session.user.id);
+
+      if (tempError) {
+        console.warn(
+          '⚠️ [checkDocumentsStatus] Error checking temp_documents:',
+          tempError
+        );
+      }
+      if (singleError) {
+        console.warn(
+          '⚠️ [checkDocumentsStatus] Error checking single_documents:',
+          singleError
+        );
+      }
+
+      const tempCount = tempDocs?.length || 0;
+      const readyCount = singleDocs?.length || 0;
+
+      console.log(
+        `📊 [checkDocumentsStatus] Database state: temp=${tempCount}, ready=${readyCount}`
+      );
+
+      setTempDocumentsCount(tempCount);
+      setReadyDocumentsCount(readyCount);
+
+      return { temp: tempCount, ready: readyCount };
+    } catch (error) {
+      console.error('❌ [checkDocumentsStatus] Database check failed:', error);
+      return { temp: 0, ready: 0 };
+    }
+  }, [session?.user?.id]);
+
   // Toggle group expansion
   const toggleGroupExpansion = (invoiceKey: string) => {
     setExpandedGroups((prev) => ({
@@ -210,6 +371,24 @@ function HomeContent({ session }: HomeContentProps) {
       setIsGroupsLoading(true);
     }
   }, [activeTab, hasInitializedGroups]);
+
+  // 🚀 PHASE 1: Initialize database status check
+  useEffect(() => {
+    if (session?.user?.id) {
+      console.log('🔄 [PHASE1] Initializing database status check...');
+      checkDocumentsStatus();
+    }
+  }, [session?.user?.id, checkDocumentsStatus]);
+
+  // 🚀 PHASE 1: Update status when switching to upload tab
+  useEffect(() => {
+    if (activeTab === 'upload' && session?.user?.id) {
+      console.log(
+        '🔄 [PHASE1] Upload tab active - checking database status...'
+      );
+      checkDocumentsStatus();
+    }
+  }, [activeTab, session?.user?.id, checkDocumentsStatus]);
   // Track all processed invoice numbers for validation
   const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<
     Set<string>
@@ -1798,10 +1977,71 @@ function HomeContent({ session }: HomeContentProps) {
   const isUploadingRef = useRef(false);
 
   // Helper function to check for duplicate files in database
+  // ========== SMART FILENAME FINGERPRINTING ==========
+  const generateFilenameFingerprint = useCallback(
+    (fileName: string, userId: string): string => {
+      console.log(`🔤 Generating fingerprint for: "${fileName}"`);
+
+      // Extract document type and business identifier
+      const docType = extractDocumentTypeFromFilename(fileName);
+      const businessId = extractBusinessNumberFromFilename(fileName);
+      const fingerprint = `${userId}:${docType}:${businessId}`;
+
+      console.log(`🔤 Fingerprint result: "${fingerprint}"`);
+      return fingerprint;
+    },
+    []
+  );
+
+  const extractDocumentTypeFromFilename = (fileName: string): string => {
+    const lower = fileName.toLowerCase();
+
+    if (lower.includes('invoice')) return 'invoice';
+    if (
+      lower.includes('eway') ||
+      lower.includes('e way') ||
+      lower.includes('e-way')
+    )
+      return 'eway';
+    if (/^[0-9]+\.?\s*[a-z]{2}\d+/i.test(fileName)) return 'state_doc'; // Pattern: "29. GJ0270009843.pdf"
+    if (lower.includes('receipt')) return 'receipt';
+    if (lower.includes('eft')) return 'eft';
+
+    return 'other';
+  };
+
+  const extractBusinessNumberFromFilename = (fileName: string): string => {
+    // Remove file extension for cleaner processing
+    const nameWithoutExt = fileName.replace(/\.[^.]+$/, '');
+
+    // Pattern 1: Invoice numbers like "25.INVOICE NO.343.pdf" → "343"
+    const invoiceMatch = nameWithoutExt.match(/invoice[^0-9]*(\d+)/i);
+    if (invoiceMatch) return invoiceMatch[1];
+
+    // Pattern 2: E-way bills like "47.EWAY BILL.259.pdf" → "259"
+    const ewayMatch = nameWithoutExt.match(/e.?way[^0-9]*(\d+)/i);
+    if (ewayMatch) return ewayMatch[1];
+
+    // Pattern 3: State documents like "29. GJ0270009843.pdf" → "GJ0270009843"
+    const stateMatch = nameWithoutExt.match(/([A-Z]{2}\d{10,})/i);
+    if (stateMatch) return stateMatch[1].toUpperCase();
+
+    // Pattern 4: Receipt patterns like "EFT-123" → "123"
+    const receiptMatch = nameWithoutExt.match(/(?:eft|receipt)[^0-9]*(\d+)/i);
+    if (receiptMatch) return receiptMatch[1];
+
+    // Fallback: Use normalized filename (for files that don't match patterns)
+    return nameWithoutExt
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .toLowerCase();
+  };
+
   const checkForDuplicates = useCallback(
     async (files: File[], uploadId: string) => {
       console.log(
-        `🔍 [upload:${uploadId}] Checking for duplicates in database...`
+        `🔍 [upload:${uploadId}] Checking for duplicates in database using SMART fingerprinting...`
       );
 
       const supabase = getSupabaseBrowser();
@@ -1818,12 +2058,21 @@ function HomeContent({ session }: HomeContentProps) {
           ).toFixed(2)} KB)`
         );
 
-        // Check temp_documents first
+        // ✅ SMART: Generate business-aware fingerprint
+        const fileFingerprint = generateFilenameFingerprint(
+          fileName,
+          session?.user?.id || ''
+        );
+        console.log(
+          `🔤 [upload:${uploadId}] Generated fingerprint: ${fileFingerprint}`
+        );
+
+        // Check temp_documents with EXACT filename match (not pattern)
         const { data: tempDocs, error: tempError } = await supabase
           .from('temp_documents')
           .select('pdf_path, upload_date')
           .eq('user_id', session?.user?.id)
-          .ilike('pdf_path', `%${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}%`);
+          .eq('pdf_path', fileName); // ✅ EXACT match instead of ILIKE pattern
 
         if (tempError) {
           console.error(
@@ -1837,7 +2086,7 @@ function HomeContent({ session }: HomeContentProps) {
 
         if (tempDocs && tempDocs.length > 0) {
           console.log(
-            `⚠️ [upload:${uploadId}] File ${fileName} already exists in temp_documents, skipping...`
+            `⚠️ [upload:${uploadId}] File ${fileName} already exists in temp_documents (exact match), skipping...`
           );
           skippedFiles.push({
             name: fileName,
@@ -1846,17 +2095,12 @@ function HomeContent({ session }: HomeContentProps) {
           continue;
         }
 
-        // Check single_documents (processed files)
+        // Check single_documents with EXACT filename match
         const { data: singleDocs, error: singleError } = await supabase
           .from('single_documents')
           .select('pdf_path, upload_date, original_filename')
           .eq('user_id', session?.user?.id)
-          .or(
-            `original_filename.ilike.%${fileName}%,pdf_path.ilike.%${fileName.replace(
-              /[^a-zA-Z0-9.-]/g,
-              '_'
-            )}%`
-          );
+          .eq('original_filename', fileName); // ✅ EXACT match instead of ILIKE pattern
 
         if (singleError) {
           console.error(
@@ -1870,7 +2114,7 @@ function HomeContent({ session }: HomeContentProps) {
 
         if (singleDocs && singleDocs.length > 0) {
           console.log(
-            `⚠️ [upload:${uploadId}] File ${fileName} already processed in single_documents, skipping...`
+            `⚠️ [upload:${uploadId}] File ${fileName} already processed in single_documents (exact match), skipping...`
           );
           skippedFiles.push({ name: fileName, reason: 'Already processed' });
           continue;
@@ -1883,7 +2127,7 @@ function HomeContent({ session }: HomeContentProps) {
         filesToUpload.push(file);
       }
 
-      console.log(`📊 [upload:${uploadId}] Duplicate check results:`);
+      console.log(`📊 [upload:${uploadId}] SMART duplicate check results:`);
       console.log(`   📤 Files to upload: ${filesToUpload.length}`);
       console.log(`   ⏭️ Files skipped: ${skippedFiles.length}`);
 
@@ -1895,9 +2139,15 @@ function HomeContent({ session }: HomeContentProps) {
         );
       }
 
-      return { filesToUpload, skippedFiles };
+      return {
+        filesToUpload,
+        skippedFiles,
+        duplicateCount: skippedFiles.length,
+        newFilesCount: filesToUpload.length,
+        totalFilesCount: files.length,
+      };
     },
-    [session?.user?.id]
+    [session?.user?.id, generateFilenameFingerprint]
   );
 
   // Session management for long uploads
@@ -2001,20 +2251,36 @@ function HomeContent({ session }: HomeContentProps) {
         isUploadingRef.current = true;
 
         // Check for duplicates before uploading
-        const { filesToUpload, skippedFiles } = await checkForDuplicates(
-          files,
-          uploadId
-        );
+        const {
+          filesToUpload,
+          skippedFiles,
+          duplicateCount,
+          newFilesCount,
+          totalFilesCount,
+        } = await checkForDuplicates(files, uploadId);
+
+        // 🚀 PHASE 2: Set duplicate count and skipped files for UI feedback
+        setDuplicateFilesCount(duplicateCount);
+        setSkippedFilesInfo(skippedFiles);
 
         if (filesToUpload.length === 0) {
           console.log(
             `⚠️ [upload:${uploadId}] All files are duplicates, nothing to upload`
           );
           isUploadingRef.current = false;
+          setIsPreprocessing(false); // ✅ FIX: Stop the loading state
           setPreprocessingProgress(
-            `All ${files.length} files were already uploaded. No new files to process.`
+            `🔍 All ${totalFilesCount} files are duplicates - no new files to process.`
           );
           setTimeout(() => setPreprocessingProgress(''), 5000);
+
+          // 🚀 PHASE 4: Update database state even when no files uploaded
+          console.log(
+            `🔄 [PHASE4] All duplicates - updating database state...`
+          );
+          await checkDocumentsStatus();
+
+          stopSessionKeepAlive(); // Clean up session management
           return;
         }
 
@@ -2025,8 +2291,17 @@ function HomeContent({ session }: HomeContentProps) {
           `📤 [upload:${uploadId}] Starting upload to Storage and temp_documents...`
         );
         console.log(
-          `📊 [upload:${uploadId}] Processing ${filesToUpload.length} new files (${skippedFiles.length} duplicates skipped)`
+          `📊 [upload:${uploadId}] Processing ${newFilesCount} new files (${duplicateCount} duplicates skipped)`
         );
+
+        // 🚀 PHASE 2: Enhanced progress messaging for partial duplicates
+        if (duplicateCount > 0) {
+          setPreprocessingProgress(
+            `${duplicateCount} of ${totalFilesCount} files are duplicates. Processing ${newFilesCount} new files...`
+          );
+        } else {
+          setPreprocessingProgress(`Processing ${newFilesCount} files...`);
+        }
 
         // Log all files being processed in this batch
         console.log(`🔍 [upload:${uploadId}] Files in this batch:`);
@@ -2175,6 +2450,12 @@ function HomeContent({ session }: HomeContentProps) {
           uploadedPaths
         );
 
+        // 🚀 PHASE 4: Update database state after upload completion
+        console.log(
+          `🔄 [PHASE4] Upload completed - updating database state...`
+        );
+        await checkDocumentsStatus();
+
         // Log current storage bucket contents for debugging
         try {
           const { data: allFiles, error: listError } = await supabase.storage
@@ -2271,13 +2552,19 @@ function HomeContent({ session }: HomeContentProps) {
             );
 
             // Start readiness polling
-            setTimeout(() => {
+            setTimeout(async () => {
               const successMessage =
                 result.processed > uploadedPaths.length
                   ? `Ready! ${uploadedPaths.length} files split into ${result.processed} pages for AI processing`
                   : `Ready! ${result.processed} pages prepared for AI processing`;
               setPreprocessingProgress(successMessage);
               setIsPreprocessing(false);
+
+              // 🚀 PHASE 4: Update database state after preprocessing completion
+              console.log(
+                `🔄 [PHASE4] Preprocessing completed - updating database state...`
+              );
+              await checkDocumentsStatus();
             }, 2000);
           } catch (error) {
             console.error(
@@ -2319,6 +2606,7 @@ function HomeContent({ session }: HomeContentProps) {
     [
       session?.user?.id,
       checkForDuplicates,
+      checkDocumentsStatus,
       startSessionKeepAlive,
       stopSessionKeepAlive,
     ]
@@ -2326,7 +2614,15 @@ function HomeContent({ session }: HomeContentProps) {
 
   const handleFilesAdded = useCallback(
     (newFiles: File[]) => {
-      console.log(`📁 Frontend: Adding ${newFiles.length} new files`);
+      console.log(
+        `🆕 Starting new session - adding ${newFiles.length} new files`
+      );
+
+      // 🚀 PHASE 3: Clear previous session data
+      setProcessedDocuments([]);
+      setDuplicateFilesCount(0);
+      setSkippedFilesInfo([]);
+      setPreprocessingProgress('');
 
       // 🚨 IMMEDIATELY disable the button when files are added
       setIsPreprocessing(true);
@@ -2830,6 +3126,12 @@ function HomeContent({ session }: HomeContentProps) {
         }ms`
       );
 
+      // 🚀 PHASE 4: Update database state after AI processing completion
+      console.log(
+        `🔄 [PHASE4] AI processing completed - updating database state...`
+      );
+      await checkDocumentsStatus();
+
       // ========== COMPREHENSIVE BATCH SUMMARY ==========
       console.log(`\n🎯 ===============================================`);
       console.log(`📊 BATCH PROCESSING COMPLETE - FINAL SUMMARY`);
@@ -3126,7 +3428,7 @@ function HomeContent({ session }: HomeContentProps) {
 
   // Log state changes
   console.log(
-    `📊 Frontend State: Files: ${files.length}, Processed: ${processedDocuments.length}, Completed: ${completedCount}, Errors: ${errorCount}`
+    `📊 Frontend State: Files: ${files.length}, Processed: ${processedDocuments.length}, Completed: ${completedCount}, Errors: ${errorCount}, Ready: ${readyDocumentsCount}, Temp: ${tempDocumentsCount}, Duplicates: ${duplicateFilesCount}, Progress: "${preprocessingProgress}"`
   );
 
   return (
@@ -3250,9 +3552,38 @@ function HomeContent({ session }: HomeContentProps) {
                         <h3 className='text-lg font-medium'>
                           Uploaded Documents
                         </h3>
-                        <Badge variant='outline' className='text-slate-600'>
-                          {files.length} {files.length === 1 ? 'file' : 'files'}
-                        </Badge>
+                        {/* 🚀 PHASE 5: Enhanced file count badge with workflow status */}
+                        <div className='flex gap-2'>
+                          <Badge variant='outline' className='text-slate-600'>
+                            {files.length}{' '}
+                            {files.length === 1 ? 'file' : 'files'}
+                          </Badge>
+                          {duplicateFilesCount > 0 && (
+                            <Badge
+                              variant='outline'
+                              className='text-orange-600 border-orange-200 bg-orange-50'
+                            >
+                              {duplicateFilesCount} duplicate
+                              {duplicateFilesCount > 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {tempDocumentsCount > 0 && (
+                            <Badge
+                              variant='outline'
+                              className='text-yellow-600 border-yellow-200 bg-yellow-50'
+                            >
+                              {tempDocumentsCount} preprocessing
+                            </Badge>
+                          )}
+                          {readyDocumentsCount > 0 && (
+                            <Badge
+                              variant='outline'
+                              className='text-green-600 border-green-200 bg-green-50'
+                            >
+                              {readyDocumentsCount} ready
+                            </Badge>
+                          )}
+                        </div>
                       </div>
 
                       <div className='space-y-3'>
@@ -3264,6 +3595,9 @@ function HomeContent({ session }: HomeContentProps) {
                             documentTypes[docType]?.icon || FileText;
                           const iconColor =
                             documentTypes[docType]?.color || 'text-slate-500';
+
+                          // 🚀 PHASE 2: Check if file is duplicate
+                          const fileStatus = getFileStatus(file);
 
                           return (
                             <div
@@ -3313,6 +3647,15 @@ function HomeContent({ session }: HomeContentProps) {
                                         Error
                                       </span>
                                     )}
+                                    {/* 🚀 PHASE 2: Show duplicate status */}
+                                    {fileStatus.isDuplicate && (
+                                      <Badge
+                                        variant='outline'
+                                        className='text-orange-600 border-orange-200 bg-orange-50'
+                                      >
+                                        DUPLICATE
+                                      </Badge>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -3332,22 +3675,36 @@ function HomeContent({ session }: HomeContentProps) {
                       </div>
 
                       <div className='mt-8'>
+                        {/* 🚀 PHASE 5: Enhanced status display */}
+                        {(() => {
+                          const status = getDetailedStatus();
+                          return (
+                            <div
+                              className={`p-4 rounded-lg border ${status.bgColor} ${status.borderColor} mb-4`}
+                            >
+                              <div className='flex items-center justify-between'>
+                                <div>
+                                  <p className={`font-medium ${status.color}`}>
+                                    {isPreprocessing
+                                      ? 'Pre-processing Documents'
+                                      : 'Document Status'}
+                                  </p>
+                                  <p className={`text-sm ${status.color}`}>
+                                    {status.message}
+                                  </p>
+                                </div>
+                                {isPreprocessing && (
+                                  <Loader2 className='h-5 w-5 text-orange-500 animate-spin' />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {isPreprocessing ? (
                           <div className='space-y-4'>
-                            <div className='flex items-center justify-between'>
-                              <div>
-                                <p className='font-medium text-orange-800'>
-                                  Pre-processing Documents
-                                </p>
-                                <p className='text-sm text-orange-600'>
-                                  {preprocessingProgress ||
-                                    'Splitting documents into individual pages...'}
-                                </p>
-                              </div>
-                              <Loader2 className='h-5 w-5 text-orange-500 animate-spin' />
-                            </div>
-                            <div className='bg-orange-50 border border-orange-200 rounded-lg p-3'>
-                              <p className='text-sm text-orange-700'>
+                            <div className='bg-blue-50 border border-blue-200 rounded-lg p-3'>
+                              <p className='text-sm text-blue-700'>
                                 🔄 Documents are being prepared for AI
                                 processing. This includes splitting multi-page
                                 PDFs into individual pages.
@@ -3385,7 +3742,9 @@ function HomeContent({ session }: HomeContentProps) {
                             <Button
                               type='button'
                               onClick={processFiles}
-                              disabled={files.length === 0 || isPreprocessing}
+                              disabled={
+                                readyDocumentsCount === 0 || isPreprocessing
+                              }
                               className='w-full py-6 text-lg gap-2'
                             >
                               {isPreprocessing ? (
@@ -3400,6 +3759,25 @@ function HomeContent({ session }: HomeContentProps) {
                                 </>
                               )}
                             </Button>
+
+                            {/* 🚀 PHASE 5: Enhanced button status explanation */}
+                            {!isPreprocessing && !isProcessing && (
+                              <div className='mt-2 text-center'>
+                                {readyDocumentsCount === 0 ? (
+                                  <p className='text-sm text-slate-500'>
+                                    {files.length > 0
+                                      ? 'No documents ready for AI processing'
+                                      : 'Upload documents to begin processing'}
+                                  </p>
+                                ) : (
+                                  <p className='text-sm text-green-600'>
+                                    ✅ Ready to process {readyDocumentsCount}{' '}
+                                    page{readyDocumentsCount > 1 ? 's' : ''}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
                             {isPreprocessing && (
                               <p className='text-sm text-center text-orange-600 mt-2'>
                                 Please wait while documents are being
