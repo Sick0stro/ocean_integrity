@@ -117,9 +117,11 @@ export async function POST(request: Request) {
     }
 
     // Fetch documents from temp_documents (optionally scoped)
+    // Only process documents that are ready (uploaded or NULL for backward compatibility)
     let query = supabase
       .from('temp_documents')
       .select('*')
+      .in('status', ['uploaded', null])
       .order('upload_date', { ascending: true });
 
     // Filter by user_id if provided (for client-side requests)
@@ -270,6 +272,22 @@ export async function POST(request: Request) {
             console.log(
               `🔄 [preprocess:${requestId}] [${docId}] Processing document: ${doc.pdf_path}`
             );
+
+            // Mark document as processing to prevent double-processing
+            const { error: statusUpdateError } = await supabase
+              .from('temp_documents')
+              .update({
+                status: 'processing',
+                last_attempt: new Date().toISOString(),
+              })
+              .eq('id', doc.id);
+
+            if (statusUpdateError) {
+              console.warn(
+                `⚠️ [preprocess:${requestId}] [${docId}] Failed to update status to processing:`,
+                statusUpdateError
+              );
+            }
 
             // Download PDF from storage
             console.log(
@@ -665,6 +683,19 @@ export async function POST(request: Request) {
               `📁 [preprocess:${requestId}] [${docId}] Retaining temp_documents entry and original file for 24h cleanup`
             );
 
+            // Mark document as processed before deletion
+            const { error: processedUpdateError } = await supabase
+              .from('temp_documents')
+              .update({ status: 'processed' })
+              .eq('id', doc.id);
+
+            if (processedUpdateError) {
+              console.warn(
+                `⚠️ [preprocess:${requestId}] [${docId}] Failed to update status to processed:`,
+                processedUpdateError
+              );
+            }
+
             results.processed++;
             console.log(
               `✅ [preprocess:${requestId}] [${docId}] Document processing completed successfully`
@@ -687,6 +718,23 @@ export async function POST(request: Request) {
                 },
               }
             );
+            // Mark document as failed instead of leaving orphaned
+            const { error: failedUpdateError } = await supabase
+              .from('temp_documents')
+              .update({
+                status: 'failed',
+                error_message:
+                  error instanceof Error ? error.message : String(error),
+              })
+              .eq('id', doc.id);
+
+            if (failedUpdateError) {
+              console.warn(
+                `⚠️ [preprocess:${requestId}] [${docId}] Failed to update status to failed:`,
+                failedUpdateError
+              );
+            }
+
             results.errors++;
             results.details.push({
               pdf_path: doc.pdf_path,

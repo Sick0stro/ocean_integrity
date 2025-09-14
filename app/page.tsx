@@ -198,6 +198,109 @@ function HomeContent({ session }: HomeContentProps) {
     { name: string; reason: string }[]
   >([]);
 
+  // 🚀 NEW: Failed documents tracking
+  const [failedPreprocessingDocs, setFailedPreprocessingDocs] = useState<
+    Array<{
+      id: string;
+      pdf_path: string;
+      error_message: string;
+      last_attempt: string;
+    }>
+  >([]);
+  const [failedAIDocs, setFailedAIDocs] = useState<
+    Array<{
+      id: string;
+      pdf_path: string;
+      original_filename: string;
+      error_message: string;
+      failed_at: string;
+    }>
+  >([]);
+
+  // 🚀 NEW: Fetch failed documents
+  const fetchFailedDocuments = useCallback(async () => {
+    if (!session?.user?.id) return;
+
+    const supabase = getSupabaseBrowser();
+
+    // Fetch failed preprocessing documents
+    const { data: failedPreprocessing } = await supabase
+      .from('temp_documents')
+      .select('id, pdf_path, error_message, last_attempt')
+      .eq('user_id', session.user.id)
+      .eq('status', 'failed')
+      .order('last_attempt', { ascending: false });
+
+    // Fetch failed AI processing documents
+    const { data: failedAI } = await supabase
+      .from('single_documents')
+      .select('id, pdf_path, original_filename, error_message, failed_at')
+      .eq('user_id', session.user.id)
+      .eq('status', 'failed')
+      .order('failed_at', { ascending: false });
+
+    setFailedPreprocessingDocs(failedPreprocessing || []);
+    setFailedAIDocs(failedAI || []);
+  }, [session?.user?.id]);
+
+  // 🚀 NEW: Retry failed preprocessing
+  const retryFailedPreprocessing = useCallback(async () => {
+    if (failedPreprocessingDocs.length === 0) return;
+
+    const supabase = getSupabaseBrowser();
+
+    // Reset status to 'uploaded' for retry
+    const { error } = await supabase
+      .from('temp_documents')
+      .update({ status: 'uploaded', error_message: null })
+      .in(
+        'id',
+        failedPreprocessingDocs.map((doc) => doc.id)
+      );
+
+    if (!error) {
+      console.log(
+        `🔄 Reset ${failedPreprocessingDocs.length} failed preprocessing documents for retry`
+      );
+      await fetchFailedDocuments(); // Refresh the failed docs list
+
+      // Trigger preprocessing
+      try {
+        const response = await fetch('/api/cron/preprocess', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: session?.user?.id }),
+        });
+        console.log('🔄 Triggered preprocessing retry', response.status);
+      } catch (error) {
+        console.error('Failed to trigger preprocessing retry:', error);
+      }
+    }
+  }, [failedPreprocessingDocs, session?.user?.id, fetchFailedDocuments]);
+
+  // 🚀 NEW: Retry failed AI processing
+  const retryFailedAI = useCallback(async () => {
+    if (failedAIDocs.length === 0) return;
+
+    const supabase = getSupabaseBrowser();
+
+    // Reset status to 'uploaded' for retry
+    const { error } = await supabase
+      .from('single_documents')
+      .update({ status: 'uploaded', error_message: null, failed_at: null })
+      .in(
+        'id',
+        failedAIDocs.map((doc) => doc.id)
+      );
+
+    if (!error) {
+      console.log(
+        `🔄 Reset ${failedAIDocs.length} failed AI processing documents for retry`
+      );
+      await fetchFailedDocuments(); // Refresh the failed docs list
+    }
+  }, [failedAIDocs, fetchFailedDocuments]);
+
   // 🚀 PHASE 2: Helper function to check if file is duplicate
   const getFileStatus = useCallback(
     (file: File) => {
@@ -1233,11 +1336,12 @@ function HomeContent({ session }: HomeContentProps) {
 
     // Load immediately on component mount
     loadProcessedDocuments();
+    fetchFailedDocuments(); // Also load failed documents
 
     return () => {
       cancelled = true;
     };
-  }, [session.user.id]); // Only depend on user ID, load on mount
+  }, [session.user.id, fetchFailedDocuments]); // Only depend on user ID, load on mount
 
   // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
   useEffect(() => {
@@ -2717,25 +2821,20 @@ function HomeContent({ session }: HomeContentProps) {
       `🔍 [process:${processId}] Fetching ready documents from single_documents...`
     );
 
-    // Only fetch documents that were uploaded in the last 5 minutes to avoid processing old files
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-
-    // Fetch ready documents for AI processing (only recent uploads)
+    // Fetch ready documents for AI processing (all uploaded documents, no time restriction)
     const { data: singleDocs, error: fetchError } = await supabase
       .from('single_documents')
       .select('*')
       .eq('status', 'uploaded')
       .eq('user_id', session?.user?.id) // Filter by current user
-      .gte('upload_date', fiveMinutesAgo) // Only recent uploads
       .order('upload_date', { ascending: true });
 
     console.log(
       `📊 [process:${processId}] Found ${
         singleDocs?.length || 0
-      } documents ready for AI processing (uploaded after ${fiveMinutesAgo})`,
+      } documents ready for AI processing (no time restriction)`,
       {
         error: fetchError,
-        timeFilter: fiveMinutesAgo,
         documents: singleDocs?.map((d) => ({
           pdf_path: d.pdf_path,
           original_filename: d.original_filename,
@@ -2859,7 +2958,7 @@ function HomeContent({ session }: HomeContentProps) {
 
         setCurrentProcessingIndex(i);
 
-        // Update status to processing
+        // Update status to processing in both frontend and database
         console.log(
           `🔄 Frontend: Setting status to 'processing' for document ${
             i + 1
@@ -2870,6 +2969,23 @@ function HomeContent({ session }: HomeContentProps) {
             doc.fileName === fileName ? { ...doc, status: 'processing' } : doc
           )
         );
+
+        // Update database status to 'processing'
+        const { error: processingUpdateError } = await supabase
+          .from('single_documents')
+          .update({ status: 'processing' })
+          .eq('id', currentDoc.id);
+
+        if (processingUpdateError) {
+          console.error(
+            `❌ Failed to update single_documents status to processing:`,
+            processingUpdateError
+          );
+        } else {
+          console.log(
+            `✅ Updated single_documents status to 'processing' for ${fileName}`
+          );
+        }
 
         const fileStartTime = Date.now();
 
@@ -3070,6 +3186,27 @@ function HomeContent({ session }: HomeContentProps) {
             // 🎯 INCREMENT LOCAL ERROR COUNT
             localErrorCount++;
 
+            // Update database status to 'failed'
+            const { error: failedUpdateError } = await supabase
+              .from('single_documents')
+              .update({
+                status: 'failed',
+                error_message: result.error || 'Processing failed',
+                failed_at: new Date().toISOString(),
+              })
+              .eq('id', currentDoc.id);
+
+            if (failedUpdateError) {
+              console.error(
+                `❌ Failed to update single_documents status to failed:`,
+                failedUpdateError
+              );
+            } else {
+              console.log(
+                `✅ Updated single_documents status to 'failed' for ${fileName}`
+              );
+            }
+
             // Update with error
             setProcessedDocuments((prev) =>
               prev.map((doc) =>
@@ -3092,6 +3229,30 @@ function HomeContent({ session }: HomeContentProps) {
 
           // 🎯 INCREMENT LOCAL ERROR COUNT
           localErrorCount++;
+
+          // Update database status to 'failed' for network error
+          const { error: networkFailedUpdateError } = await supabase
+            .from('single_documents')
+            .update({
+              status: 'failed',
+              error_message:
+                networkError instanceof Error
+                  ? networkError.message
+                  : 'Network error',
+              failed_at: new Date().toISOString(),
+            })
+            .eq('id', currentDoc.id);
+
+          if (networkFailedUpdateError) {
+            console.error(
+              `❌ Failed to update single_documents status to failed (network error):`,
+              networkFailedUpdateError
+            );
+          } else {
+            console.log(
+              `✅ Updated single_documents status to 'failed' for ${fileName} (network error)`
+            );
+          }
 
           // Update with network error
           setProcessedDocuments((prev) =>
@@ -3276,6 +3437,9 @@ function HomeContent({ session }: HomeContentProps) {
         );
         triggerDocumentGrouping(localCompletedCount);
       }
+
+      // 🚀 REFRESH FAILED DOCUMENTS LIST AFTER PROCESSING
+      fetchFailedDocuments();
 
       // Auto-redirect to Verify & Submit tab after successful processing
       if (localCompletedCount > 0) {
@@ -3849,6 +4013,171 @@ function HomeContent({ session }: HomeContentProps) {
                   )}
                 </CardContent>
               </Card>
+
+              {/* 🚀 NEW: Failed Preprocessing Section */}
+              {failedPreprocessingDocs.length > 0 && (
+                <Card className='shadow-md border-red-200 bg-red-50'>
+                  <CardContent className='p-6'>
+                    <div className='mb-4'>
+                      <h3 className='text-lg font-semibold text-red-800 flex items-center gap-2'>
+                        <AlertCircle className='h-5 w-5' />
+                        Failed Preprocessing ({
+                          failedPreprocessingDocs.length
+                        }{' '}
+                        documents)
+                      </h3>
+                      <p className='text-red-600 text-sm mt-1'>
+                        These documents failed during preprocessing and need
+                        attention
+                      </p>
+                    </div>
+
+                    <div className='space-y-2 mb-4 max-h-40 overflow-y-auto'>
+                      {failedPreprocessingDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className='flex items-center justify-between p-3 bg-white border border-red-200 rounded-lg'
+                        >
+                          <div className='flex items-center gap-3'>
+                            <AlertCircle className='h-4 w-4 text-red-500' />
+                            <div>
+                              <p className='font-medium text-slate-800 text-sm'>
+                                {doc.pdf_path.split('/').pop() ||
+                                  'Unknown file'}
+                              </p>
+                              <p className='text-xs text-red-600'>
+                                {doc.error_message || 'Processing failed'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className='text-xs text-slate-500'>
+                            {doc.last_attempt
+                              ? new Date(doc.last_attempt).toLocaleString()
+                              : 'Unknown'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className='flex gap-2 flex-wrap'>
+                      <Button
+                        onClick={retryFailedPreprocessing}
+                        size='sm'
+                        className='bg-red-600 hover:bg-red-700'
+                      >
+                        🔄 Retry Failed ({failedPreprocessingDocs.length})
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const fileList = failedPreprocessingDocs
+                            .map(
+                              (doc) =>
+                                `${doc.pdf_path.split('/').pop()}: ${
+                                  doc.error_message
+                                }`
+                            )
+                            .join('\n');
+                          const blob = new Blob([fileList], {
+                            type: 'text/plain',
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = 'failed-preprocessing-files.txt';
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        variant='outline'
+                        size='sm'
+                      >
+                        📋 Download List
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 🚀 NEW: Failed AI Processing Section */}
+              {failedAIDocs.length > 0 && (
+                <Card className='shadow-md border-orange-200 bg-orange-50'>
+                  <CardContent className='p-6'>
+                    <div className='mb-4'>
+                      <h3 className='text-lg font-semibold text-orange-800 flex items-center gap-2'>
+                        <AlertCircle className='h-5 w-5' />
+                        Failed AI Processing ({failedAIDocs.length} documents)
+                      </h3>
+                      <p className='text-orange-600 text-sm mt-1'>
+                        These documents failed during AI processing and can be
+                        retried
+                      </p>
+                    </div>
+
+                    <div className='space-y-2 mb-4 max-h-40 overflow-y-auto'>
+                      {failedAIDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className='flex items-center justify-between p-3 bg-white border border-orange-200 rounded-lg'
+                        >
+                          <div className='flex items-center gap-3'>
+                            <AlertCircle className='h-4 w-4 text-orange-500' />
+                            <div>
+                              <p className='font-medium text-slate-800 text-sm'>
+                                {doc.original_filename ||
+                                  doc.pdf_path.split('/').pop() ||
+                                  'Unknown file'}
+                              </p>
+                              <p className='text-xs text-orange-600'>
+                                {doc.error_message || 'AI processing failed'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className='text-xs text-slate-500'>
+                            {doc.failed_at
+                              ? new Date(doc.failed_at).toLocaleString()
+                              : 'Unknown'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className='flex gap-2 flex-wrap'>
+                      <Button
+                        onClick={retryFailedAI}
+                        size='sm'
+                        className='bg-orange-600 hover:bg-orange-700'
+                      >
+                        🔄 Retry AI Processing ({failedAIDocs.length})
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const fileList = failedAIDocs
+                            .map(
+                              (doc) =>
+                                `${
+                                  doc.original_filename ||
+                                  doc.pdf_path.split('/').pop()
+                                }: ${doc.error_message}`
+                            )
+                            .join('\n');
+                          const blob = new Blob([fileList], {
+                            type: 'text/plain',
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = 'failed-ai-processing-files.txt';
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        variant='outline'
+                        size='sm'
+                      >
+                        📋 Download List
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
                 <DocumentTypeCard

@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 
-import { FileText, CheckCircle, Scale, Calendar } from 'lucide-react';
+import { FileText, FolderOpen, Scale, Calendar } from 'lucide-react';
 import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import { Session } from '@supabase/supabase-js';
 
 interface DashboardStats {
   totalTons: number;
   processedCount: number;
-  verifiedCount: number;
+  groupsCount: number;
   loading: boolean;
 }
 
@@ -26,7 +26,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
   const [stats, setStats] = useState<DashboardStats>({
     totalTons: 0,
     processedCount: 0,
-    verifiedCount: 0,
+    groupsCount: 0,
     loading: true,
   });
 
@@ -60,12 +60,11 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .gte('created_at', dateRange.from + 'T00:00:00.000Z')
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
-      // Blue (Verified Credits) - from document_groups
-      const { data: verifiedGroupsData, error: groupsError } = await supabase
+      // Blue (Groups) - from document_groups (all groups, not just verified)
+      const { data: groupsData, error: groupsError } = await supabase
         .from('document_groups')
         .select('id, created_at')
         .eq('user_id', session.user.id)
-        .eq('human_verified', true)
         .gte('created_at', dateRange.from + 'T00:00:00.000Z')
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
@@ -82,7 +81,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
       }
       if (groupsError) {
         console.warn(
-          '⚠️ Dashboard: Could not fetch verified groups - using fallback values'
+          '⚠️ Dashboard: Could not fetch groups - using fallback values'
         );
       }
 
@@ -92,13 +91,13 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
           (sum, doc) => sum + (Number(doc.tonnage_tons) || 0),
           0
         ) || 0;
-      const verifiedCount = verifiedGroupsData?.length || 0;
+      const groupsCount = groupsData?.length || 0;
       const processedCount = parsedData?.length || 0;
 
       setStats({
         totalTons: Math.round(totalTons * 100) / 100, // Round to 2 decimal places
         processedCount,
-        verifiedCount,
+        groupsCount,
         loading: false,
       });
     } catch (error) {
@@ -129,7 +128,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
     <>
       {/* Navbar Stats */}
       <div className='flex items-center gap-4'>
-        {/* Stats Boxes - Left to Right: Total Tons, Processed Docs, Verified Credits */}
+        {/* Stats Boxes - Left to Right: Total Tons, Processed Docs, Groups */}
         <div className='flex items-center gap-3'>
           {/* Orange - Total Tons */}
           <div className='flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 rounded-md border border-orange-200'>
@@ -147,11 +146,11 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
             </span>
           </div>
 
-          {/* Blue - Verified Credit */}
+          {/* Blue - Groups */}
           <div className='flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 rounded-md border border-blue-200'>
-            <CheckCircle className='h-4 w-4 text-blue-600' />
+            <FolderOpen className='h-4 w-4 text-blue-600' />
             <span className='font-semibold text-blue-700'>
-              Verified Credit: {stats.verifiedCount}
+              Groups: {stats.groupsCount}
             </span>
           </div>
         </div>
