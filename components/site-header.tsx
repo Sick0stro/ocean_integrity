@@ -15,7 +15,9 @@ export function SiteHeader() {
     // Get initial session
     const getSession = async () => {
       try {
-        const { data: { session } } = await getSupabaseBrowser().auth.getSession();
+        const {
+          data: { session },
+        } = await getSupabaseBrowser().auth.getSession();
         setSession(session);
       } catch (error) {
         console.error('Error getting session:', error);
@@ -27,12 +29,12 @@ export function SiteHeader() {
     getSession();
 
     // Subscribe to auth state changes
-    const { data: { subscription } } = getSupabaseBrowser().auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setIsLoading(false);
-      }
-    );
+    const {
+      data: { subscription },
+    } = getSupabaseBrowser().auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setIsLoading(false);
+    });
 
     return () => {
       subscription?.unsubscribe();
@@ -48,7 +50,7 @@ export function SiteHeader() {
         </div>
 
         {/* Right-aligned user info */}
-        <div className='flex items-center gap-4 justify-end'>
+        <div className='flex items-center gap-3'>
           {isLoading ? (
             <Loader2 className='h-4 w-4 animate-spin' />
           ) : session ? (
