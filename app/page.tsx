@@ -49,6 +49,7 @@ import {
   UploadCloud,
   ChevronDown,
   ChevronUp,
+  FolderOpen,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -216,6 +217,60 @@ function HomeContent({ session }: HomeContentProps) {
       failed_at: string;
     }>
   >([]);
+
+  // 🚀 NEW: Group statistics
+  const [groupStats, setGroupStats] = useState({
+    totalGroups: 0,
+    completeGroups: 0,
+    incompleteGroups: 0,
+    ungroupedDocs: 0,
+  });
+
+  // 🚀 NEW: Calculate group statistics
+  const calculateGroupStats = useCallback(async () => {
+    if (!session?.user?.id) return;
+
+    const supabase = getSupabaseBrowser();
+
+    try {
+      // Get all groups for the user
+      const { data: groupsData } = await supabase
+        .from('document_groups')
+        .select('id, is_complete, is_human_verified, present_document_ids')
+        .eq('user_id', session.user.id);
+
+      // Get all parsed documents for the user
+      const { data: parsedData } = await supabase
+        .from('parsed_documents')
+        .select('id')
+        .eq('user_id', session.user.id);
+
+      const totalGroups = groupsData?.length || 0;
+      const completeGroups =
+        groupsData?.filter((g) => g.is_complete || g.is_human_verified)
+          .length || 0;
+      const incompleteGroups = totalGroups - completeGroups;
+
+      // Calculate ungrouped documents
+      const groupedDocIds = new Set();
+      groupsData?.forEach((group) => {
+        (group.present_document_ids || []).forEach((id: string) =>
+          groupedDocIds.add(id)
+        );
+      });
+
+      const ungroupedDocs = (parsedData?.length || 0) - groupedDocIds.size;
+
+      setGroupStats({
+        totalGroups,
+        completeGroups,
+        incompleteGroups,
+        ungroupedDocs,
+      });
+    } catch (error) {
+      console.error('Failed to calculate group stats:', error);
+    }
+  }, [session?.user?.id]);
 
   // 🚀 NEW: Fetch failed documents
   const fetchFailedDocuments = useCallback(async () => {
@@ -1337,11 +1392,12 @@ function HomeContent({ session }: HomeContentProps) {
     // Load immediately on component mount
     loadProcessedDocuments();
     fetchFailedDocuments(); // Also load failed documents
+    calculateGroupStats(); // Also load group statistics
 
     return () => {
       cancelled = true;
     };
-  }, [session.user.id, fetchFailedDocuments]); // Only depend on user ID, load on mount
+  }, [session.user.id, fetchFailedDocuments, calculateGroupStats]); // Only depend on user ID, load on mount
 
   // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
   useEffect(() => {
@@ -1609,6 +1665,7 @@ function HomeContent({ session }: HomeContentProps) {
         if (!cancelled) {
           setIsGroupsLoading(false);
           console.timeEnd('⏱️ [PERFORMANCE] Groups data loading');
+          calculateGroupStats(); // Update group statistics after loading
         }
       }
     };
@@ -1687,6 +1744,7 @@ function HomeContent({ session }: HomeContentProps) {
     session.user.id,
     session.user.email,
     hasInitializedGroups,
+    calculateGroupStats,
   ]); // 🚀 Added required dependencies without groups
 
   // 🚀 NEW: Lazy load verified recycling docs only when Blockchain tab is active
@@ -4213,6 +4271,41 @@ function HomeContent({ session }: HomeContentProps) {
                           ? 'Groups are built by backend service. Complete groups can be submitted, incomplete groups show missing documents.'
                           : 'Loading document groups...'}
                       </CardDescription>
+
+                      {/* 🚀 NEW: Group Statistics */}
+                      {isDocumentsLoaded && (
+                        <div className='flex items-center gap-4 mt-3'>
+                          <div className='flex items-center gap-2 px-3 py-1.5 bg-blue-100 rounded-md border border-blue-200'>
+                            <FolderOpen className='h-4 w-4 text-blue-600' />
+                            <span className='font-semibold text-blue-700 text-sm'>
+                              📁 Groups: {groupStats.totalGroups}
+                            </span>
+                          </div>
+
+                          <div className='flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-md border border-green-200'>
+                            <CheckCircle2 className='h-4 w-4 text-green-600' />
+                            <span className='font-semibold text-green-700 text-sm'>
+                              ✅ Complete: {groupStats.completeGroups}
+                            </span>
+                          </div>
+
+                          <div className='flex items-center gap-2 px-3 py-1.5 bg-red-100 rounded-md border border-red-200'>
+                            <AlertCircle className='h-4 w-4 text-red-600' />
+                            <span className='font-semibold text-red-700 text-sm'>
+                              ❌ Incomplete: {groupStats.incompleteGroups}
+                            </span>
+                          </div>
+
+                          {groupStats.ungroupedDocs > 0 && (
+                            <div className='flex items-center gap-2 px-3 py-1.5 bg-orange-100 rounded-md border border-orange-200'>
+                              <FileText className='h-4 w-4 text-orange-600' />
+                              <span className='font-semibold text-orange-700 text-sm'>
+                                📄 Ungrouped: {groupStats.ungroupedDocs}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className='flex items-center gap-2'>
                       <VerifiedCsvDownload session={session} />
