@@ -77,6 +77,7 @@ import { GalleryVerticalEnd } from 'lucide-react';
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
 import { VerifiedCsvDownload } from '@/components/verified-csv-download';
+import { DataManagementTable } from '@/components/data-management-table';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
   ssr: false,
@@ -159,7 +160,7 @@ function HomeContent({ session }: HomeContentProps) {
 
   // UI state
   const [activeTab, setActiveTab] = useState<
-    'upload' | 'results' | 'groups' | 'submit' | 'blockchain'
+    'upload' | 'results' | 'groups' | 'submit' | 'blockchain' | 'data'
   >('upload');
 
   // Document grouping state
@@ -3727,13 +3728,19 @@ function HomeContent({ session }: HomeContentProps) {
             value={activeTab}
             onValueChange={(v: string) =>
               setActiveTab(
-                v as 'upload' | 'results' | 'groups' | 'submit' | 'blockchain'
+                v as
+                  | 'upload'
+                  | 'results'
+                  | 'groups'
+                  | 'submit'
+                  | 'blockchain'
+                  | 'data'
               )
             }
             className='space-y-6'
           >
             <div className='flex justify-center'>
-              <TabsList className='grid w-full grid-cols-3'>
+              <TabsList className='grid w-full grid-cols-4'>
                 <TabsTrigger value='upload' className='text-base py-1'>
                   Upload & Process
                 </TabsTrigger>
@@ -3744,6 +3751,10 @@ function HomeContent({ session }: HomeContentProps) {
 
                 <TabsTrigger value='blockchain' className='text-base py-1'>
                   Blockchain
+                </TabsTrigger>
+
+                <TabsTrigger value='data' className='text-base py-1'>
+                  Data Management
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -5312,6 +5323,11 @@ function HomeContent({ session }: HomeContentProps) {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* ===== NEW: Data Management Tab ===== */}
+            <TabsContent value='data' className='space-y-6'>
+              <DataManagementTable session={session} />
             </TabsContent>
           </Tabs>
         </div>
