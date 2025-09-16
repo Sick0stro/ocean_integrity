@@ -18,7 +18,7 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from './ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -26,7 +26,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from './ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +36,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from './ui/alert-dialog';
 import {
   Trash2,
   RotateCcw,
@@ -59,10 +59,11 @@ interface DataRecord {
   original_filename?: string;
   file_size?: number;
   document_type?: string;
-  raw_json?: any;
+  raw_json?: Record<string, unknown>;
   anchor_key?: string;
   invoice_number?: string;
-  [key: string]: any;
+  source_table?: string;
+  [key: string]: unknown;
 }
 
 interface PaginationInfo {
@@ -79,6 +80,12 @@ interface DataManagementTableProps {
 }
 
 const TABLE_CONFIGS = {
+  unprocessed_documents: {
+    name: 'Unprocessed Documents',
+    description: 'Documents stuck in processing - ready for cleanup or retry',
+    columns: ['pdf_path', 'upload_date', 'status', 'source_table'],
+    displayColumns: ['File Path', 'Upload Date', 'Status', 'Source Table'],
+  },
   temp_documents: {
     name: 'Temp Documents',
     description: 'Documents awaiting preprocessing',
@@ -148,8 +155,9 @@ const TABLE_CONFIGS = {
 };
 
 export function DataManagementTable({ session }: DataManagementTableProps) {
-  const [selectedTable, setSelectedTable] =
-    useState<keyof typeof TABLE_CONFIGS>('temp_documents');
+  const [selectedTable, setSelectedTable] = useState<
+    keyof typeof TABLE_CONFIGS
+  >('unprocessed_documents');
   const [data, setData] = useState<DataRecord[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
@@ -192,7 +200,7 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
   useEffect(() => {
     fetchData(1);
     setSelectedRecords([]);
-  }, [selectedTable]);
+  }, [selectedTable, fetchData]);
 
   const handleDelete = async (recordId: string) => {
     try {
@@ -243,7 +251,11 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
 
   const handleSelectAll = (checked: boolean) => {
     // Only allow selection for tables where deletion is permitted
-    if (!['temp_documents', 'single_documents'].includes(selectedTable)) {
+    if (
+      !['temp_documents', 'single_documents', 'unprocessed_documents'].includes(
+        selectedTable
+      )
+    ) {
       return; // Do nothing for protected tables
     }
 
@@ -282,15 +294,25 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
     URL.revokeObjectURL(url);
   };
 
-  const formatValue = (value: any, column: string) => {
+  const formatValue = (value: unknown, column: string) => {
     if (value === null || value === undefined) return '-';
 
     if (column.includes('date') || column.includes('_at')) {
-      return new Date(value).toLocaleString();
+      if (
+        typeof value === 'string' ||
+        typeof value === 'number' ||
+        value instanceof Date
+      ) {
+        return new Date(value).toLocaleString();
+      }
+      return String(value);
     }
 
     if (column === 'file_size') {
-      return `${(value / 1024).toFixed(1)} KB`;
+      if (typeof value === 'number') {
+        return `${(value / 1024).toFixed(1)} KB`;
+      }
+      return String(value);
     }
 
     if (column === 'status') {
@@ -300,9 +322,12 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
         processed: 'bg-green-100 text-green-800',
         failed: 'bg-red-100 text-red-800',
       };
+      const statusValue = String(value);
       return (
-        <Badge className={statusColors[value] || 'bg-gray-100 text-gray-800'}>
-          {value}
+        <Badge
+          className={statusColors[statusValue] || 'bg-gray-100 text-gray-800'}
+        >
+          {statusValue}
         </Badge>
       );
     }
@@ -315,9 +340,18 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
   };
 
   const canDeleteRecord = (record: DataRecord) => {
-    // Only allow deletion from temp_documents and single_documents tables
-    if (!['temp_documents', 'single_documents'].includes(selectedTable)) {
+    // Only allow deletion from temp_documents, single_documents, and unprocessed_documents tables
+    if (
+      !['temp_documents', 'single_documents', 'unprocessed_documents'].includes(
+        selectedTable
+      )
+    ) {
       return false;
+    }
+
+    // For unprocessed_documents, all records can be deleted (they're by definition unprocessed)
+    if (selectedTable === 'unprocessed_documents') {
+      return true;
     }
 
     // For temp_documents, only allow deletion of unprocessed statuses
@@ -348,7 +382,12 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
       {/* Header Controls */}
       <div className='flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between'>
         <div className='flex flex-col sm:flex-row gap-4 items-start sm:items-center'>
-          <Select value={selectedTable} onValueChange={setSelectedTable}>
+          <Select
+            value={selectedTable}
+            onValueChange={(value) =>
+              setSelectedTable(value as keyof typeof TABLE_CONFIGS)
+            }
+          >
             <SelectTrigger className='w-48'>
               <SelectValue placeholder='Select table' />
             </SelectTrigger>
@@ -398,7 +437,11 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
 
       {/* Bulk Actions */}
       {selectedRecords.length > 0 &&
-        ['temp_documents', 'single_documents'].includes(selectedTable) && (
+        [
+          'temp_documents',
+          'single_documents',
+          'unprocessed_documents',
+        ].includes(selectedTable) && (
           <Card>
             <CardContent className='py-4'>
               <div className='flex items-center justify-between'>
@@ -441,9 +484,11 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
                   <TableHeader>
                     <TableRow>
                       <TableHead className='w-12'>
-                        {['temp_documents', 'single_documents'].includes(
-                          selectedTable
-                        ) ? (
+                        {[
+                          'temp_documents',
+                          'single_documents',
+                          'unprocessed_documents',
+                        ].includes(selectedTable) ? (
                           <Checkbox
                             checked={
                               selectedRecords.length ===
@@ -511,7 +556,8 @@ export function DataManagementTable({ session }: DataManagementTableProps) {
                           <TableCell>
                             <div className='flex gap-1'>
                               {(selectedTable === 'temp_documents' ||
-                                selectedTable === 'single_documents') &&
+                                selectedTable === 'single_documents' ||
+                                selectedTable === 'unprocessed_documents') &&
                                 record.status === 'failed' && (
                                   <Button
                                     variant='outline'

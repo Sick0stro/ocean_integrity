@@ -20,6 +20,7 @@ export async function GET(request: Request) {
       'parsed_documents',
       'recycling_docs',
       'document_groups',
+      'unprocessed_documents',
     ].includes(table)
   ) {
     return NextResponse.json(
@@ -32,44 +33,110 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin();
     const offset = (page - 1) * limit;
 
-    // Build the query based on table type with correct column ordering
-    let query = supabase.from(table).select('*').eq('user_id', userId);
+    let data, error, totalCount;
 
-    // Add specific ordering for different tables
-    if (table === 'temp_documents') {
-      query = query.order('upload_date', { ascending: false });
-    } else if (table === 'single_documents') {
-      query = query.order('upload_date', { ascending: false });
-    } else if (table === 'parsed_documents') {
-      query = query.order('created_at', { ascending: false });
-    } else if (table === 'recycling_docs') {
-      query = query.order('updated_at', { ascending: false });
-    } else if (table === 'document_groups') {
-      query = query.order('last_processed_at', { ascending: false });
+    // Handle special case for unprocessed_documents (virtual table)
+    if (table === 'unprocessed_documents') {
+      const unprocessedDocs = [];
+
+      // Get unprocessed documents from single_documents (that haven't been AI processed)
+      const { data: singleDocs, error: singleError } = await supabase
+        .from('single_documents')
+        .select('id, user_id, pdf_path, upload_date, status')
+        .eq('user_id', userId)
+        .order('upload_date', { ascending: false });
+
+      if (singleError) {
+        console.error('Error fetching single_documents:', singleError);
+        return NextResponse.json(
+          { error: singleError.message },
+          { status: 500 }
+        );
+      }
+
+      // Filter out documents that exist in parsed_documents
+      for (const doc of singleDocs || []) {
+        const { data: parsedDoc } = await supabase
+          .from('parsed_documents')
+          .select('id')
+          .ilike('file_url', `%${doc.pdf_path}`)
+          .eq('user_id', userId)
+          .limit(1);
+
+        if (!parsedDoc || parsedDoc.length === 0) {
+          unprocessedDocs.push({
+            ...doc,
+            source_table: 'single_documents',
+          });
+        }
+      }
+
+      // Also get failed documents from temp_documents (that failed preprocessing)
+      const { data: tempDocs, error: tempError } = await supabase
+        .from('temp_documents')
+        .select('id, user_id, pdf_path, upload_date, status, error_message')
+        .eq('user_id', userId)
+        .in('status', ['failed', 'uploaded']) // Include both failed and uploaded temp docs
+        .order('upload_date', { ascending: false });
+
+      if (!tempError && tempDocs) {
+        for (const doc of tempDocs) {
+          unprocessedDocs.push({
+            ...doc,
+            source_table: 'temp_documents',
+          });
+        }
+      }
+
+      // Sort all unprocessed documents by upload_date
+      unprocessedDocs.sort(
+        (a, b) =>
+          new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime()
+      );
+
+      // Apply pagination to filtered results
+      totalCount = unprocessedDocs.length;
+      data = unprocessedDocs.slice(offset, offset + limit);
+      error = null;
     } else {
-      // Fallback ordering for any other tables
-      query = query.order('id', { ascending: false });
+      // Build the query for regular tables
+      let query = supabase.from(table).select('*').eq('user_id', userId);
+
+      // Add specific ordering for different tables
+      if (table === 'temp_documents') {
+        query = query.order('upload_date', { ascending: false });
+      } else if (table === 'single_documents') {
+        query = query.order('upload_date', { ascending: false });
+      } else if (table === 'parsed_documents') {
+        query = query.order('created_at', { ascending: false });
+      } else if (table === 'recycling_docs') {
+        query = query.order('updated_at', { ascending: false });
+      } else if (table === 'document_groups') {
+        query = query.order('last_processed_at', { ascending: false });
+      } else {
+        // Fallback ordering for any other tables
+        query = query.order('id', { ascending: false });
+      }
+
+      // Apply pagination
+      query = query.range(offset, offset + limit - 1);
+
+      const result = await query;
+      data = result.data;
+      error = result.error;
+
+      // Get total count for regular tables
+      const { count } = await supabase
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      totalCount = count || 0;
     }
-
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1);
-
-    const { data, error } = await query;
 
     if (error) {
       console.error(`Error fetching ${table}:`, error);
       return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    // Get total count for pagination
-    const { count: totalCount, error: countError } = await supabase
-      .from(table)
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
-
-    if (countError) {
-      console.error(`Error getting count for ${table}:`, countError);
-      return NextResponse.json({ error: countError.message }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -112,6 +179,7 @@ export async function DELETE(request: Request) {
       'parsed_documents',
       'recycling_docs',
       'document_groups',
+      'unprocessed_documents',
     ].includes(table)
   ) {
     return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
@@ -120,15 +188,52 @@ export async function DELETE(request: Request) {
   try {
     const supabase = getSupabaseAdmin();
 
-    // First verify the record belongs to the user
-    const { data: record, error: fetchError } = await supabase
-      .from(table)
-      .select('*')
-      .eq('id', recordId)
-      .eq('user_id', userId)
-      .single();
+    // For unprocessed_documents, we need to determine the actual table from source_table
+    let actualTable = table;
+    let record;
 
-    if (fetchError || !record) {
+    if (table === 'unprocessed_documents') {
+      // For unprocessed_documents, we need to check both single_documents and temp_documents
+      // Try single_documents first
+      const { data: singleDoc, error: singleError } = await supabase
+        .from('single_documents')
+        .select('*')
+        .eq('id', recordId)
+        .eq('user_id', userId)
+        .single();
+
+      if (!singleError && singleDoc) {
+        actualTable = 'single_documents';
+        record = singleDoc;
+      } else {
+        // Try temp_documents
+        const { data: tempDoc, error: tempError } = await supabase
+          .from('temp_documents')
+          .select('*')
+          .eq('id', recordId)
+          .eq('user_id', userId)
+          .single();
+
+        if (!tempError && tempDoc) {
+          actualTable = 'temp_documents';
+          record = tempDoc;
+        }
+      }
+    } else {
+      // Regular table lookup
+      const { data: fetchedRecord, error: fetchError } = await supabase
+        .from(table)
+        .select('*')
+        .eq('id', recordId)
+        .eq('user_id', userId)
+        .single();
+
+      if (!fetchError && fetchedRecord) {
+        record = fetchedRecord;
+      }
+    }
+
+    if (!record) {
       return NextResponse.json(
         { error: 'Record not found or access denied' },
         { status: 404 }
@@ -136,7 +241,7 @@ export async function DELETE(request: Request) {
     }
 
     // 🚀 NEW: Advanced security check for unprocessed documents only
-    if (table === 'single_documents') {
+    if (actualTable === 'single_documents') {
       // Check if this single_document has been processed (exists in parsed_documents)
       const { data: parsedDoc, error: parsedError } = await supabase
         .from('parsed_documents')
@@ -171,7 +276,7 @@ export async function DELETE(request: Request) {
     }
 
     // For temp_documents, only allow deletion of failed or uploaded status
-    if (table === 'temp_documents') {
+    if (actualTable === 'temp_documents') {
       const unprocessedStatuses = ['uploaded', 'failed', null, undefined];
       if (record.status && !unprocessedStatuses.includes(record.status)) {
         return NextResponse.json(
@@ -200,7 +305,7 @@ export async function DELETE(request: Request) {
     }
 
     // 🚀 NEW: Smart deletion logic for unprocessed documents
-    if (table === 'single_documents') {
+    if (actualTable === 'single_documents') {
       // Extract original filename from single_documents path for temp_documents lookup
       // Path format: user_id/timestamp_page_originalfilename.pdf
       const pathParts = record.pdf_path.split('/');
@@ -270,7 +375,7 @@ export async function DELETE(request: Request) {
 
     // Delete the main record
     const { error: deleteError } = await supabase
-      .from(table)
+      .from(actualTable)
       .delete()
       .eq('id', recordId)
       .eq('user_id', userId);
@@ -330,15 +435,45 @@ export async function POST(request: Request) {
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
-    } else if (table === 'single_documents') {
+    } else if (
+      table === 'single_documents' ||
+      table === 'unprocessed_documents'
+    ) {
+      // For unprocessed_documents, determine the actual table
+      let actualTable = table;
+      if (table === 'unprocessed_documents') {
+        // Check which table the record is actually in
+        const { data: singleDoc } = await supabase
+          .from('single_documents')
+          .select('id')
+          .eq('id', recordId)
+          .eq('user_id', userId)
+          .single();
+
+        if (singleDoc) {
+          actualTable = 'single_documents';
+        } else {
+          actualTable = 'temp_documents';
+        }
+      }
+
       // Reset status to allow AI reprocessing
+      const updateData =
+        actualTable === 'temp_documents'
+          ? {
+              status: 'uploaded',
+              error_message: null,
+              last_attempt: new Date().toISOString(),
+            }
+          : {
+              status: 'uploaded',
+              error_message: null,
+              failed_at: null,
+            };
+
       const { error } = await supabase
-        .from('single_documents')
-        .update({
-          status: 'uploaded',
-          error_message: null,
-          failed_at: null,
-        })
+        .from(actualTable)
+        .update(updateData)
         .eq('id', recordId)
         .eq('user_id', userId);
 

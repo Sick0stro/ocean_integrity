@@ -39,7 +39,7 @@ const SelectContext = React.createContext<{
   setOpen: () => {},
 });
 
-const Select = ({ value, onValueChange, disabled, children }: SelectProps) => {
+const Select = ({ value, onValueChange, children }: SelectProps) => {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -105,3 +105,9 @@ const SelectItem = ({ value, children }: SelectItemProps) => {
 };
 
 export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };
+export type {
+  SelectProps,
+  SelectTriggerProps,
+  SelectContentProps,
+  SelectItemProps,
+};

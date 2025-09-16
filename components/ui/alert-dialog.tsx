@@ -204,3 +204,13 @@ export {
   AlertDialogHeader,
   AlertDialogTitle,
 };
+export type {
+  AlertDialogProps,
+  AlertDialogContentProps,
+  AlertDialogHeaderProps,
+  AlertDialogFooterProps,
+  AlertDialogTitleProps,
+  AlertDialogDescriptionProps,
+  AlertDialogActionProps,
+  AlertDialogCancelProps,
+};
