@@ -62,7 +62,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
           .lte('last_processed_at', dateRange.to + 'T23:59:59.999Z');
 
       // Get tonnage from parsed_documents for complete groups
-      let tonnageData = [];
+      let tonnageData: { raw_json: Record<string, unknown> }[] = [];
       if (completeGroupsData && completeGroupsData.length > 0) {
         const allDocumentIds = completeGroupsData
           .flatMap((group) => group.present_document_ids || [])
