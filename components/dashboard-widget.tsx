@@ -44,13 +44,40 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
     try {
       const supabase = getSupabaseBrowser();
 
-      // Orange (Total Processed Tons) - from recycling_docs
-      const { data: recyclingData, error: recyclingError } = await supabase
-        .from('recycling_docs')
-        .select('tonnage_tons, created_at')
-        .eq('user_id', session.user.id)
-        .gte('created_at', dateRange.from + 'T00:00:00.000Z')
-        .lte('created_at', dateRange.to + 'T23:59:59.999Z');
+      // Orange (Total Processed Tons) - from completed groups only
+      const { data: completeGroupsData, error: groupsDataError } =
+        await supabase
+          .from('document_groups')
+          .select(
+            `
+          id,
+          invoice_number,
+          present_document_ids,
+          last_processed_at
+        `
+          )
+          .eq('user_id', session.user.id)
+          .eq('is_complete', true)
+          .gte('last_processed_at', dateRange.from + 'T00:00:00.000Z')
+          .lte('last_processed_at', dateRange.to + 'T23:59:59.999Z');
+
+      // Get tonnage from parsed_documents for complete groups
+      let tonnageData = [];
+      if (completeGroupsData && completeGroupsData.length > 0) {
+        const allDocumentIds = completeGroupsData
+          .flatMap((group) => group.present_document_ids || [])
+          .filter((id) => id);
+
+        if (allDocumentIds.length > 0) {
+          const { data: parsedDocsWithTonnage } = await supabase
+            .from('parsed_documents')
+            .select('raw_json')
+            .in('id', allDocumentIds)
+            .eq('user_id', session.user.id);
+
+          tonnageData = parsedDocsWithTonnage || [];
+        }
+      }
 
       // Green (Processed Docs) - from parsed_documents
       const { data: parsedData, error: parsedError } = await supabase
@@ -69,9 +96,9 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
       // Handle database connection errors gracefully
-      if (recyclingError) {
+      if (groupsDataError) {
         console.warn(
-          '⚠️ Dashboard: Could not fetch recycling docs - using fallback values'
+          '⚠️ Dashboard: Could not fetch complete groups - using fallback values'
         );
       }
       if (parsedError) {
@@ -86,11 +113,15 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
       }
 
       // Calculate stats
+      // Extract tonnage from parsed documents and convert kilos to tonnes
       const totalTons =
-        recyclingData?.reduce(
-          (sum, doc) => sum + (Number(doc.tonnage_tons) || 0),
-          0
-        ) || 0;
+        tonnageData.reduce((sum, doc) => {
+          const rawJson = doc.raw_json || {};
+          const weight = Number(
+            rawJson.weight || rawJson.tonnage_tons || rawJson.weight_kg || 0
+          );
+          return sum + weight;
+        }, 0) / 1000; // Convert from kilos to tonnes
       const groupsCount = groupsData?.length || 0;
       const processedCount = parsedData?.length || 0;
 
@@ -134,7 +165,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
           <div className='flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 rounded-md border border-orange-200'>
             <Scale className='h-4 w-4 text-orange-600' />
             <span className='font-semibold text-orange-700'>
-              Total Processed Tons: {stats.totalTons}
+              Total Processed Tons: {stats.totalTons.toFixed(2)}
             </span>
           </div>
 
