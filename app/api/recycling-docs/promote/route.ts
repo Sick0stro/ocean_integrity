@@ -104,15 +104,21 @@ export async function POST(req: Request) {
   const invoiceParam = url.searchParams.get('invoice');
 
   let invoice = invoiceParam || '';
+  let user_id = url.searchParams.get('user_id') || '';
+
   try {
-    if (!invoice) {
-      const body = (await req.json().catch(() => ({}))) as { invoice?: string };
-      invoice = String(body?.invoice || '');
+    if (!invoice || !user_id) {
+      const body = (await req.json().catch(() => ({}))) as {
+        invoice?: string;
+        user_id?: string;
+      };
+      invoice = invoice || String(body?.invoice || '');
+      user_id = user_id || String(body?.user_id || '');
     }
   } catch {}
 
   console.log(
-    `🔵 [promote:${requestId}] Params: invoice='${invoice}', hasHeaderSecret=${Boolean(
+    `🔵 [promote:${requestId}] Params: invoice='${invoice}', user_id='${user_id}', hasHeaderSecret=${Boolean(
       req.headers.get('x-cron-secret') || req.headers.get('x-submit-secret')
     )}, hasQuerySecret=${Boolean(url.searchParams.get('secret'))}`
   );
@@ -167,6 +173,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing invoice' }, { status: 400 });
   }
 
+  if (!user_id) {
+    return NextResponse.json({ error: 'Missing user_id' }, { status: 400 });
+  }
+
   const supa = getSupabaseAdmin();
 
   // Load the latest row per required type for this invoice from parsed_documents
@@ -176,6 +186,7 @@ export async function POST(req: Request) {
       .from('parsed_documents')
       .select('id, document_type, file_url, created_at, raw_json, user_id')
       .in('document_type', required)
+      .eq('user_id', user_id)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -213,7 +224,7 @@ export async function POST(req: Request) {
     }) as Array<ParsedRow>;
 
     console.log(
-      `🔵 [promote:${requestId}] Candidates fetched: ${
+      `🔵 [promote:${requestId}] Candidates fetched for user '${user_id}': ${
         (data || []).length
       }, matching invoice '${invoice}': ${rows.length}`
     );
@@ -222,6 +233,12 @@ export async function POST(req: Request) {
       const r = rows.find((x) => x.document_type === t);
       if (r) latestByType.set(t, r);
     }
+
+    console.log(
+      `🔵 [promote:${requestId}] Document types found: ${Array.from(
+        latestByType.keys()
+      ).join(', ')}`
+    );
 
     // Build payload for recycling_docs
     const invRow = latestByType.get('invoice');
@@ -437,13 +454,7 @@ export async function POST(req: Request) {
     if (upsertError) throw upsertError;
 
     console.log(
-      `🟢 [promote:${requestId}] Upserted recycling_docs for invoice='${invoice}' | user_id='${documentUserId}' | recycler_type=${
-        isIndian ? 'Indian' : 'Non-Indian'
-      } | recycler='${final_recycler_company}' | country='${final_country}' | plastic_type='${plastic_type}' | weight_kg=${tonnage_kg} | urls: inv=${Boolean(
-        invoice_url
-      )}, eft=${Boolean(eft_url)}, ewb=${Boolean(
-        ewaybill_url
-      )} | EFT_required=${!isIndian}`
+      `✅ [promote:${requestId}] SUCCESS: Upserted recycling_docs for invoice='${invoice}' | user_id='${documentUserId}' | recycler='${final_recycler_company}' | plastic_type='${plastic_type}' | weight_kg=${tonnage_kg}`
     );
 
     return NextResponse.json({

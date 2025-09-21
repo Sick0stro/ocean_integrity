@@ -10,6 +10,100 @@ interface ProcessResult {
   error?: string;
 }
 
+async function promoteVerifiedDocuments(
+  userFilter?: string,
+  singleInvoice?: string
+) {
+  console.log(`🔄 [PROMOTION] Starting document promotion to recycling_docs`);
+
+  const supabase = getSupabaseAdmin();
+
+  // Get verified document groups that haven't been promoted yet
+  let groupQuery = supabase
+    .from('document_groups')
+    .select('*')
+    .eq('human_verified', true)
+    .eq('is_complete', true);
+
+  if (userFilter) {
+    groupQuery = groupQuery.eq('user_id', userFilter);
+  }
+
+  if (singleInvoice) {
+    groupQuery = groupQuery.eq('invoice_number', singleInvoice);
+  }
+
+  const { data: verifiedGroups, error: groupError } = await groupQuery;
+
+  if (groupError) {
+    console.error(`❌ [PROMOTION] Failed to get verified groups:`, groupError);
+    throw groupError;
+  }
+
+  console.log(
+    `📊 [PROMOTION] Found ${
+      verifiedGroups?.length || 0
+    } verified document groups to promote`
+  );
+
+  if (verifiedGroups?.length) {
+    console.log(
+      `📋 [PROMOTION] Groups to promote:`,
+      verifiedGroups.map((g) => g.invoice_number).join(', ')
+    );
+  }
+
+  // Promote each group to recycling_docs
+  for (const group of verifiedGroups || []) {
+    try {
+      console.log(
+        `🔄 [PROMOTION] Promoting group: ${group.invoice_number} for user: ${group.user_id}`
+      );
+
+      const promoteResponse = await fetch(
+        `${
+          process.env.NEXTAUTH_URL || 'http://localhost:3000'
+        }/api/recycling-docs/promote?secret=${
+          process.env.CRON_SUBMIT_SECRET || 'local-dev-submit-123'
+        }&invoice=${encodeURIComponent(
+          group.invoice_number
+        )}&user_id=${encodeURIComponent(group.user_id)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            invoice: group.invoice_number,
+            user_id: group.user_id,
+          }),
+        }
+      );
+
+      if (!promoteResponse.ok) {
+        const errorText = await promoteResponse.text();
+        console.error(
+          `❌ [PROMOTION] Failed to promote ${group.invoice_number}: ${promoteResponse.status} ${promoteResponse.statusText}`
+        );
+        console.error(`❌ [PROMOTION] Error response: ${errorText}`);
+      } else {
+        const successResult = await promoteResponse.json();
+        console.log(
+          `✅ [PROMOTION] Promoted ${group.invoice_number} to recycling_docs:`,
+          successResult
+        );
+      }
+    } catch (error) {
+      console.error(
+        `❌ [PROMOTION] Error promoting ${group.invoice_number}:`,
+        error
+      );
+    }
+  }
+
+  return verifiedGroups?.length || 0;
+}
+
 async function getPendingRows(userFilter?: string) {
   console.log(
     `🔍 [BLOCKCHAIN] getPendingRows() called with userFilter: '${
@@ -23,7 +117,7 @@ async function getPendingRows(userFilter?: string) {
   let query = supabase
     .from('recycling_docs')
     .select('*')
-    .in('ngtus', ['new', 'updated'])
+    .in('status', ['new', 'updated'])
     .limit(100);
 
   console.log(
@@ -267,17 +361,40 @@ export async function POST(req: Request) {
   const expected =
     process.env.CRON_SUBMIT_SECRET || process.env.CRON_INGEST_SECRET;
   const allowDevBypass = process.env.NODE_ENV !== 'production' && !expected;
+  const isDevMode = process.env.NODE_ENV !== 'production';
 
   console.log(
     `🔐 [BLOCKCHAIN:${requestId}] Authentication: ${
       secret ? 'SECRET_PROVIDED' : 'NO_SECRET'
     }`
   );
+  console.log(
+    `🔐 [BLOCKCHAIN:${requestId}] Dev Mode: ${isDevMode ? 'YES' : 'NO'}`
+  );
+  console.log(
+    `🔐 [BLOCKCHAIN:${requestId}] Expected Secret: ${
+      expected ? 'SET' : 'NOT_SET'
+    }`
+  );
 
   if (!allowDevBypass) {
-    if (!expected || secret !== expected) {
+    if (!expected) {
+      console.log(`❌ [BLOCKCHAIN:${requestId}] No expected secret configured`);
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (secret !== expected) {
       console.log(
-        `❌ [BLOCKCHAIN:${requestId}] Authentication failed - unauthorized request`
+        `❌ [BLOCKCHAIN:${requestId}] Authentication failed - secret mismatch`
+      );
+      console.log(
+        `🔐 [BLOCKCHAIN:${requestId}] Provided: '${secret.substring(0, 5)}...'`
+      );
+      console.log(
+        `🔐 [BLOCKCHAIN:${requestId}] Expected: '${expected.substring(
+          0,
+          5
+        )}...'`
       );
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -320,48 +437,46 @@ export async function POST(req: Request) {
   let toProcess: any[] = []; // Declare outside try block
 
   console.log(
-    `🗄️  [BLOCKCHAIN:${requestId}] Starting database query for pending recycling_docs...`
+    `🗄️ [API_FLOW:${requestId}] Step 1: Starting promotion and database query`
   );
   const queryStart = Date.now();
 
   try {
-    // Load pending rows (optionally filtered by user)
+    // 🚀 STEP 1: Promote verified documents from document_groups to recycling_docs
+    console.log(
+      `🔄 [API_FLOW:${requestId}] Step 1.1: Promoting verified documents to recycling_docs`
+    );
+    const promotedCount = await promoteVerifiedDocuments(
+      userFilter || undefined,
+      single || undefined
+    );
+    console.log(
+      `✅ [API_FLOW:${requestId}] Step 1.1 Complete: Promoted ${promotedCount} document groups`
+    );
+
+    // 🚀 STEP 2: Load pending rows (optionally filtered by user)
+    console.log(
+      `🔄 [API_FLOW:${requestId}] Step 1.2: Loading pending recycling_docs`
+    );
     const rows = await getPendingRows(userFilter || undefined);
     const queryTime = Date.now() - queryStart;
 
     console.log(
-      `✅ [BLOCKCHAIN:${requestId}] Database query completed in ${queryTime}ms`
+      `✅ [API_FLOW:${requestId}] Step 1.2 Complete: Found ${rows.length} pending rows in ${queryTime}ms`
     );
-    console.log(`📊 [BLOCKCHAIN:${requestId}] Query results:`);
-    console.log(`   📄 Total pending rows: ${rows.length}`);
-    console.log(
-      `   🔍 Filter applied: ${
-        userFilter ? `user_id='${userFilter}'` : 'none (all users)'
-      }`
-    );
-    console.log(`   📋 Row status criteria: ['new', 'updated']`);
-    console.log(`   📏 Query limit: 100 rows`);
 
     if (rows.length > 0) {
       console.log(
-        `📃 [BLOCKCHAIN:${requestId}] Available invoices in query result:`
+        `📃 [API_FLOW:${requestId}] Available invoices:`,
+        rows.map((r) => r.invoice_number).join(', ')
       );
-      rows.forEach((row, index) => {
-        console.log(
-          `   ${index + 1}. Invoice: '${row.invoice_number}' | User: ${
-            row.user_id
-          } | Status: ${row.status} | Plastic: ${row.plastic_type} | Weight: ${
-            row.weight_kg
-          }kg/${row.tonnage_tons}t`
-        );
-      });
     }
 
     toProcess = single ? rows.filter((r) => r.invoice_number === single) : rows;
 
-    console.log(`🎯 [BLOCKCHAIN:${requestId}] Final processing selection:`);
-    console.log(`   📊 Total available rows: ${rows.length}`);
-    console.log(`   ✅ Rows selected for processing: ${toProcess.length}`);
+    console.log(
+      `🎯 [API_FLOW:${requestId}] Step 2: Processing selection - ${toProcess.length}/${rows.length} rows`
+    );
 
     if (single && toProcess.length === 0) {
       console.log(

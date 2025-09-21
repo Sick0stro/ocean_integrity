@@ -49,6 +49,7 @@ import {
   UploadCloud,
   ChevronDown,
   ChevronUp,
+  FolderOpen,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -76,6 +77,7 @@ import { GalleryVerticalEnd } from 'lucide-react';
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
 import { VerifiedCsvDownload } from '@/components/verified-csv-download';
+import { DataManagementTable } from '@/components/data-management-table';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
   ssr: false,
@@ -158,7 +160,7 @@ function HomeContent({ session }: HomeContentProps) {
 
   // UI state
   const [activeTab, setActiveTab] = useState<
-    'upload' | 'results' | 'groups' | 'submit' | 'blockchain'
+    'upload' | 'results' | 'groups' | 'submit' | 'blockchain' | 'data'
   >('upload');
 
   // Document grouping state
@@ -188,6 +190,324 @@ function HomeContent({ session }: HomeContentProps) {
   const [showAlreadyProcessedAlert, setShowAlreadyProcessedAlert] =
     useState(false);
 
+  // 🚀 PHASE 1: Database-driven state for button control
+  const [readyDocumentsCount, setReadyDocumentsCount] = useState(0);
+  const [tempDocumentsCount, setTempDocumentsCount] = useState(0);
+  const [duplicateFilesCount, setDuplicateFilesCount] = useState(0);
+
+  // 🚀 PHASE 2: Track skipped files for duplicate status display
+  const [skippedFilesInfo, setSkippedFilesInfo] = useState<
+    { name: string; reason: string }[]
+  >([]);
+
+  // 🚀 NEW: Failed documents tracking
+  const [failedPreprocessingDocs, setFailedPreprocessingDocs] = useState<
+    Array<{
+      id: string;
+      pdf_path: string;
+      error_message: string;
+      last_attempt: string;
+    }>
+  >([]);
+  const [failedAIDocs, setFailedAIDocs] = useState<
+    Array<{
+      id: string;
+      pdf_path: string;
+      original_filename: string;
+      error_message: string;
+      failed_at: string;
+    }>
+  >([]);
+
+  // 🚀 NEW: Group statistics
+  const [groupStats, setGroupStats] = useState({
+    totalGroups: 0,
+    completeGroups: 0,
+    incompleteGroups: 0,
+    ungroupedDocs: 0,
+  });
+
+  // 🚀 NEW: Calculate group statistics
+  const calculateGroupStats = useCallback(async () => {
+    if (!session?.user?.id) return;
+
+    const supabase = getSupabaseBrowser();
+
+    try {
+      // Get all groups for the user
+      const { data: groupsData } = await supabase
+        .from('document_groups')
+        .select('id, is_complete, is_human_verified, present_document_ids')
+        .eq('user_id', session.user.id);
+
+      // Get all parsed documents for the user
+      const { data: parsedData } = await supabase
+        .from('parsed_documents')
+        .select('id')
+        .eq('user_id', session.user.id);
+
+      const totalGroups = groupsData?.length || 0;
+      const completeGroups =
+        groupsData?.filter((g) => g.is_complete || g.is_human_verified)
+          .length || 0;
+      const incompleteGroups = totalGroups - completeGroups;
+
+      // Calculate ungrouped documents
+      const groupedDocIds = new Set();
+      groupsData?.forEach((group) => {
+        (group.present_document_ids || []).forEach((id: string) =>
+          groupedDocIds.add(id)
+        );
+      });
+
+      const ungroupedDocs = (parsedData?.length || 0) - groupedDocIds.size;
+
+      setGroupStats({
+        totalGroups,
+        completeGroups,
+        incompleteGroups,
+        ungroupedDocs,
+      });
+    } catch (error) {
+      console.error('Failed to calculate group stats:', error);
+    }
+  }, [session?.user?.id]);
+
+  // 🚀 NEW: Fetch failed documents
+  const fetchFailedDocuments = useCallback(async () => {
+    if (!session?.user?.id) return;
+
+    const supabase = getSupabaseBrowser();
+
+    // Fetch failed preprocessing documents
+    const { data: failedPreprocessing } = await supabase
+      .from('temp_documents')
+      .select('id, pdf_path, error_message, last_attempt')
+      .eq('user_id', session.user.id)
+      .eq('status', 'failed')
+      .order('last_attempt', { ascending: false });
+
+    // Fetch failed AI processing documents
+    const { data: failedAI } = await supabase
+      .from('single_documents')
+      .select('id, pdf_path, original_filename, error_message, failed_at')
+      .eq('user_id', session.user.id)
+      .eq('status', 'failed')
+      .order('failed_at', { ascending: false });
+
+    setFailedPreprocessingDocs(failedPreprocessing || []);
+    setFailedAIDocs(failedAI || []);
+  }, [session?.user?.id]);
+
+  // 🚀 NEW: Retry failed preprocessing
+  const retryFailedPreprocessing = useCallback(async () => {
+    if (failedPreprocessingDocs.length === 0) return;
+
+    const supabase = getSupabaseBrowser();
+
+    // Reset status to 'uploaded' for retry
+    const { error } = await supabase
+      .from('temp_documents')
+      .update({ status: 'uploaded', error_message: null })
+      .in(
+        'id',
+        failedPreprocessingDocs.map((doc) => doc.id)
+      );
+
+    if (!error) {
+      console.log(
+        `🔄 Reset ${failedPreprocessingDocs.length} failed preprocessing documents for retry`
+      );
+      await fetchFailedDocuments(); // Refresh the failed docs list
+
+      // Trigger preprocessing
+      try {
+        const response = await fetch('/api/cron/preprocess', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: session?.user?.id }),
+        });
+        console.log('🔄 Triggered preprocessing retry', response.status);
+      } catch (error) {
+        console.error('Failed to trigger preprocessing retry:', error);
+      }
+    }
+  }, [failedPreprocessingDocs, session?.user?.id, fetchFailedDocuments]);
+
+  // 🚀 NEW: Retry failed AI processing
+  const retryFailedAI = useCallback(async () => {
+    if (failedAIDocs.length === 0) return;
+
+    const supabase = getSupabaseBrowser();
+
+    // Reset status to 'uploaded' for retry
+    const { error } = await supabase
+      .from('single_documents')
+      .update({ status: 'uploaded', error_message: null, failed_at: null })
+      .in(
+        'id',
+        failedAIDocs.map((doc) => doc.id)
+      );
+
+    if (!error) {
+      console.log(
+        `🔄 Reset ${failedAIDocs.length} failed AI processing documents for retry`
+      );
+      await fetchFailedDocuments(); // Refresh the failed docs list
+    }
+  }, [failedAIDocs, fetchFailedDocuments]);
+
+  // 🚀 PHASE 2: Helper function to check if file is duplicate
+  const getFileStatus = useCallback(
+    (file: File) => {
+      const isDuplicate = skippedFilesInfo.some((sf) => sf.name === file.name);
+      return {
+        isDuplicate,
+        reason: isDuplicate
+          ? skippedFilesInfo.find((sf) => sf.name === file.name)?.reason
+          : null,
+      };
+    },
+    [skippedFilesInfo]
+  );
+
+  // 🚀 PHASE 5: Enhanced status message function
+  const getDetailedStatus = useCallback(() => {
+    // Handle preprocessing state
+    if (isPreprocessing) {
+      if (duplicateFilesCount === files.length && files.length > 0) {
+        return {
+          message: `All ${files.length} files are duplicates`,
+          color: 'text-orange-600',
+          bgColor: 'bg-orange-50',
+          borderColor: 'border-orange-200',
+        };
+      }
+      if (duplicateFilesCount > 0) {
+        return {
+          message: `${duplicateFilesCount} of ${
+            files.length
+          } files are duplicates. Processing ${
+            files.length - duplicateFilesCount
+          } new files...`,
+          color: 'text-blue-600',
+          bgColor: 'bg-blue-50',
+          borderColor: 'border-blue-200',
+        };
+      }
+      return {
+        message: `Processing ${files.length} files...`,
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+      };
+    }
+
+    // Handle workflow states based on database
+    if (tempDocumentsCount > 0 && readyDocumentsCount === 0) {
+      return {
+        message: `${tempDocumentsCount} files preprocessing...`,
+        color: 'text-yellow-600',
+        bgColor: 'bg-yellow-50',
+        borderColor: 'border-yellow-200',
+      };
+    }
+
+    if (tempDocumentsCount > 0 && readyDocumentsCount > 0) {
+      return {
+        message: `${tempDocumentsCount} files preprocessing, ${readyDocumentsCount} pages ready for AI`,
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+      };
+    }
+
+    if (readyDocumentsCount > 0) {
+      return {
+        message: `${readyDocumentsCount} pages ready for AI processing`,
+        color: 'text-green-600',
+        bgColor: 'bg-green-50',
+        borderColor: 'border-green-200',
+      };
+    }
+
+    if (duplicateFilesCount > 0 && files.length > 0) {
+      return {
+        message: `${duplicateFilesCount} duplicate files detected`,
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-50',
+        borderColor: 'border-orange-200',
+      };
+    }
+
+    return {
+      message: 'Ready to upload documents',
+      color: 'text-slate-600',
+      bgColor: 'bg-slate-50',
+      borderColor: 'border-slate-200',
+    };
+  }, [
+    isPreprocessing,
+    duplicateFilesCount,
+    files.length,
+    tempDocumentsCount,
+    readyDocumentsCount,
+  ]);
+
+  // 🚀 PHASE 1: Database check function for button state
+  const checkDocumentsStatus = useCallback(async () => {
+    if (!session?.user?.id) {
+      console.log('🔍 [checkDocumentsStatus] No user session, skipping check');
+      return { temp: 0, ready: 0 };
+    }
+
+    const supabase = getSupabaseBrowser();
+    console.log('🔍 [checkDocumentsStatus] Checking database status...');
+
+    try {
+      // Check temp_documents (preprocessing queue)
+      const { data: tempDocs, error: tempError } = await supabase
+        .from('temp_documents')
+        .select('id')
+        .eq('user_id', session.user.id);
+
+      // Check single_documents (ready for AI)
+      const { data: singleDocs, error: singleError } = await supabase
+        .from('single_documents')
+        .select('id')
+        .eq('status', 'uploaded')
+        .eq('user_id', session.user.id);
+
+      if (tempError) {
+        console.warn(
+          '⚠️ [checkDocumentsStatus] Error checking temp_documents:',
+          tempError
+        );
+      }
+      if (singleError) {
+        console.warn(
+          '⚠️ [checkDocumentsStatus] Error checking single_documents:',
+          singleError
+        );
+      }
+
+      const tempCount = tempDocs?.length || 0;
+      const readyCount = singleDocs?.length || 0;
+
+      console.log(
+        `📊 [checkDocumentsStatus] Database state: temp=${tempCount}, ready=${readyCount}`
+      );
+
+      setTempDocumentsCount(tempCount);
+      setReadyDocumentsCount(readyCount);
+
+      return { temp: tempCount, ready: readyCount };
+    } catch (error) {
+      console.error('❌ [checkDocumentsStatus] Database check failed:', error);
+      return { temp: 0, ready: 0 };
+    }
+  }, [session?.user?.id]);
+
   // Toggle group expansion
   const toggleGroupExpansion = (invoiceKey: string) => {
     setExpandedGroups((prev) => ({
@@ -210,6 +530,24 @@ function HomeContent({ session }: HomeContentProps) {
       setIsGroupsLoading(true);
     }
   }, [activeTab, hasInitializedGroups]);
+
+  // 🚀 PHASE 1: Initialize database status check
+  useEffect(() => {
+    if (session?.user?.id) {
+      console.log('🔄 [PHASE1] Initializing database status check...');
+      checkDocumentsStatus();
+    }
+  }, [session?.user?.id, checkDocumentsStatus]);
+
+  // 🚀 PHASE 1: Update status when switching to upload tab
+  useEffect(() => {
+    if (activeTab === 'upload' && session?.user?.id) {
+      console.log(
+        '🔄 [PHASE1] Upload tab active - checking database status...'
+      );
+      checkDocumentsStatus();
+    }
+  }, [activeTab, session?.user?.id, checkDocumentsStatus]);
   // Track all processed invoice numbers for validation
   const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<
     Set<string>
@@ -1054,11 +1392,13 @@ function HomeContent({ session }: HomeContentProps) {
 
     // Load immediately on component mount
     loadProcessedDocuments();
+    fetchFailedDocuments(); // Also load failed documents
+    calculateGroupStats(); // Also load group statistics
 
     return () => {
       cancelled = true;
     };
-  }, [session.user.id]); // Only depend on user ID, load on mount
+  }, [session.user.id, fetchFailedDocuments, calculateGroupStats]); // Only depend on user ID, load on mount
 
   // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
   useEffect(() => {
@@ -1326,6 +1666,7 @@ function HomeContent({ session }: HomeContentProps) {
         if (!cancelled) {
           setIsGroupsLoading(false);
           console.timeEnd('⏱️ [PERFORMANCE] Groups data loading');
+          calculateGroupStats(); // Update group statistics after loading
         }
       }
     };
@@ -1404,6 +1745,7 @@ function HomeContent({ session }: HomeContentProps) {
     session.user.id,
     session.user.email,
     hasInitializedGroups,
+    calculateGroupStats,
   ]); // 🚀 Added required dependencies without groups
 
   // 🚀 NEW: Lazy load verified recycling docs only when Blockchain tab is active
@@ -1418,17 +1760,79 @@ function HomeContent({ session }: HomeContentProps) {
       console.time('⏱️ [BLOCKCHAIN] Verified docs loading');
 
       try {
-        console.log('🔗 [BLOCKCHAIN] Loading human-verified recycling docs...');
+        console.log(
+          '🔗 [BLOCKCHAIN] Loading recycling docs for blockchain processing...'
+        );
         console.log('👤 [BLOCKCHAIN] User:', session.user.email);
 
-        // Load human-verified document groups
+        // Load human-verified document groups with plastiks submission status
         const supabase = getSupabaseBrowser();
-        const { data, error } = await supabase
+
+        // First get verified document groups
+        const { data: groups, error: groupError } = await supabase
           .from('document_groups')
           .select('*')
           .eq('user_id', session.user.id) // Filter by current user
           .eq('human_verified', true) // Only verified documents
           .order('verified_at', { ascending: false }); // Most recent first
+
+        if (groupError) {
+          console.error(
+            '❌ [BLOCKCHAIN] Failed to load verified groups:',
+            groupError
+          );
+          return;
+        }
+
+        // Then get plastiks submission status from recycling_docs
+        const { data: recyclingDocs, error: recyclingError } = await supabase
+          .from('recycling_docs')
+          .select(
+            'invoice_number, plastiks_submitted_at, plastiks_collection_id, plastiks_collection_address, plastiks_metadata_hash'
+          )
+          .eq('user_id', session.user.id);
+
+        if (recyclingError) {
+          console.error(
+            '❌ [BLOCKCHAIN] Failed to load recycling docs:',
+            recyclingError
+          );
+        }
+
+        // Create a map of plastiks submission data
+        const plastiksMap = (recyclingDocs || []).reduce(
+          (acc, doc) => ({
+            ...acc,
+            [doc.invoice_number]: doc,
+          }),
+          {} as Record<
+            string,
+            {
+              plastiks_submitted_at: string | null;
+              plastiks_collection_id: string | null;
+              plastiks_collection_address: string | null;
+              plastiks_metadata_hash: string | null;
+            }
+          >
+        );
+
+        // Merge the data
+        const data =
+          groups?.map((group) => ({
+            ...group,
+            // Add plastiks submission data if it exists
+            plastiks_submitted_at:
+              plastiksMap[group.invoice_number]?.plastiks_submitted_at || null,
+            plastiks_collection_id:
+              plastiksMap[group.invoice_number]?.plastiks_collection_id || null,
+            plastiks_collection_address:
+              plastiksMap[group.invoice_number]?.plastiks_collection_address ||
+              null,
+            plastiks_metadata_hash:
+              plastiksMap[group.invoice_number]?.plastiks_metadata_hash || null,
+          })) || [];
+
+        const error = groupError;
 
         if (error) {
           console.error('❌ [BLOCKCHAIN] Failed to load verified docs:', error);
@@ -1500,68 +1904,94 @@ function HomeContent({ session }: HomeContentProps) {
   // computeGroupStatus is defined above with more comprehensive implementation
 
   // 🚀 NEW: Push to Plastiks function for blockchain tab
-  const handlePushToPlastiks = useCallback(async (invoice: string) => {
-    console.log('🧪 [TEST] ======================================');
-    console.log('🧪 [TEST] PUSH TO PLASTIKS BUTTON CLICKED');
-    console.log('🧪 [TEST] ======================================');
-    console.log('📋 [TEST] Invoice to process:', invoice);
-    console.log('🌐 [TEST] Environment:', process.env.NODE_ENV);
-    console.log(
-      '🔗 [TEST] Plastiks Base URL:',
-      process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io'
-    );
+  const handlePushToPlastiks = useCallback(
+    async (invoice: string) => {
+      console.log(`\n🚀 [PLASTIKS_FLOW] ===== STARTING PUSH TO PLASTIKS =====`);
+      console.log(`📋 [PLASTIKS_FLOW] Invoice: ${invoice}`);
+      console.log(`👤 [PLASTIKS_FLOW] User: ${session.user?.email}`);
+      console.log(`⏰ [PLASTIKS_FLOW] Started at: ${new Date().toISOString()}`);
 
-    setIsPushingToPlastiks(true);
-    console.log(
-      `🚀 [BLOCKCHAIN] Starting Push to Plastiks for invoice: ${invoice}`
-    );
+      setIsPushingToPlastiks(true);
 
-    try {
-      // Call the existing plastiks submit API
-      const response = await fetch(
-        `/api/plastiks/submit?invoice=${encodeURIComponent(invoice)}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      try {
+        console.log(`🔄 [PLASTIKS_FLOW] Step 1: Calling /api/plastiks/submit`);
 
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        console.log(`✅ [BLOCKCHAIN] Successfully pushed to Plastiks:`, result);
-
-        // Refresh verified docs to show updated status
-        setHasInitializedVerifiedDocs(false);
-
-        alert(
-          `✅ Successfully submitted to Plastiks blockchain!\n\nInvoice: ${invoice}\nProcessed: ${result.processed} document(s)`
+        // Call the existing plastiks submit API
+        const response = await fetch(
+          `/api/plastiks/submit?invoice=${encodeURIComponent(
+            invoice
+          )}&user_id=${encodeURIComponent(
+            session.user?.id || ''
+          )}&secret=local-dev-submit-123`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
         );
-      } else {
-        console.error(`❌ [BLOCKCHAIN] Push to Plastiks failed:`, result);
+
+        console.log(
+          `📊 [PLASTIKS_FLOW] API Response Status: ${response.status}`
+        );
+
+        const result = await response.json();
+        console.log(`📋 [PLASTIKS_FLOW] API Response Data:`, {
+          success: result.success,
+          processed: result.processed,
+          hasResults: !!result.results,
+          resultCount: result.results?.length || 0,
+        });
+
+        if (response.ok && result.success) {
+          console.log(`✅ [PLASTIKS_FLOW] Step 2: API call successful`);
+          console.log(
+            `📊 [PLASTIKS_FLOW] Processed ${result.processed} document(s)`
+          );
+
+          // Immediately update local state to disable button
+          console.log(`🔄 [PLASTIKS_FLOW] Step 3: Updating local state`);
+          setVerifiedDocs((prev) => ({
+            ...prev,
+            [invoice]: {
+              ...prev[invoice],
+              plastiks_submitted_at: new Date().toISOString(),
+            },
+          }));
+
+          console.log(
+            `✅ [PLASTIKS_FLOW] Step 4: Button state updated (disabled)`
+          );
+          console.log(
+            `🎉 [PLASTIKS_FLOW] ===== PUSH TO PLASTIKS COMPLETED =====\n`
+          );
+
+          alert(
+            `✅ Successfully submitted to Plastiks blockchain!\n\nInvoice: ${invoice}\nProcessed: ${result.processed} document(s)`
+          );
+        } else {
+          console.error(`❌ [PLASTIKS_FLOW] Step 2: API call failed`);
+          console.error(`📋 [PLASTIKS_FLOW] Error details:`, result);
+          alert(
+            `❌ Failed to push to Plastiks:\n\n${
+              result.error || 'Unknown error occurred'
+            }`
+          );
+        }
+      } catch (error) {
+        console.error(`💥 [PLASTIKS_FLOW] Step 1: Network error:`, error);
         alert(
-          `❌ Failed to push to Plastiks:\n\n${
-            result.error || 'Unknown error occurred'
-          }`
+          `💥 Network error occurred while pushing to Plastiks.\n\nPlease check your connection and try again.`
+        );
+      } finally {
+        setIsPushingToPlastiks(false);
+        console.log(
+          `🔄 [PLASTIKS_FLOW] Cleanup: isPushingToPlastiks set to false`
         );
       }
-    } catch (error) {
-      console.error(
-        `💥 [BLOCKCHAIN] Network error pushing to Plastiks:`,
-        error
-      );
-      alert(
-        `💥 Network error occurred while pushing to Plastiks.\n\nPlease check your connection and try again.`
-      );
-    } finally {
-      setIsPushingToPlastiks(false);
-      console.log(
-        `🔄 [BLOCKCHAIN] Push to Plastiks completed for invoice: ${invoice}`
-      );
-    }
-  }, []);
+    },
+    [session.user?.email, session.user?.id]
+  );
 
   const handleSubmitGroup = useCallback(async (invoice: string) => {
     setSubmitting((prev) => ({ ...prev, [invoice]: true }));
@@ -1570,10 +2000,8 @@ function HomeContent({ session }: HomeContentProps) {
       [invoice]: { ok: false, message: '' },
     }));
     try {
-      // Human Verification (No promote step - recycling_docs populated only on Push to Plastiks)
-      console.log(
-        `[UI] Human verification starting for invoice='${invoice}' (no recycling_docs promotion)`
-      );
+      // Human Verification (recycling_docs populated only on Push to Plastiks)
+      console.log(`[UI] Human verification starting for invoice='${invoice}'`);
 
       // Get auth token from session
       const {
@@ -1712,10 +2140,71 @@ function HomeContent({ session }: HomeContentProps) {
   const isUploadingRef = useRef(false);
 
   // Helper function to check for duplicate files in database
+  // ========== SMART FILENAME FINGERPRINTING ==========
+  const generateFilenameFingerprint = useCallback(
+    (fileName: string, userId: string): string => {
+      console.log(`🔤 Generating fingerprint for: "${fileName}"`);
+
+      // Extract document type and business identifier
+      const docType = extractDocumentTypeFromFilename(fileName);
+      const businessId = extractBusinessNumberFromFilename(fileName);
+      const fingerprint = `${userId}:${docType}:${businessId}`;
+
+      console.log(`🔤 Fingerprint result: "${fingerprint}"`);
+      return fingerprint;
+    },
+    []
+  );
+
+  const extractDocumentTypeFromFilename = (fileName: string): string => {
+    const lower = fileName.toLowerCase();
+
+    if (lower.includes('invoice')) return 'invoice';
+    if (
+      lower.includes('eway') ||
+      lower.includes('e way') ||
+      lower.includes('e-way')
+    )
+      return 'eway';
+    if (/^[0-9]+\.?\s*[a-z]{2}\d+/i.test(fileName)) return 'state_doc'; // Pattern: "29. GJ0270009843.pdf"
+    if (lower.includes('receipt')) return 'receipt';
+    if (lower.includes('eft')) return 'eft';
+
+    return 'other';
+  };
+
+  const extractBusinessNumberFromFilename = (fileName: string): string => {
+    // Remove file extension for cleaner processing
+    const nameWithoutExt = fileName.replace(/\.[^.]+$/, '');
+
+    // Pattern 1: Invoice numbers like "25.INVOICE NO.343.pdf" → "343"
+    const invoiceMatch = nameWithoutExt.match(/invoice[^0-9]*(\d+)/i);
+    if (invoiceMatch) return invoiceMatch[1];
+
+    // Pattern 2: E-way bills like "47.EWAY BILL.259.pdf" → "259"
+    const ewayMatch = nameWithoutExt.match(/e.?way[^0-9]*(\d+)/i);
+    if (ewayMatch) return ewayMatch[1];
+
+    // Pattern 3: State documents like "29. GJ0270009843.pdf" → "GJ0270009843"
+    const stateMatch = nameWithoutExt.match(/([A-Z]{2}\d{10,})/i);
+    if (stateMatch) return stateMatch[1].toUpperCase();
+
+    // Pattern 4: Receipt patterns like "EFT-123" → "123"
+    const receiptMatch = nameWithoutExt.match(/(?:eft|receipt)[^0-9]*(\d+)/i);
+    if (receiptMatch) return receiptMatch[1];
+
+    // Fallback: Use normalized filename (for files that don't match patterns)
+    return nameWithoutExt
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .toLowerCase();
+  };
+
   const checkForDuplicates = useCallback(
     async (files: File[], uploadId: string) => {
       console.log(
-        `🔍 [upload:${uploadId}] Checking for duplicates in database...`
+        `🔍 [upload:${uploadId}] Checking for duplicates in database using SMART fingerprinting...`
       );
 
       const supabase = getSupabaseBrowser();
@@ -1732,12 +2221,21 @@ function HomeContent({ session }: HomeContentProps) {
           ).toFixed(2)} KB)`
         );
 
-        // Check temp_documents first
+        // ✅ SMART: Generate business-aware fingerprint
+        const fileFingerprint = generateFilenameFingerprint(
+          fileName,
+          session?.user?.id || ''
+        );
+        console.log(
+          `🔤 [upload:${uploadId}] Generated fingerprint: ${fileFingerprint}`
+        );
+
+        // Check temp_documents with EXACT filename match (not pattern)
         const { data: tempDocs, error: tempError } = await supabase
           .from('temp_documents')
           .select('pdf_path, upload_date')
           .eq('user_id', session?.user?.id)
-          .ilike('pdf_path', `%${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}%`);
+          .eq('pdf_path', fileName); // ✅ EXACT match instead of ILIKE pattern
 
         if (tempError) {
           console.error(
@@ -1751,7 +2249,7 @@ function HomeContent({ session }: HomeContentProps) {
 
         if (tempDocs && tempDocs.length > 0) {
           console.log(
-            `⚠️ [upload:${uploadId}] File ${fileName} already exists in temp_documents, skipping...`
+            `⚠️ [upload:${uploadId}] File ${fileName} already exists in temp_documents (exact match), skipping...`
           );
           skippedFiles.push({
             name: fileName,
@@ -1760,17 +2258,12 @@ function HomeContent({ session }: HomeContentProps) {
           continue;
         }
 
-        // Check single_documents (processed files)
+        // Check single_documents with EXACT filename match
         const { data: singleDocs, error: singleError } = await supabase
           .from('single_documents')
           .select('pdf_path, upload_date, original_filename')
           .eq('user_id', session?.user?.id)
-          .or(
-            `original_filename.ilike.%${fileName}%,pdf_path.ilike.%${fileName.replace(
-              /[^a-zA-Z0-9.-]/g,
-              '_'
-            )}%`
-          );
+          .eq('original_filename', fileName); // ✅ EXACT match instead of ILIKE pattern
 
         if (singleError) {
           console.error(
@@ -1784,7 +2277,7 @@ function HomeContent({ session }: HomeContentProps) {
 
         if (singleDocs && singleDocs.length > 0) {
           console.log(
-            `⚠️ [upload:${uploadId}] File ${fileName} already processed in single_documents, skipping...`
+            `⚠️ [upload:${uploadId}] File ${fileName} already processed in single_documents (exact match), skipping...`
           );
           skippedFiles.push({ name: fileName, reason: 'Already processed' });
           continue;
@@ -1797,7 +2290,7 @@ function HomeContent({ session }: HomeContentProps) {
         filesToUpload.push(file);
       }
 
-      console.log(`📊 [upload:${uploadId}] Duplicate check results:`);
+      console.log(`📊 [upload:${uploadId}] SMART duplicate check results:`);
       console.log(`   📤 Files to upload: ${filesToUpload.length}`);
       console.log(`   ⏭️ Files skipped: ${skippedFiles.length}`);
 
@@ -1809,9 +2302,15 @@ function HomeContent({ session }: HomeContentProps) {
         );
       }
 
-      return { filesToUpload, skippedFiles };
+      return {
+        filesToUpload,
+        skippedFiles,
+        duplicateCount: skippedFiles.length,
+        newFilesCount: filesToUpload.length,
+        totalFilesCount: files.length,
+      };
     },
-    [session?.user?.id]
+    [session?.user?.id, generateFilenameFingerprint]
   );
 
   // Session management for long uploads
@@ -1915,20 +2414,36 @@ function HomeContent({ session }: HomeContentProps) {
         isUploadingRef.current = true;
 
         // Check for duplicates before uploading
-        const { filesToUpload, skippedFiles } = await checkForDuplicates(
-          files,
-          uploadId
-        );
+        const {
+          filesToUpload,
+          skippedFiles,
+          duplicateCount,
+          newFilesCount,
+          totalFilesCount,
+        } = await checkForDuplicates(files, uploadId);
+
+        // 🚀 PHASE 2: Set duplicate count and skipped files for UI feedback
+        setDuplicateFilesCount(duplicateCount);
+        setSkippedFilesInfo(skippedFiles);
 
         if (filesToUpload.length === 0) {
           console.log(
             `⚠️ [upload:${uploadId}] All files are duplicates, nothing to upload`
           );
           isUploadingRef.current = false;
+          setIsPreprocessing(false); // ✅ FIX: Stop the loading state
           setPreprocessingProgress(
-            `All ${files.length} files were already uploaded. No new files to process.`
+            `🔍 All ${totalFilesCount} files are duplicates - no new files to process.`
           );
           setTimeout(() => setPreprocessingProgress(''), 5000);
+
+          // 🚀 PHASE 4: Update database state even when no files uploaded
+          console.log(
+            `🔄 [PHASE4] All duplicates - updating database state...`
+          );
+          await checkDocumentsStatus();
+
+          stopSessionKeepAlive(); // Clean up session management
           return;
         }
 
@@ -1939,8 +2454,17 @@ function HomeContent({ session }: HomeContentProps) {
           `📤 [upload:${uploadId}] Starting upload to Storage and temp_documents...`
         );
         console.log(
-          `📊 [upload:${uploadId}] Processing ${filesToUpload.length} new files (${skippedFiles.length} duplicates skipped)`
+          `📊 [upload:${uploadId}] Processing ${newFilesCount} new files (${duplicateCount} duplicates skipped)`
         );
+
+        // 🚀 PHASE 2: Enhanced progress messaging for partial duplicates
+        if (duplicateCount > 0) {
+          setPreprocessingProgress(
+            `${duplicateCount} of ${totalFilesCount} files are duplicates. Processing ${newFilesCount} new files...`
+          );
+        } else {
+          setPreprocessingProgress(`Processing ${newFilesCount} files...`);
+        }
 
         // Log all files being processed in this batch
         console.log(`🔍 [upload:${uploadId}] Files in this batch:`);
@@ -2089,6 +2613,12 @@ function HomeContent({ session }: HomeContentProps) {
           uploadedPaths
         );
 
+        // 🚀 PHASE 4: Update database state after upload completion
+        console.log(
+          `🔄 [PHASE4] Upload completed - updating database state...`
+        );
+        await checkDocumentsStatus();
+
         // Log current storage bucket contents for debugging
         try {
           const { data: allFiles, error: listError } = await supabase.storage
@@ -2185,13 +2715,19 @@ function HomeContent({ session }: HomeContentProps) {
             );
 
             // Start readiness polling
-            setTimeout(() => {
+            setTimeout(async () => {
               const successMessage =
                 result.processed > uploadedPaths.length
                   ? `Ready! ${uploadedPaths.length} files split into ${result.processed} pages for AI processing`
                   : `Ready! ${result.processed} pages prepared for AI processing`;
               setPreprocessingProgress(successMessage);
               setIsPreprocessing(false);
+
+              // 🚀 PHASE 4: Update database state after preprocessing completion
+              console.log(
+                `🔄 [PHASE4] Preprocessing completed - updating database state...`
+              );
+              await checkDocumentsStatus();
             }, 2000);
           } catch (error) {
             console.error(
@@ -2233,6 +2769,7 @@ function HomeContent({ session }: HomeContentProps) {
     [
       session?.user?.id,
       checkForDuplicates,
+      checkDocumentsStatus,
       startSessionKeepAlive,
       stopSessionKeepAlive,
     ]
@@ -2240,7 +2777,15 @@ function HomeContent({ session }: HomeContentProps) {
 
   const handleFilesAdded = useCallback(
     (newFiles: File[]) => {
-      console.log(`📁 Frontend: Adding ${newFiles.length} new files`);
+      console.log(
+        `🆕 Starting new session - adding ${newFiles.length} new files`
+      );
+
+      // 🚀 PHASE 3: Clear previous session data
+      setProcessedDocuments([]);
+      setDuplicateFilesCount(0);
+      setSkippedFilesInfo([]);
+      setPreprocessingProgress('');
 
       // 🚨 IMMEDIATELY disable the button when files are added
       setIsPreprocessing(true);
@@ -2335,25 +2880,20 @@ function HomeContent({ session }: HomeContentProps) {
       `🔍 [process:${processId}] Fetching ready documents from single_documents...`
     );
 
-    // Only fetch documents that were uploaded in the last 5 minutes to avoid processing old files
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-
-    // Fetch ready documents for AI processing (only recent uploads)
+    // Fetch ready documents for AI processing (all uploaded documents, no time restriction)
     const { data: singleDocs, error: fetchError } = await supabase
       .from('single_documents')
       .select('*')
       .eq('status', 'uploaded')
       .eq('user_id', session?.user?.id) // Filter by current user
-      .gte('upload_date', fiveMinutesAgo) // Only recent uploads
       .order('upload_date', { ascending: true });
 
     console.log(
       `📊 [process:${processId}] Found ${
         singleDocs?.length || 0
-      } documents ready for AI processing (uploaded after ${fiveMinutesAgo})`,
+      } documents ready for AI processing (no time restriction)`,
       {
         error: fetchError,
-        timeFilter: fiveMinutesAgo,
         documents: singleDocs?.map((d) => ({
           pdf_path: d.pdf_path,
           original_filename: d.original_filename,
@@ -2477,7 +3017,7 @@ function HomeContent({ session }: HomeContentProps) {
 
         setCurrentProcessingIndex(i);
 
-        // Update status to processing
+        // Update status to processing in both frontend and database
         console.log(
           `🔄 Frontend: Setting status to 'processing' for document ${
             i + 1
@@ -2488,6 +3028,23 @@ function HomeContent({ session }: HomeContentProps) {
             doc.fileName === fileName ? { ...doc, status: 'processing' } : doc
           )
         );
+
+        // Update database status to 'processing'
+        const { error: processingUpdateError } = await supabase
+          .from('single_documents')
+          .update({ status: 'processing' })
+          .eq('id', currentDoc.id);
+
+        if (processingUpdateError) {
+          console.error(
+            `❌ Failed to update single_documents status to processing:`,
+            processingUpdateError
+          );
+        } else {
+          console.log(
+            `✅ Updated single_documents status to 'processing' for ${fileName}`
+          );
+        }
 
         const fileStartTime = Date.now();
 
@@ -2688,6 +3245,27 @@ function HomeContent({ session }: HomeContentProps) {
             // 🎯 INCREMENT LOCAL ERROR COUNT
             localErrorCount++;
 
+            // Update database status to 'failed'
+            const { error: failedUpdateError } = await supabase
+              .from('single_documents')
+              .update({
+                status: 'failed',
+                error_message: result.error || 'Processing failed',
+                failed_at: new Date().toISOString(),
+              })
+              .eq('id', currentDoc.id);
+
+            if (failedUpdateError) {
+              console.error(
+                `❌ Failed to update single_documents status to failed:`,
+                failedUpdateError
+              );
+            } else {
+              console.log(
+                `✅ Updated single_documents status to 'failed' for ${fileName}`
+              );
+            }
+
             // Update with error
             setProcessedDocuments((prev) =>
               prev.map((doc) =>
@@ -2710,6 +3288,30 @@ function HomeContent({ session }: HomeContentProps) {
 
           // 🎯 INCREMENT LOCAL ERROR COUNT
           localErrorCount++;
+
+          // Update database status to 'failed' for network error
+          const { error: networkFailedUpdateError } = await supabase
+            .from('single_documents')
+            .update({
+              status: 'failed',
+              error_message:
+                networkError instanceof Error
+                  ? networkError.message
+                  : 'Network error',
+              failed_at: new Date().toISOString(),
+            })
+            .eq('id', currentDoc.id);
+
+          if (networkFailedUpdateError) {
+            console.error(
+              `❌ Failed to update single_documents status to failed (network error):`,
+              networkFailedUpdateError
+            );
+          } else {
+            console.log(
+              `✅ Updated single_documents status to 'failed' for ${fileName} (network error)`
+            );
+          }
 
           // Update with network error
           setProcessedDocuments((prev) =>
@@ -2743,6 +3345,12 @@ function HomeContent({ session }: HomeContentProps) {
           processedCount > 0 ? (totalBatchTime / processedCount).toFixed(2) : 0
         }ms`
       );
+
+      // 🚀 PHASE 4: Update database state after AI processing completion
+      console.log(
+        `🔄 [PHASE4] AI processing completed - updating database state...`
+      );
+      await checkDocumentsStatus();
 
       // ========== COMPREHENSIVE BATCH SUMMARY ==========
       console.log(`\n🎯 ===============================================`);
@@ -2888,6 +3496,9 @@ function HomeContent({ session }: HomeContentProps) {
         );
         triggerDocumentGrouping(localCompletedCount);
       }
+
+      // 🚀 REFRESH FAILED DOCUMENTS LIST AFTER PROCESSING
+      fetchFailedDocuments();
 
       // Auto-redirect to Verify & Submit tab after successful processing
       if (localCompletedCount > 0) {
@@ -3040,7 +3651,7 @@ function HomeContent({ session }: HomeContentProps) {
 
   // Log state changes
   console.log(
-    `📊 Frontend State: Files: ${files.length}, Processed: ${processedDocuments.length}, Completed: ${completedCount}, Errors: ${errorCount}`
+    `📊 Frontend State: Files: ${files.length}, Processed: ${processedDocuments.length}, Completed: ${completedCount}, Errors: ${errorCount}, Ready: ${readyDocumentsCount}, Temp: ${tempDocumentsCount}, Duplicates: ${duplicateFilesCount}, Progress: "${preprocessingProgress}"`
   );
 
   return (
@@ -3117,13 +3728,19 @@ function HomeContent({ session }: HomeContentProps) {
             value={activeTab}
             onValueChange={(v: string) =>
               setActiveTab(
-                v as 'upload' | 'results' | 'groups' | 'submit' | 'blockchain'
+                v as
+                  | 'upload'
+                  | 'results'
+                  | 'groups'
+                  | 'submit'
+                  | 'blockchain'
+                  | 'data'
               )
             }
             className='space-y-6'
           >
             <div className='flex justify-center'>
-              <TabsList className='grid w-full grid-cols-3'>
+              <TabsList className='grid w-full grid-cols-4'>
                 <TabsTrigger value='upload' className='text-base py-1'>
                   Upload & Process
                 </TabsTrigger>
@@ -3134,6 +3751,10 @@ function HomeContent({ session }: HomeContentProps) {
 
                 <TabsTrigger value='blockchain' className='text-base py-1'>
                   Blockchain
+                </TabsTrigger>
+
+                <TabsTrigger value='data' className='text-base py-1'>
+                  Data Management
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -3164,9 +3785,38 @@ function HomeContent({ session }: HomeContentProps) {
                         <h3 className='text-lg font-medium'>
                           Uploaded Documents
                         </h3>
-                        <Badge variant='outline' className='text-slate-600'>
-                          {files.length} {files.length === 1 ? 'file' : 'files'}
-                        </Badge>
+                        {/* 🚀 PHASE 5: Enhanced file count badge with workflow status */}
+                        <div className='flex gap-2'>
+                          <Badge variant='outline' className='text-slate-600'>
+                            {files.length}{' '}
+                            {files.length === 1 ? 'file' : 'files'}
+                          </Badge>
+                          {duplicateFilesCount > 0 && (
+                            <Badge
+                              variant='outline'
+                              className='text-orange-600 border-orange-200 bg-orange-50'
+                            >
+                              {duplicateFilesCount} duplicate
+                              {duplicateFilesCount > 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {tempDocumentsCount > 0 && (
+                            <Badge
+                              variant='outline'
+                              className='text-yellow-600 border-yellow-200 bg-yellow-50'
+                            >
+                              {tempDocumentsCount} preprocessing
+                            </Badge>
+                          )}
+                          {readyDocumentsCount > 0 && (
+                            <Badge
+                              variant='outline'
+                              className='text-green-600 border-green-200 bg-green-50'
+                            >
+                              {readyDocumentsCount} ready
+                            </Badge>
+                          )}
+                        </div>
                       </div>
 
                       <div className='space-y-3'>
@@ -3178,6 +3828,9 @@ function HomeContent({ session }: HomeContentProps) {
                             documentTypes[docType]?.icon || FileText;
                           const iconColor =
                             documentTypes[docType]?.color || 'text-slate-500';
+
+                          // 🚀 PHASE 2: Check if file is duplicate
+                          const fileStatus = getFileStatus(file);
 
                           return (
                             <div
@@ -3227,6 +3880,15 @@ function HomeContent({ session }: HomeContentProps) {
                                         Error
                                       </span>
                                     )}
+                                    {/* 🚀 PHASE 2: Show duplicate status */}
+                                    {fileStatus.isDuplicate && (
+                                      <Badge
+                                        variant='outline'
+                                        className='text-orange-600 border-orange-200 bg-orange-50'
+                                      >
+                                        DUPLICATE
+                                      </Badge>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -3246,22 +3908,36 @@ function HomeContent({ session }: HomeContentProps) {
                       </div>
 
                       <div className='mt-8'>
+                        {/* 🚀 PHASE 5: Enhanced status display */}
+                        {(() => {
+                          const status = getDetailedStatus();
+                          return (
+                            <div
+                              className={`p-4 rounded-lg border ${status.bgColor} ${status.borderColor} mb-4`}
+                            >
+                              <div className='flex items-center justify-between'>
+                                <div>
+                                  <p className={`font-medium ${status.color}`}>
+                                    {isPreprocessing
+                                      ? 'Pre-processing Documents'
+                                      : 'Document Status'}
+                                  </p>
+                                  <p className={`text-sm ${status.color}`}>
+                                    {status.message}
+                                  </p>
+                                </div>
+                                {isPreprocessing && (
+                                  <Loader2 className='h-5 w-5 text-orange-500 animate-spin' />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {isPreprocessing ? (
                           <div className='space-y-4'>
-                            <div className='flex items-center justify-between'>
-                              <div>
-                                <p className='font-medium text-orange-800'>
-                                  Pre-processing Documents
-                                </p>
-                                <p className='text-sm text-orange-600'>
-                                  {preprocessingProgress ||
-                                    'Splitting documents into individual pages...'}
-                                </p>
-                              </div>
-                              <Loader2 className='h-5 w-5 text-orange-500 animate-spin' />
-                            </div>
-                            <div className='bg-orange-50 border border-orange-200 rounded-lg p-3'>
-                              <p className='text-sm text-orange-700'>
+                            <div className='bg-blue-50 border border-blue-200 rounded-lg p-3'>
+                              <p className='text-sm text-blue-700'>
                                 🔄 Documents are being prepared for AI
                                 processing. This includes splitting multi-page
                                 PDFs into individual pages.
@@ -3299,7 +3975,9 @@ function HomeContent({ session }: HomeContentProps) {
                             <Button
                               type='button'
                               onClick={processFiles}
-                              disabled={files.length === 0 || isPreprocessing}
+                              disabled={
+                                readyDocumentsCount === 0 || isPreprocessing
+                              }
                               className='w-full py-6 text-lg gap-2'
                             >
                               {isPreprocessing ? (
@@ -3314,6 +3992,25 @@ function HomeContent({ session }: HomeContentProps) {
                                 </>
                               )}
                             </Button>
+
+                            {/* 🚀 PHASE 5: Enhanced button status explanation */}
+                            {!isPreprocessing && !isProcessing && (
+                              <div className='mt-2 text-center'>
+                                {readyDocumentsCount === 0 ? (
+                                  <p className='text-sm text-slate-500'>
+                                    {files.length > 0
+                                      ? 'No documents ready for AI processing'
+                                      : 'Upload documents to begin processing'}
+                                  </p>
+                                ) : (
+                                  <p className='text-sm text-green-600'>
+                                    ✅ Ready to process {readyDocumentsCount}{' '}
+                                    page{readyDocumentsCount > 1 ? 's' : ''}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
                             {isPreprocessing && (
                               <p className='text-sm text-center text-orange-600 mt-2'>
                                 Please wait while documents are being
@@ -3386,6 +4083,171 @@ function HomeContent({ session }: HomeContentProps) {
                 </CardContent>
               </Card>
 
+              {/* 🚀 NEW: Failed Preprocessing Section */}
+              {failedPreprocessingDocs.length > 0 && (
+                <Card className='shadow-md border-red-200 bg-red-50'>
+                  <CardContent className='p-6'>
+                    <div className='mb-4'>
+                      <h3 className='text-lg font-semibold text-red-800 flex items-center gap-2'>
+                        <AlertCircle className='h-5 w-5' />
+                        Failed Preprocessing ({
+                          failedPreprocessingDocs.length
+                        }{' '}
+                        documents)
+                      </h3>
+                      <p className='text-red-600 text-sm mt-1'>
+                        These documents failed during preprocessing and need
+                        attention
+                      </p>
+                    </div>
+
+                    <div className='space-y-2 mb-4 max-h-40 overflow-y-auto'>
+                      {failedPreprocessingDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className='flex items-center justify-between p-3 bg-white border border-red-200 rounded-lg'
+                        >
+                          <div className='flex items-center gap-3'>
+                            <AlertCircle className='h-4 w-4 text-red-500' />
+                            <div>
+                              <p className='font-medium text-slate-800 text-sm'>
+                                {doc.pdf_path.split('/').pop() ||
+                                  'Unknown file'}
+                              </p>
+                              <p className='text-xs text-red-600'>
+                                {doc.error_message || 'Processing failed'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className='text-xs text-slate-500'>
+                            {doc.last_attempt
+                              ? new Date(doc.last_attempt).toLocaleString()
+                              : 'Unknown'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className='flex gap-2 flex-wrap'>
+                      <Button
+                        onClick={retryFailedPreprocessing}
+                        size='sm'
+                        className='bg-red-600 hover:bg-red-700'
+                      >
+                        🔄 Retry Failed ({failedPreprocessingDocs.length})
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const fileList = failedPreprocessingDocs
+                            .map(
+                              (doc) =>
+                                `${doc.pdf_path.split('/').pop()}: ${
+                                  doc.error_message
+                                }`
+                            )
+                            .join('\n');
+                          const blob = new Blob([fileList], {
+                            type: 'text/plain',
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = 'failed-preprocessing-files.txt';
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        variant='outline'
+                        size='sm'
+                      >
+                        📋 Download List
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 🚀 NEW: Failed AI Processing Section */}
+              {failedAIDocs.length > 0 && (
+                <Card className='shadow-md border-orange-200 bg-orange-50'>
+                  <CardContent className='p-6'>
+                    <div className='mb-4'>
+                      <h3 className='text-lg font-semibold text-orange-800 flex items-center gap-2'>
+                        <AlertCircle className='h-5 w-5' />
+                        Failed AI Processing ({failedAIDocs.length} documents)
+                      </h3>
+                      <p className='text-orange-600 text-sm mt-1'>
+                        These documents failed during AI processing and can be
+                        retried
+                      </p>
+                    </div>
+
+                    <div className='space-y-2 mb-4 max-h-40 overflow-y-auto'>
+                      {failedAIDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className='flex items-center justify-between p-3 bg-white border border-orange-200 rounded-lg'
+                        >
+                          <div className='flex items-center gap-3'>
+                            <AlertCircle className='h-4 w-4 text-orange-500' />
+                            <div>
+                              <p className='font-medium text-slate-800 text-sm'>
+                                {doc.original_filename ||
+                                  doc.pdf_path.split('/').pop() ||
+                                  'Unknown file'}
+                              </p>
+                              <p className='text-xs text-orange-600'>
+                                {doc.error_message || 'AI processing failed'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className='text-xs text-slate-500'>
+                            {doc.failed_at
+                              ? new Date(doc.failed_at).toLocaleString()
+                              : 'Unknown'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className='flex gap-2 flex-wrap'>
+                      <Button
+                        onClick={retryFailedAI}
+                        size='sm'
+                        className='bg-orange-600 hover:bg-orange-700'
+                      >
+                        🔄 Retry AI Processing ({failedAIDocs.length})
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const fileList = failedAIDocs
+                            .map(
+                              (doc) =>
+                                `${
+                                  doc.original_filename ||
+                                  doc.pdf_path.split('/').pop()
+                                }: ${doc.error_message}`
+                            )
+                            .join('\n');
+                          const blob = new Blob([fileList], {
+                            type: 'text/plain',
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = 'failed-ai-processing-files.txt';
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        variant='outline'
+                        size='sm'
+                      >
+                        📋 Download List
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
                 <DocumentTypeCard
                   title='Invoices'
@@ -3420,6 +4282,41 @@ function HomeContent({ session }: HomeContentProps) {
                           ? 'Groups are built by backend service. Complete groups can be submitted, incomplete groups show missing documents.'
                           : 'Loading document groups...'}
                       </CardDescription>
+
+                      {/* 🚀 NEW: Group Statistics */}
+                      {isDocumentsLoaded && (
+                        <div className='flex items-center gap-4 mt-3'>
+                          <div className='flex items-center gap-2 px-3 py-1.5 bg-blue-100 rounded-md border border-blue-200'>
+                            <FolderOpen className='h-4 w-4 text-blue-600' />
+                            <span className='font-semibold text-blue-700 text-sm'>
+                              📁 Groups: {groupStats.totalGroups}
+                            </span>
+                          </div>
+
+                          <div className='flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-md border border-green-200'>
+                            <CheckCircle2 className='h-4 w-4 text-green-600' />
+                            <span className='font-semibold text-green-700 text-sm'>
+                              ✅ Complete: {groupStats.completeGroups}
+                            </span>
+                          </div>
+
+                          <div className='flex items-center gap-2 px-3 py-1.5 bg-red-100 rounded-md border border-red-200'>
+                            <AlertCircle className='h-4 w-4 text-red-600' />
+                            <span className='font-semibold text-red-700 text-sm'>
+                              ❌ Incomplete: {groupStats.incompleteGroups}
+                            </span>
+                          </div>
+
+                          {groupStats.ungroupedDocs > 0 && (
+                            <div className='flex items-center gap-2 px-3 py-1.5 bg-orange-100 rounded-md border border-orange-200'>
+                              <FileText className='h-4 w-4 text-orange-600' />
+                              <span className='font-semibold text-orange-700 text-sm'>
+                                📄 Ungrouped: {groupStats.ungroupedDocs}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className='flex items-center gap-2'>
                       <VerifiedCsvDownload session={session} />
@@ -4426,6 +5323,11 @@ function HomeContent({ session }: HomeContentProps) {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* ===== NEW: Data Management Tab ===== */}
+            <TabsContent value='data' className='space-y-6'>
+              <DataManagementTable session={session} />
             </TabsContent>
           </Tabs>
         </div>

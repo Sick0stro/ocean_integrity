@@ -6,6 +6,11 @@ A comprehensive document processing and management system for handling invoices,
 
 ### 🐛 **Critical Bug Fixes & Performance Improvements** (Latest)
 
+- **✅ MAJOR FIX: Smart Duplicate Detection**: Completely redesigned preprocessing duplicate detection to eliminate false positives
+  - **Problem**: Invoice/E-way bills with different numbers were incorrectly flagged as duplicates (e.g., "INVOICE NO.343" vs "INVOICE NO.47" marked as same)
+  - **Solution**: Replaced overly broad ILIKE pattern matching with exact filename matching and intelligent business-aware fingerprinting
+  - **Impact**: Eliminates 50+ false duplicate errors that were blocking legitimate document uploads in high-volume batches
+  - **Testing**: Added `/api/test-duplicate-detection` endpoint for comprehensive testing and validation
 - **✅ Fixed "Failed to fetch" Errors**: Added comprehensive error handling for all Supabase queries to prevent uncaught exceptions and connection failures
 - **✅ Enhanced File Upload Limits**: Reduced max files from 1000 to 100 with clear user notification to prevent session timeouts and system overload
 - **✅ Advanced Plastiks API Debugging**: Added detailed logging for 401 error troubleshooting with complete request/response analysis and fixed Plastiks endpoint from `/api/collections/prg` to `/collections`
@@ -147,7 +152,8 @@ Ocean Integrity is a **production-ready** modern web application that streamline
 - **User-Scoped Processing**: Documents are automatically associated with the authenticated user
 - **Optimized File Uploads**: Maximum 100 files per upload with clear user notification to prevent system overload
 - **Validation**: Ensures all required documents are present before human verification
-- **Duplicate Prevention**: Prevents processing of duplicate or invalid documents
+- **🔥 Smart Duplicate Prevention**: Advanced duplicate detection that distinguishes between different invoice numbers (e.g., "INVOICE NO.343" vs "INVOICE NO.47" are correctly identified as different documents)
+- **Business-Aware Fingerprinting**: Intelligent filename analysis that understands document types and extracts business identifiers
 - **Error Recovery**: Graceful handling of network issues and connection failures
 
 ### 📊 Real-Time Dashboard & Analytics
@@ -382,6 +388,29 @@ All API endpoints now require valid JWT authentication tokens passed via `Author
   - **Authentication**: Via cron secrets (`x-cron-secret` header or `?secret=` query param)
 
 ### Debug & Testing
+
+- `GET /api/test-duplicate-detection` - Test smart duplicate detection logic
+
+  - **Purpose**: Validate the new duplicate detection system with your actual file patterns
+  - **No Authentication**: Simple test endpoint for validation
+  - **Usage**:
+
+    ```bash
+    # Test August 22nd problematic batch
+    curl "http://localhost:3001/api/test-duplicate-detection"
+
+    # Test specific file
+    curl "http://localhost:3001/api/test-duplicate-detection?file=25.INVOICE%20NO.343.pdf"
+    ```
+
+  - **POST Support**: Test custom files
+    ```bash
+    curl -X POST "http://localhost:3001/api/test-duplicate-detection" \
+      -H "Content-Type: application/json" \
+      -d '{"files": ["25.INVOICE NO.343.pdf", "37. INVOICE NO. 47.pdf"]}'
+    ```
+  - **Response**: Shows document type detection, business number extraction, and fingerprinting results
+  - **Use Case**: Verify that files with different invoice/e-way bill numbers get unique fingerprints (no false duplicates)
 
 - `GET /api/debug/payload` - Debug endpoint to verify exact Plastiks payload structure
   - **Purpose**: Shows exactly what data gets sent to Plastiks API without authentication
@@ -726,6 +755,14 @@ Notes:
 
 ### Troubleshooting
 
+- **✅ Duplicate Detection False Positives - FIXED**
+
+  - **Issue**: Legitimate files with different invoice/e-way bill numbers were incorrectly flagged as duplicates
+  - **Common Pattern**: "25.INVOICE NO.343.pdf" and "37. INVOICE NO. 47.pdf" marked as duplicates despite having different numbers (343 vs 47)
+  - **Solution**: Replaced pattern-based matching with exact filename matching and smart business fingerprinting
+  - **Test**: Use `curl "http://localhost:3001/api/test-duplicate-detection"` to verify your file patterns work correctly
+  - **Status**: ✅ Each unique invoice/e-way bill number now gets a unique fingerprint, eliminating false positives
+
 - **✅ "Failed to fetch" Errors - FIXED**
 
   - **Issue**: Console shows "TypeError: Failed to fetch" or "net::ERR_CONNECTION_CLOSED"
@@ -905,6 +942,7 @@ Ensure your Supabase project has email authentication enabled:
 
 ### Change Log
 
+- **v5.3 **: 🔥 **SMART DUPLICATE DETECTION FIX** - Completely redesigned preprocessing duplicate detection to eliminate false positives where files with different invoice/e-way bill numbers were incorrectly flagged as duplicates; replaced ILIKE pattern matching with exact filename matching and business-aware fingerprinting; added comprehensive testing endpoint `/api/test-duplicate-detection` for validation
 - **v5.2 **: 🐛 **CRITICAL BUG FIXES & PERFORMANCE** - Fixed "Failed to fetch" errors with comprehensive Supabase error handling, optimized file upload limit to 100 files with user notification, added advanced Plastiks API debugging logs for 401 troubleshooting, cleaned up console output while maintaining error recovery, and improved dashboard stability with network failure fallbacks
 - **v5.1 **: 🇮🇳 **ENHANCED INDIAN RECYCLER LOGIC** - Advanced Indian recycler detection, dynamic file counting (2 of 2 vs 3 of 3), context-aware UI sections, backend validation enhancement, and smart human verification rules
 - **v5.0 **: 🚀 **BACKEND GROUPING & BLOCKCHAIN INTEGRATION** - Moved document grouping to backend with business rules engine, added Indian recycler 2-document exception, new Blockchain tab with Push to Plastiks functionality, comprehensive backend logging, and staging environment confirmation
