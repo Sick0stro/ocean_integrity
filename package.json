@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run clean:dev && next dev --turbopack",
-    "dev:safe": "npm run clean:all && npm run dev",
+    "dev": "npm run kill:dev && npm run clean:dev && next dev --turbopack",
+    "dev:safe": "npm run kill:dev && npm run clean:all && next dev --turbopack",
     "build": "npm run clean:build && next build",
     "start": "next start",
     "lint": "next lint",
-    "clean:dev": "if exist .next\\static\\development rmdir /s /q .next\\static\\development",
-    "clean:build": "if exist .next rmdir /s /q .next",
+    "clean:dev": "if exist .next\\static\\development rmdir /s /q .next\\static\\development 2>nul",
+    "clean:build": "if exist .next rmdir /s /q .next 2>nul",
     "clean:all": "npm run clean:build && npm run clean:cache",
-    "clean:cache": "if exist node_modules\\.cache rmdir /s /q node_modules\\.cache",
-    "kill:dev": "taskkill /f /im node.exe 2>nul || echo No Node.js processes to kill",
-    "restart": "npm run kill:dev && npm run dev:safe"
+    "clean:cache": "if exist node_modules\\.cache rmdir /s /q node_modules\\.cache 2>nul",
+    "kill:dev": "taskkill /f /im node.exe 2>nul || echo No processes to kill",
+    "restart": "npm run dev:safe"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",

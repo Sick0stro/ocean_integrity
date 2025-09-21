@@ -3,27 +3,25 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   // Experimental features for stability
   experimental: {
-    // Enable Turbopack for faster builds
-    turbo: {
-      // Optimize memory usage
-      memoryLimit: 4096,
-    },
     // Optimize bundling
     optimizePackageImports: ['lucide-react'],
   },
 
-  // Build optimization
-  swcMinify: true,
+  // Turbopack configuration (stable in Next.js 15+)
+  turbopack: {
+    // Optimize memory usage
+    memoryLimit: 4096,
+  },
 
-  // Webpack configuration
-  webpack: (config, { dev, isServer }) => {
+  // Webpack configuration (only when not using Turbopack)
+  webpack: (config, { dev, isServer, webpack }) => {
     // Canvas externals for PDF functionality
     config.externals.push({
       canvas: 'commonjs canvas',
     });
 
-    // Optimize for development stability
-    if (dev) {
+    // Only apply webpack optimizations when NOT using Turbopack
+    if (dev && !process.env.TURBOPACK) {
       // Prevent file watcher issues on Windows
       config.watchOptions = {
         poll: 1000,
