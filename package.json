@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "clean:dev": "if exist .next\\static\\development rmdir /s /q .next\\static\\development 2>nul",
-    "clean:build": "if exist .next rmdir /s /q .next 2>nul",
+    "clean:build": "rimraf .next",
     "clean:all": "npm run clean:build && npm run clean:cache",
     "clean:cache": "if exist node_modules\\.cache rmdir /s /q node_modules\\.cache 2>nul",
     "kill:dev": "taskkill /f /im node.exe 2>nul || echo No processes to kill",
@@ -58,6 +58,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
+    "rimraf": "^6.0.1",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.4",
     "typescript": "^5"
