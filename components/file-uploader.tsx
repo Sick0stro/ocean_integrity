@@ -23,6 +23,7 @@ export default function FileUploader({
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>(
     {}
   );
+  const [isProcessing, setIsProcessing] = useState(false); // Prevent multiple uploads
   const [, setMode] = useState<'files' | 'folder'>('files');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -67,9 +68,11 @@ export default function FileUploader({
       `🔍 FileUploader: Drag & Drop - Found ${pdfFiles.length} PDF files`
     );
 
-    if (pdfFiles.length > 0) {
+    if (pdfFiles.length > 0 && !isProcessing) {
       const filesToAdd = pdfFiles.slice(0, maxFiles);
       simulateUpload(filesToAdd);
+    } else if (isProcessing) {
+      console.log(`⏳ FileUploader: Drag & Drop ignored - upload already in progress`);
     }
   };
 
@@ -124,12 +127,14 @@ export default function FileUploader({
         `✅ FileUploader: Found ${pdfFiles.length} PDF files after filtering`
       );
 
-      if (pdfFiles.length > 0) {
+      if (pdfFiles.length > 0 && !isProcessing) {
         const filesToAdd = pdfFiles.slice(0, maxFiles);
         console.log(
           `📦 FileUploader: Adding ${filesToAdd.length} PDF files to upload queue`
         );
         simulateUpload(filesToAdd);
+      } else if (isProcessing) {
+        console.log(`⏳ FileUploader: File input ignored - upload already in progress`);
       } else {
         console.log(`⚠️ FileUploader: No PDF files found in selection`);
         alert(
@@ -149,12 +154,24 @@ export default function FileUploader({
   };
 
   const simulateUpload = (files: File[]) => {
+    console.log(`📤 FileUploader: simulateUpload called with ${files.length} files`);
+
+    // Prevent multiple upload sessions
+    if (isProcessing) {
+      console.log(`⏳ FileUploader: Upload already in progress, ignoring duplicate call`);
+      return;
+    }
+
+    setIsProcessing(true);
+
     // Create initial progress entries
     const initialProgress: Record<string, number> = {};
     files.forEach((file) => {
       initialProgress[file.name] = 0;
     });
     setUploadProgress(initialProgress);
+
+    let hasCompleted = false; // Prevent multiple completions
 
     // Simulate upload progress
     const interval = setInterval(() => {
@@ -170,12 +187,16 @@ export default function FileUploader({
           }
         });
 
-        if (allComplete) {
+        if (allComplete && !hasCompleted) {
+          hasCompleted = true; // Prevent multiple calls
           clearInterval(interval);
+          console.log(`✅ FileUploader: Upload simulation complete, calling onFilesAdded once`);
+
           // After "upload" is complete, add files to the main state
           setTimeout(() => {
             onFilesAdded(files);
             setUploadProgress({});
+            setIsProcessing(false); // Reset upload flag
           }, 500);
         }
 
@@ -230,7 +251,7 @@ export default function FileUploader({
         accept={acceptedFileTypes.join(',')}
         multiple={true}
         className='hidden'
-        disabled={isUploading}
+        disabled={isProcessing}
         style={{ display: 'none' }}
       />
 
@@ -249,11 +270,11 @@ export default function FileUploader({
         onChange={(e) => handleFileInputChange(e, true)}
         multiple={true}
         className='hidden'
-        disabled={isUploading}
+        disabled={isProcessing}
         style={{ display: 'none' }}
       />
 
-      {isUploading ? (
+      {isProcessing ? (
         <div className='space-y-4'>
           <div className='p-3 bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto'>
             <File className='h-8 w-8 text-blue-600' />

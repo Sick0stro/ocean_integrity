@@ -468,6 +468,9 @@ export async function POST(request: Request) {
                       file_size: pdfBuffer.byteLength,
                       mime_type: 'application/pdf',
                       user_id: doc.user_id, // Add user_id from temp_documents
+                      temp_document_id: doc.id, // NEW: Link to parent temp_document
+                      page_number: 1, // NEW: Single page
+                      total_pages: 1, // NEW: Single page total
                     });
                     if (res.error) throw res.error;
                     return res;
@@ -644,6 +647,9 @@ export async function POST(request: Request) {
                       file_size: newPdfBytes.length,
                       mime_type: 'application/pdf',
                       user_id: doc.user_id, // Add user_id from temp_documents
+                      temp_document_id: doc.id, // NEW: Link to parent temp_document
+                      page_number: pageNum, // NEW: Track page number (1, 2, 3...)
+                      total_pages: pageCount, // NEW: Total pages from this PDF
                     });
                     if (res.error) throw res.error;
                     return res;

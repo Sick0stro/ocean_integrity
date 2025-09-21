@@ -77,7 +77,7 @@ import { GalleryVerticalEnd } from 'lucide-react';
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
 import { VerifiedCsvDownload } from '@/components/verified-csv-download';
-import { DataManagementTable } from '@/components/data-management-table';
+import { DataManagementDashboard } from '@/components/data-management-dashboard';
 
 const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
   ssr: false,
@@ -2204,12 +2204,12 @@ function HomeContent({ session }: HomeContentProps) {
   const checkForDuplicates = useCallback(
     async (files: File[], uploadId: string) => {
       console.log(
-        `🔍 [upload:${uploadId}] Checking for duplicates in database using SMART fingerprinting...`
+        `🔍 [upload:${uploadId}] Checking for potential duplicates in database (non-blocking)...`
       );
 
       const supabase = getSupabaseBrowser();
       const filesToUpload: File[] = [];
-      const skippedFiles: { name: string; reason: string }[] = [];
+      const duplicateWarnings: { name: string; reason: string }[] = [];
 
       for (const file of files) {
         const fileName = file.name;
@@ -2230,84 +2230,81 @@ function HomeContent({ session }: HomeContentProps) {
           `🔤 [upload:${uploadId}] Generated fingerprint: ${fileFingerprint}`
         );
 
+        let duplicateFound = false;
+
         // Check temp_documents with EXACT filename match (not pattern)
         const { data: tempDocs, error: tempError } = await supabase
           .from('temp_documents')
-          .select('pdf_path, upload_date')
+          .select('pdf_path, upload_date, status')
           .eq('user_id', session?.user?.id)
-          .eq('pdf_path', fileName); // ✅ EXACT match instead of ILIKE pattern
+          .eq('pdf_path', fileName)
+          .limit(1);
 
-        if (tempError) {
-          console.error(
-            `❌ [upload:${uploadId}] Error checking temp_documents:`,
-            tempError
-          );
-          // Continue with upload if we can't check
-          filesToUpload.push(file);
-          continue;
-        }
-
-        if (tempDocs && tempDocs.length > 0) {
+        if (!tempError && tempDocs && tempDocs.length > 0) {
           console.log(
-            `⚠️ [upload:${uploadId}] File ${fileName} already exists in temp_documents (exact match), skipping...`
+            `⚠️ [upload:${uploadId}] File ${fileName} already exists in temp_documents (${tempDocs[0].status}), warning but allowing upload...`
           );
-          skippedFiles.push({
+          duplicateWarnings.push({
             name: fileName,
-            reason: 'Already in temp_documents',
+            reason: `File exists in temp_documents (${tempDocs[0].status}) - will check content duplicates during processing`,
           });
-          continue;
+          duplicateFound = true;
         }
 
         // Check single_documents with EXACT filename match
-        const { data: singleDocs, error: singleError } = await supabase
-          .from('single_documents')
-          .select('pdf_path, upload_date, original_filename')
-          .eq('user_id', session?.user?.id)
-          .eq('original_filename', fileName); // ✅ EXACT match instead of ILIKE pattern
+        if (!duplicateFound) {
+          const { data: singleDocs, error: singleError } = await supabase
+            .from('single_documents')
+            .select('pdf_path, upload_date, original_filename, status')
+            .eq('user_id', session?.user?.id)
+            .eq('original_filename', fileName)
+            .limit(1);
 
-        if (singleError) {
-          console.error(
-            `❌ [upload:${uploadId}] Error checking single_documents:`,
-            singleError
-          );
-          // Continue with upload if we can't check
-          filesToUpload.push(file);
-          continue;
+          if (!singleError && singleDocs && singleDocs.length > 0) {
+            console.log(
+              `⚠️ [upload:${uploadId}] File ${fileName} already processed in single_documents (${singleDocs[0].status}), warning but allowing upload...`
+            );
+            duplicateWarnings.push({
+              name: fileName,
+              reason: `File exists in single_documents (${singleDocs[0].status}) - will check content duplicates during processing`,
+            });
+            duplicateFound = true;
+          }
         }
 
-        if (singleDocs && singleDocs.length > 0) {
-          console.log(
-            `⚠️ [upload:${uploadId}] File ${fileName} already processed in single_documents (exact match), skipping...`
-          );
-          skippedFiles.push({ name: fileName, reason: 'Already processed' });
-          continue;
-        }
-
-        // File is not a duplicate, add to upload queue
+        // Always add to upload queue - let content deduplication handle duplicates during AI processing
         console.log(
-          `✅ [upload:${uploadId}] File ${fileName} is new, will upload`
+          `✅ [upload:${uploadId}] File ${fileName} will be uploaded${
+            duplicateFound ? ' (with duplicate warning)' : ''
+          }`
         );
         filesToUpload.push(file);
       }
 
-      console.log(`📊 [upload:${uploadId}] SMART duplicate check results:`);
+      console.log(
+        `📊 [upload:${uploadId}] Non-blocking duplicate check results:`
+      );
       console.log(`   📤 Files to upload: ${filesToUpload.length}`);
-      console.log(`   ⏭️ Files skipped: ${skippedFiles.length}`);
+      console.log(`   ⚠️ Duplicate warnings: ${duplicateWarnings.length}`);
 
-      if (skippedFiles.length > 0) {
-        console.log(`📋 [upload:${uploadId}] Skipped files:`, skippedFiles);
-        // Show user notification about skipped files
+      if (duplicateWarnings.length > 0) {
+        console.log(
+          `📋 [upload:${uploadId}] Duplicate warnings:`,
+          duplicateWarnings
+        );
+        // Show user notification about potential duplicates
         setPreprocessingProgress(
-          `Skipped ${skippedFiles.length} duplicate files. Uploading ${filesToUpload.length} new files...`
+          `${duplicateWarnings.length} potential duplicate(s) detected. Uploading ${filesToUpload.length} files - content deduplication will happen during processing...`
         );
       }
 
       return {
         filesToUpload,
-        skippedFiles,
-        duplicateCount: skippedFiles.length,
+        skippedFiles: [], // No files skipped in non-blocking mode
+        duplicateCount: 0, // No files blocked
         newFilesCount: filesToUpload.length,
         totalFilesCount: files.length,
+        duplicateWarnings, // New: warnings instead of blocks
       };
     },
     [session?.user?.id, generateFilenameFingerprint]
@@ -2416,15 +2413,14 @@ function HomeContent({ session }: HomeContentProps) {
         // Check for duplicates before uploading
         const {
           filesToUpload,
-          skippedFiles,
-          duplicateCount,
           newFilesCount,
           totalFilesCount,
+          duplicateWarnings,
         } = await checkForDuplicates(files, uploadId);
 
-        // 🚀 PHASE 2: Set duplicate count and skipped files for UI feedback
-        setDuplicateFilesCount(duplicateCount);
-        setSkippedFilesInfo(skippedFiles);
+        // 🚀 PHASE 2: Set duplicate count and warning files for UI feedback
+        setDuplicateFilesCount(duplicateWarnings?.length || 0);
+        setSkippedFilesInfo(duplicateWarnings || []);
 
         if (filesToUpload.length === 0) {
           console.log(
@@ -2454,13 +2450,15 @@ function HomeContent({ session }: HomeContentProps) {
           `📤 [upload:${uploadId}] Starting upload to Storage and temp_documents...`
         );
         console.log(
-          `📊 [upload:${uploadId}] Processing ${newFilesCount} new files (${duplicateCount} duplicates skipped)`
+          `📊 [upload:${uploadId}] Processing ${newFilesCount} files (${
+            duplicateWarnings?.length || 0
+          } duplicate warnings)`
         );
 
-        // 🚀 PHASE 2: Enhanced progress messaging for partial duplicates
-        if (duplicateCount > 0) {
+        // 🚀 PHASE 2: Enhanced progress messaging for duplicate warnings
+        if (duplicateWarnings && duplicateWarnings.length > 0) {
           setPreprocessingProgress(
-            `${duplicateCount} of ${totalFilesCount} files are duplicates. Processing ${newFilesCount} new files...`
+            `${duplicateWarnings.length} potential duplicate(s) detected. Processing ${newFilesCount} files - content deduplication during AI processing...`
           );
         } else {
           setPreprocessingProgress(`Processing ${newFilesCount} files...`);
@@ -2663,8 +2661,8 @@ function HomeContent({ session }: HomeContentProps) {
           );
           // Update preprocessing status (isPreprocessing already set to true in handleFilesAdded)
           const statusMessage =
-            skippedFiles.length > 0
-              ? `Preparing ${uploadedPaths.length} new documents (${skippedFiles.length} duplicates skipped)...`
+            duplicateWarnings && duplicateWarnings.length > 0
+              ? `Preparing ${uploadedPaths.length} documents (${duplicateWarnings.length} duplicate warnings)...`
               : `Preparing ${uploadedPaths.length} documents for processing...`;
           setPreprocessingProgress(statusMessage);
 
@@ -3517,15 +3515,16 @@ function HomeContent({ session }: HomeContentProps) {
 
   // Cleanup session management on component unmount
   useEffect(() => {
+    const sessionManager = sessionManagerRef.current;
     return () => {
       console.log(
         '🧹 [CLEANUP] Component unmounting - cleaning up session management'
       );
-      if (sessionManagerRef.current.keepAliveInterval) {
-        clearInterval(sessionManagerRef.current.keepAliveInterval);
+      if (sessionManager.keepAliveInterval) {
+        clearInterval(sessionManager.keepAliveInterval);
       }
-      if (sessionManagerRef.current.warningTimeout) {
-        clearTimeout(sessionManagerRef.current.warningTimeout);
+      if (sessionManager.warningTimeout) {
+        clearTimeout(sessionManager.warningTimeout);
       }
       setSessionActive(false);
     };
@@ -5327,7 +5326,7 @@ function HomeContent({ session }: HomeContentProps) {
 
             {/* ===== NEW: Data Management Tab ===== */}
             <TabsContent value='data' className='space-y-6'>
-              <DataManagementTable session={session} />
+              <DataManagementDashboard session={session} />
             </TabsContent>
           </Tabs>
         </div>

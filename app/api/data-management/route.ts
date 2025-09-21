@@ -37,67 +37,67 @@ export async function GET(request: Request) {
 
     // Handle special case for unprocessed_documents (virtual table)
     if (table === 'unprocessed_documents') {
-      const unprocessedDocs = [];
+      console.log(`📊 [data-management] Fetching unprocessed documents for user ${userId}`);
 
-      // Get unprocessed documents from single_documents (that haven't been AI processed)
-      const { data: singleDocs, error: singleError } = await supabase
-        .from('single_documents')
-        .select('id, user_id, pdf_path, upload_date, status')
+      // Get failed documents from temp_documents
+      const { data: failedTempDocs, error: tempError } = await supabase
+        .from('temp_documents')
+        .select('id, pdf_path, upload_date, status, last_error, retry_count')
         .eq('user_id', userId)
+        .in('status', ['failed', 'uploaded'])
         .order('upload_date', { ascending: false });
 
-      if (singleError) {
-        console.error('Error fetching single_documents:', singleError);
+      // Get failed documents from single_documents
+      const { data: failedSingleDocs, error: singleError } = await supabase
+        .from('single_documents')
+        .select('id, pdf_path, original_filename, upload_date, status, last_error, retry_count, temp_document_id, page_number, total_pages')
+        .eq('user_id', userId)
+        .in('status', ['failed', 'uploaded'])
+        .order('upload_date', { ascending: false });
+
+      if (tempError || singleError) {
+        console.error('❌ [data-management] Error fetching unprocessed documents:', tempError || singleError);
         return NextResponse.json(
-          { error: singleError.message },
+          { error: `Failed to fetch unprocessed documents: ${(tempError || singleError)?.message}` },
           { status: 500 }
         );
       }
 
-      // Filter out documents that exist in parsed_documents
-      for (const doc of singleDocs || []) {
-        const { data: parsedDoc } = await supabase
-          .from('parsed_documents')
-          .select('id')
-          .ilike('file_url', `%${doc.pdf_path}`)
-          .eq('user_id', userId)
-          .limit(1);
+      // Combine and format the results
+      const unprocessedDocs = [];
 
-        if (!parsedDoc || parsedDoc.length === 0) {
-          unprocessedDocs.push({
-            ...doc,
-            source_table: 'single_documents',
-          });
-        }
+      // Add failed temp_documents
+      if (failedTempDocs) {
+        unprocessedDocs.push(...failedTempDocs.map(doc => ({
+          ...doc,
+          source_table: 'temp_documents',
+          original_filename: doc.pdf_path,
+          temp_document_id: null,
+          page_number: null,
+          total_pages: 1
+        })));
       }
 
-      // Also get failed documents from temp_documents (that failed preprocessing)
-      const { data: tempDocs, error: tempError } = await supabase
-        .from('temp_documents')
-        .select('id, user_id, pdf_path, upload_date, status, error_message')
-        .eq('user_id', userId)
-        .in('status', ['failed', 'uploaded']) // Include both failed and uploaded temp docs
-        .order('upload_date', { ascending: false });
-
-      if (!tempError && tempDocs) {
-        for (const doc of tempDocs) {
-          unprocessedDocs.push({
-            ...doc,
-            source_table: 'temp_documents',
-          });
-        }
+      // Add failed single_documents
+      if (failedSingleDocs) {
+        unprocessedDocs.push(...failedSingleDocs.map(doc => ({
+          ...doc,
+          source_table: 'single_documents'
+        })));
       }
 
-      // Sort all unprocessed documents by upload_date
-      unprocessedDocs.sort(
-        (a, b) =>
-          new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime()
-      );
+      // Sort by upload_date and apply pagination
+      unprocessedDocs.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
 
-      // Apply pagination to filtered results
+      // Apply offset and limit
+      const paginatedDocs = unprocessedDocs.slice(offset, offset + limit);
+
+      data = paginatedDocs;
       totalCount = unprocessedDocs.length;
-      data = unprocessedDocs.slice(offset, offset + limit);
       error = null;
+
+      console.log(`✅ [data-management] Found ${data.length} unprocessed documents (${totalCount} total)`);
+      console.log(`🔍 [data-management] Sample data:`, data.slice(0, 2));
     } else {
       // Build the query for regular tables
       let query = supabase.from(table).select('*').eq('user_id', userId);
@@ -304,50 +304,54 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // 🚀 NEW: Smart deletion logic for unprocessed documents
-    if (actualTable === 'single_documents') {
-      // Extract original filename from single_documents path for temp_documents lookup
-      // Path format: user_id/timestamp_page_originalfilename.pdf
-      const pathParts = record.pdf_path.split('/');
-      const filename = pathParts[pathParts.length - 1]; // Get the filename part
-      const originalFilename = filename.replace(/^[^_]*_[^_]*_[^_]*_/, ''); // Remove timestamp and page prefix
-
+    // 🚀 NEW: Smart deletion logic using relationship tracking
+    if (actualTable === 'single_documents' && record.temp_document_id) {
       console.log(
-        `🔍 Looking for temp_document with original filename: ${originalFilename}`
+        `🔍 [delete] Found temp_document_id: ${record.temp_document_id}, checking for parent cleanup`
       );
 
-      // Check if corresponding temp_document exists and delete it
-      const { data: tempDocs, error: tempError } = await supabase
-        .from('temp_documents')
-        .select('id, pdf_path')
-        .eq('pdf_path', originalFilename)
+      // Check if this is the last unprocessed page from this temp_document
+      const { data: siblingPages, error: siblingsError } = await supabase
+        .from('single_documents')
+        .select('id, status')
+        .eq('temp_document_id', record.temp_document_id)
         .eq('user_id', userId);
 
-      if (!tempError && tempDocs && tempDocs.length > 0) {
-        console.log(
-          `🗑️ Found ${tempDocs.length} corresponding temp_document(s), deleting...`
+      if (!siblingsError && siblingPages) {
+        // Check if all other siblings are processed or will be deleted
+        const otherUnprocessedSiblings = siblingPages.filter(
+          page => page.id !== recordId && page.status !== 'processed'
         );
 
-        for (const tempDoc of tempDocs) {
+        console.log(
+          `📊 [delete] Found ${siblingPages.length} total pages, ${otherUnprocessedSiblings.length} other unprocessed`
+        );
+
+        // If this is the only unprocessed page left, also clean up parent temp_document
+        if (otherUnprocessedSiblings.length === 0) {
+          console.log(
+            `🗑️ [delete] This is the last unprocessed page, cleaning up parent temp_document ${record.temp_document_id}`
+          );
+
           const { error: tempDeleteError } = await supabase
             .from('temp_documents')
             .delete()
-            .eq('id', tempDoc.id)
+            .eq('id', record.temp_document_id)
             .eq('user_id', userId);
 
           if (tempDeleteError) {
             console.error(
-              `❌ Failed to delete temp_document ${tempDoc.id}:`,
+              `❌ [delete] Failed to delete parent temp_document ${record.temp_document_id}:`,
               tempDeleteError
             );
           } else {
-            console.log(`✅ Deleted temp_document: ${tempDoc.pdf_path}`);
+            console.log(`✅ [delete] Successfully deleted parent temp_document`);
           }
+        } else {
+          console.log(
+            `ℹ️ [delete] Other unprocessed pages exist, keeping parent temp_document`
+          );
         }
-      } else {
-        console.log(
-          `ℹ️ No corresponding temp_document found for ${originalFilename}`
-        );
       }
     }
 
