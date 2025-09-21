@@ -751,29 +751,53 @@ Template for additional_document
                 is_same_user: doc.user_id === user.id,
               }));
 
-              console.log(`🚨 [${requestId}] DUPLICATE DETECTED!`, {
+              console.log(`🔄 [${requestId}] DUPLICATE DETECTED - Auto-skipping`, {
                 fingerprint: businessFingerprint,
                 fingerprintDisplay,
                 existingDocuments: duplicateInfo,
                 totalDuplicates: existingDocs.length,
               });
 
-              // Return error response for duplicate
+              // Update single_documents status to skipped_duplicate
+              if (documentId) {
+                const { error: updateError } = await supabase
+                  .from('single_documents')
+                  .update({
+                    status: 'skipped_duplicate',
+                    last_error: `Duplicate of existing document: ${existingDocs[0].anchor_key} (${existingDocs[0].id})`,
+                  })
+                  .eq('id', documentId);
+
+                if (updateError) {
+                  console.error(
+                    `❌ [${requestId}] Failed to update single_documents status to skipped_duplicate:`,
+                    updateError
+                  );
+                } else {
+                  console.log(
+                    `✅ [${requestId}] Updated single_documents status to 'skipped_duplicate' for document ${documentId}`
+                  );
+                }
+              }
+
+              // Return success but indicate it was skipped
               return NextResponse.json(
                 {
-                  success: false,
-                  error: 'Duplicate document detected',
-                  details: {
-                    message:
-                      'This document appears to be a duplicate of an existing document',
-                    fingerprint: fingerprintDisplay,
-                    existingDocuments: duplicateInfo.length,
+                  success: true,
+                  skipped: true,
+                  reason: 'duplicate',
+                  message: 'Document auto-skipped due to duplicate content',
+                  duplicateInfo: {
+                    existingDocumentId: existingDocs[0].id,
+                    existingInvoice: existingDocs[0].anchor_key,
+                    fingerprintDisplay,
+                    totalDuplicates: existingDocs.length,
                     sameUser: duplicateInfo.some((d) => d.is_same_user),
-                    requestId,
                   },
+                  requestId,
                 },
-                { status: 409 }
-              ); // 409 Conflict status
+                { status: 200 }
+              ); // 200 Success status
             } else {
               console.log(
                 `✅ [${requestId}] No duplicates found, proceeding with save`

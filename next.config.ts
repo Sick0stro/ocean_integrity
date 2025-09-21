@@ -1,12 +1,63 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-    webpack: (config) => {
-        config.externals.push({
-            canvas: "commonjs canvas",
-        });
-        return config;
-    },
+  // Experimental features for stability
+  experimental: {
+    // Optimize bundling
+    optimizePackageImports: ['lucide-react'],
+  },
+
+  // Turbopack configuration (stable in Next.js 15+)
+  turbopack: {
+    // Optimize memory usage
+    memoryLimit: 4096,
+  },
+
+  // Webpack configuration (only when not using Turbopack)
+  webpack: (config, { dev, isServer, webpack }) => {
+    // Canvas externals for PDF functionality
+    config.externals.push({
+      canvas: 'commonjs canvas',
+    });
+
+    // Only apply webpack optimizations when NOT using Turbopack
+    if (dev && !process.env.TURBOPACK) {
+      // Prevent file watcher issues on Windows
+      config.watchOptions = {
+        poll: 1000,
+        aggregateTimeout: 300,
+      };
+
+      // Optimize chunk splitting for faster rebuilds
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            vendor: {
+              test: /[\\/]node_modules[\\/]/,
+              name: 'vendors',
+              chunks: 'all',
+            },
+          },
+        },
+      };
+    }
+
+    return config;
+  },
+
+  // Output optimization
+  output: 'standalone',
+
+  // Enable build cache for faster rebuilds
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
 };
 
 export default nextConfig;

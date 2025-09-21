@@ -117,11 +117,9 @@ export async function POST(request: Request) {
     }
 
     // Fetch documents from temp_documents (optionally scoped)
-    // Only process documents that are ready (uploaded or NULL for backward compatibility)
     let query = supabase
       .from('temp_documents')
       .select('*')
-      .in('status', ['uploaded', null])
       .order('upload_date', { ascending: true });
 
     // Filter by user_id if provided (for client-side requests)
@@ -470,6 +468,9 @@ export async function POST(request: Request) {
                       file_size: pdfBuffer.byteLength,
                       mime_type: 'application/pdf',
                       user_id: doc.user_id, // Add user_id from temp_documents
+                      temp_document_id: doc.id, // NEW: Link to parent temp_document
+                      page_number: 1, // NEW: Single page
+                      total_pages: 1, // NEW: Single page total
                     });
                     if (res.error) throw res.error;
                     return res;
@@ -646,6 +647,9 @@ export async function POST(request: Request) {
                       file_size: newPdfBytes.length,
                       mime_type: 'application/pdf',
                       user_id: doc.user_id, // Add user_id from temp_documents
+                      temp_document_id: doc.id, // NEW: Link to parent temp_document
+                      page_number: pageNum, // NEW: Track page number (1, 2, 3...)
+                      total_pages: pageCount, // NEW: Total pages from this PDF
                     });
                     if (res.error) throw res.error;
                     return res;
@@ -810,10 +814,22 @@ export async function POST(request: Request) {
       `❌ [preprocess:${requestId}] Preprocessing cron error:`,
       error
     );
+    console.error(
+      `❌ [preprocess:${requestId}] Error stack:`,
+      error instanceof Error ? error.stack : 'No stack trace'
+    );
+    console.error(`❌ [preprocess:${requestId}] Error type:`, typeof error);
+    console.error(
+      `❌ [preprocess:${requestId}] Error toString:`,
+      String(error)
+    );
+
     return NextResponse.json(
       {
         error: 'Internal server error',
         details: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        requestId,
       },
       { status: 500 }
     );
