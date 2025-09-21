@@ -1,16 +1,18 @@
 import type { NextConfig } from 'next';
 
-const nextConfig: NextConfig = {
+// Extend the NextConfig type to include experimental options
+interface ExtendedNextConfig extends NextConfig {
+  experimental?: {
+    optimizePackageImports?: string[];
+    // Add other experimental options here if needed
+  };
+}
+
+const nextConfig: ExtendedNextConfig = {
   // Experimental features for stability
   experimental: {
     // Optimize bundling
     optimizePackageImports: ['lucide-react'],
-  },
-
-  // Turbopack configuration (stable in Next.js 15+)
-  turbopack: {
-    // Optimize memory usage
-    memoryLimit: 4096,
   },
 
   // Webpack configuration (only when not using Turbopack)
