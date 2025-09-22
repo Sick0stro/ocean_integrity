@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
   // Note: Turbopack memory optimization is handled via Node.js flags
 
   // Webpack configuration (only when not using Turbopack)
-  webpack: (config, { dev, isServer, webpack }) => {
+  webpack: (config, { dev }) => {
     // Canvas externals for PDF functionality
     config.externals.push({
       canvas: 'commonjs canvas',
