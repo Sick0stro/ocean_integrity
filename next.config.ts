@@ -8,10 +8,7 @@ const nextConfig: NextConfig = {
   },
 
   // Turbopack configuration (stable in Next.js 15+)
-  turbopack: {
-    // Optimize memory usage
-    memoryLimit: 4096,
-  },
+  // Note: Turbopack memory optimization is handled via Node.js flags
 
   // Webpack configuration (only when not using Turbopack)
   webpack: (config, { dev, isServer, webpack }) => {
