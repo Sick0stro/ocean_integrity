@@ -49,8 +49,8 @@ export type PlastiksCollection = {
 
 export function getPlastiksConfig(): PlastiksConfig {
   const baseUrl =
-    // process.env.PLASTIKS_BASE_URL || 'https://staging.plastiks.io';
-    process.env.PLASTIKS_BASE_URL || 'https://c15d0a96de53.ngrok-free.app';
+    // process.env.PLASTIKS_BASE_URL || 'https://c15d0a96de53.ngrok-free.app';
+    process.env.PLASTIKS_BASE_URL || 'https://stage-app.plastiks.io';
   const apiToken = process.env.API_TOKEN_CALL || '';
   const userAddress = process.env.USER_ADDRESS || '';
   const privateKey = process.env.PRIVATE_KEY || '';
@@ -101,13 +101,60 @@ function axiosErrorToString(err: unknown): string {
 export async function getBlockchainConfig(
   client: ReturnType<typeof createPlastiksClient>
 ) {
-  const resp = await client.get('/collections/plastic_types');
+  console.log(
+    '🔧 [PLASTIKS_DEBUG] Making API call to /api/collections/plastic_types'
+  );
+  const resp = await client.get('/api/collections/plastic_types');
+
+  console.log('📡 [PLASTIKS_DEBUG] Raw response status:', resp.status);
+  console.log('📡 [PLASTIKS_DEBUG] Raw response headers:', resp.headers);
+
   if (!resp.data) throw new Error('plastiks: empty response');
+
+  console.log(
+    '📋 [PLASTIKS_DEBUG] Full response data:',
+    JSON.stringify(resp.data, null, 2)
+  );
+
   const cfg = resp.data;
+  console.log('🔍 [PLASTIKS_DEBUG] Config object:', cfg);
+  console.log(
+    '🔍 [PLASTIKS_DEBUG] contract_addresses exists:',
+    !!cfg.contract_addresses
+  );
+  console.log(
+    '🔍 [PLASTIKS_DEBUG] contract_addresses value:',
+    cfg.contract_addresses
+  );
+
   const celo = cfg.contract_addresses?.celo;
+  console.log('🔍 [PLASTIKS_DEBUG] celo object exists:', !!celo);
+  console.log('🔍 [PLASTIKS_DEBUG] celo object value:', celo);
+
+  if (celo) {
+    console.log('🔍 [PLASTIKS_DEBUG] plastik_crypto:', celo.plastik_crypto);
+    console.log('🔍 [PLASTIKS_DEBUG] recycling_nft:', celo.recycling_nft);
+    console.log('🔍 [PLASTIKS_DEBUG] plastik_token:', celo.plastik_token);
+  }
+
   if (!celo?.plastik_crypto || !celo?.recycling_nft || !celo?.plastik_token) {
+    console.error('❌ [PLASTIKS_DEBUG] Missing contract addresses detected!');
+    console.error(
+      '❌ [PLASTIKS_DEBUG] plastik_crypto present:',
+      !!celo?.plastik_crypto
+    );
+    console.error(
+      '❌ [PLASTIKS_DEBUG] recycling_nft present:',
+      !!celo?.recycling_nft
+    );
+    console.error(
+      '❌ [PLASTIKS_DEBUG] plastik_token present:',
+      !!celo?.plastik_token
+    );
     throw new Error('plastiks: missing contract addresses');
   }
+
+  console.log('✅ [PLASTIKS_DEBUG] All contract addresses found successfully!');
   return {
     celoChainId: cfg.celo_chain_id,
     usingTestnet: cfg.using_testnet,
