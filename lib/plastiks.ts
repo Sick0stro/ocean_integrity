@@ -218,7 +218,7 @@ export async function createPrgCollection(
   );
 
   try {
-    const resp = await client.post('/collections/prg', body);
+    const resp = await client.post('/api/collections/prg', body);
 
     console.log(
       `✅ [PLASTIKS_API] Success: Collection ID ${resp.data?.collection?.id} created`
@@ -257,14 +257,14 @@ export async function signMetadataHash(
     console.log(
       '📦 [PLASTIKS_REQUEST] URL:',
       client.defaults.baseURL +
-        `/collections/${collectionAddress}/sign_metadata_hash`
+        `/api/collections/${collectionAddress}/sign_metadata_hash`
     );
     console.log('📋 [PLASTIKS_REQUEST] Params:', {
       contract_address: cfg.plastikCrypto,
     });
 
     const resp = await client.get(
-      `/collections/${collectionAddress}/sign_metadata_hash`,
+      `/api/collections/${collectionAddress}/sign_metadata_hash`,
       {
         params: { contract_address: cfg.plastikCrypto },
       }
@@ -280,7 +280,7 @@ export async function signMetadataHash(
 
     console.log('📤 [PLASTIKS_REQUEST] Saving metadata signature...');
     const saveResp = await client.post(
-      `/collections/${collectionAddress}/save_metadata_signature`,
+      `/api/collections/${collectionAddress}/save_metadata_signature`,
       { signature }
     );
 
@@ -342,7 +342,7 @@ export async function signFixedPrice(
       value as Record<string, unknown>
     );
     const resp = await client.post(
-      `/collections/${prg.address}/sign_fixed_price`,
+      `/api/collections/${prg.address}/sign_fixed_price`,
       {
         sign: signature,
         price: String(priceWei),
@@ -394,14 +394,17 @@ export async function signVoucher(
       types as unknown as Record<string, Array<{ name: string; type: string }>>,
       value as Record<string, unknown>
     );
-    const resp = await client.post(`/collections/${prg.address}/sign_voucher`, {
-      sign: signature,
-      amount: value.amount,
-      tokenId: value.tokenId,
-      tokenURI: value.tokenURI,
-      tokenAddress: value.tokenAddress,
-      creatorAddress: value.creatorAddress,
-    });
+    const resp = await client.post(
+      `/api/collections/${prg.address}/sign_voucher`,
+      {
+        sign: signature,
+        amount: value.amount,
+        tokenId: value.tokenId,
+        tokenURI: value.tokenURI,
+        tokenAddress: value.tokenAddress,
+        creatorAddress: value.creatorAddress,
+      }
+    );
     if (!resp.data?.success) throw new Error('plastiks: sign_voucher failed');
   } catch (e) {
     throw new Error(`plastiks: sign_voucher error: ${axiosErrorToString(e)}`);
