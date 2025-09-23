@@ -217,6 +217,9 @@ export async function createPrgCollection(
     `📋 [PLASTIKS_API] Payload: ${body.weight}kg ${body.plastik_type} from ${body.recycler_company}`
   );
 
+  console.log('🔍 [PLASTIKS_DEBUG] Full request payload:');
+  console.log(JSON.stringify(body, null, 2));
+
   try {
     const resp = await client.post('/api/collections/prg', body);
 
