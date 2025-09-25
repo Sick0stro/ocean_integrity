@@ -86,6 +86,7 @@ export async function POST(request: Request) {
     // Parse request body for scoping and user context
     let scopePdfPaths: string[] | null = null;
     let requestUserId: string | null = null;
+    let requestBatchId: string | null = null;
     try {
       const body = await request.json().catch(() => null);
       if (body) {
@@ -107,6 +108,13 @@ export async function POST(request: Request) {
           requestUserId = body.user_id;
           console.log(
             `👤 [preprocess:${requestId}] User ID provided: ${requestUserId}`
+          );
+        }
+
+        if (typeof body?.upload_batch_id === 'string') {
+          requestBatchId = body.upload_batch_id;
+          console.log(
+            `🧾 [preprocess:${requestId}] Upload batch provided: ${requestBatchId}`
           );
         }
       }
@@ -133,7 +141,16 @@ export async function POST(request: Request) {
     if (scopePdfPaths && scopePdfPaths.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       query = (query as any).in('pdf_path', scopePdfPaths);
-    } else {
+    }
+
+    if (requestBatchId) {
+      query = query.eq('upload_batch_id', requestBatchId);
+      console.log(
+        `🧾 [preprocess:${requestId}] Filtering by upload_batch_id: ${requestBatchId}`
+      );
+    }
+
+    if (!scopePdfPaths && !requestBatchId) {
       // Conservative default batch size
       query = query.limit(12);
     }
@@ -467,10 +484,11 @@ export async function POST(request: Request) {
                       original_filename: doc.pdf_path.split('/').pop(),
                       file_size: pdfBuffer.byteLength,
                       mime_type: 'application/pdf',
-                      user_id: doc.user_id, // Add user_id from temp_documents
-                      temp_document_id: doc.id, // NEW: Link to parent temp_document
-                      page_number: 1, // NEW: Single page
-                      total_pages: 1, // NEW: Single page total
+                      user_id: doc.user_id,
+                      temp_document_id: doc.id,
+                      page_number: 1,
+                      total_pages: 1,
+                      upload_batch_id: doc.upload_batch_id,
                     });
                     if (res.error) throw res.error;
                     return res;
@@ -650,6 +668,7 @@ export async function POST(request: Request) {
                       temp_document_id: doc.id, // NEW: Link to parent temp_document
                       page_number: pageNum, // NEW: Track page number (1, 2, 3...)
                       total_pages: pageCount, // NEW: Total pages from this PDF
+                      upload_batch_id: doc.upload_batch_id,
                     });
                     if (res.error) throw res.error;
                     return res;

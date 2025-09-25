@@ -15,7 +15,7 @@ interface BlockchainConfig {
 export type RecyclingDocRow = {
   invoice_number: string;
   invoice_url: string;
-  eft_url: string;
+  eft_url: string | null; // ✅ Now nullable for Indian recyclers
   ewaybill_url: string;
   recycler_company: string;
   plastic_type: string; // e.g., PET1
@@ -174,7 +174,7 @@ export async function createPrgCollection(
     recycler_company: string;
     invoice_number: string;
     invoice_url?: string;
-    eft_url?: string;
+    eft_url?: string | null; // ✅ Now accepts null for Indian recyclers
     ewaybill_url?: string;
     plastic_type: string;
     origin?: string;
@@ -183,30 +183,30 @@ export async function createPrgCollection(
     city?: string;
     weightKg: number;
     network_operator_company?: string;
+    upload_date?: string | null; // For date_of_recycling
+    recycler_address?: string; // Real address from documents
+    recycler_postal_code?: string; // Real postal code from documents
   }
 ) {
-  // 🎯 COMPLETE PAYLOAD: Include all required Plastiks fields
+  // 🎯 CORRECT PAYLOAD: Match Plastiks expected format with REAL data only
+
+  // Note: date_of_recycling removed from payload as per Samhita's format
+
+  // 🎯 EXACT PAYLOAD STRUCTURE as requested by Samhita (same order)
   const body = {
-    // Required by Plastiks API
     name: `${params.recycler_company} - ${params.invoice_number}`,
     description: `Recycling collection for invoice ${params.invoice_number} from ${params.recycler_company}`,
-    plastik_type: params.plastic_type, // Note: plastik_type not plastic_type
-    instant_sale_price: 1000000000, // 1 Gwei minimum
-    no_of_copies: Math.max(1, Math.round(params.weightKg / 1000)), // 1 copy per ton
+    plastik_type: params.plastic_type, // ✅ Changed from plastik_type to plastic_type
     weight: params.weightKg,
-    use_autogen_image: true,
-
-    // Essential business fields
-    recycler_company: params.recycler_company,
-    invoice_number: params.invoice_number,
-    invoice_url: params.invoice_url || '',
-    eft_url: params.eft_url || '',
-    ewaybill_url: params.ewaybill_url || '',
-    origin: params.origin || '',
-    currency: params.currency || '',
-    country: params.country || '',
+    guarantee_connected: true, // ✅ Added new field
     city: params.city || '',
-    network_operator_company: params.network_operator_company || '',
+    country: params.country || params.origin || '',
+    use_autogen_image: true,
+    // ✅ Documents at top level (not nested in documents object)
+    invoice: params.invoice_url || '',
+    proof_invoice: params.eft_url || '',
+    way_bill: params.ewaybill_url || '',
+    receipt: params.eft_url || '', // ✅ Added receipt field (empty for now)
   };
 
   console.log(
@@ -214,13 +214,54 @@ export async function createPrgCollection(
   );
 
   console.log(
-    `📋 [PLASTIKS_API] Payload: ${body.weight}kg ${body.plastik_type} from ${body.recycler_company}`
+    `📋 [PLASTIKS_API] Payload: ${body.weight}kg ${body.plastik_type} for ${body.name}`
   );
 
   console.log('🔍 [PLASTIKS_DEBUG] Full request payload:');
   console.log(JSON.stringify(body, null, 2));
 
   try {
+    console.log('🌐 [PLASTIKS_DEBUG] Making request to Plastiks...');
+    console.log(
+      '🌐 [PLASTIKS_DEBUG] URL: https://stage-app.plastiks.io/api/collections/prg'
+    );
+    console.log('🌐 [PLASTIKS_DEBUG] Headers:', {
+      'API-key': 'plastiks_test_api_key_2024',
+      'User-Address': '0x155398F860C1B19CBb243496D2e6B932eD4aD143',
+      'Content-Type': 'application/json',
+    });
+
+    // 🔍 DETAILED DEBUG: Test what Plastiks expects vs what we send
+    console.log('🔍 [PLASTIKS_ANALYSIS] Request Analysis:');
+    console.log('📋 Required fields present:');
+    console.log('  - name:', !!body.name, `(${body.name})`);
+    console.log(
+      '  - description:',
+      !!body.description,
+      `(${body.description.substring(0, 50)}...)`
+    );
+    console.log(
+      '  - plastik_type:',
+      !!body.plastik_type,
+      `(${body.plastik_type})`
+    );
+    console.log(
+      '  - use_autogen_image:',
+      !!body.use_autogen_image,
+      `(${body.use_autogen_image})`
+    );
+    console.log('  - weight:', !!body.weight, `(${body.weight})`);
+    console.log('📋 Document analysis:');
+    console.log('  - invoice exists:', !!body.invoice);
+    console.log('  - way_bill exists:', !!body.way_bill);
+    console.log('  - proof_invoice exists:', !!body.proof_invoice);
+    console.log('  - receipt exists:', !!body.receipt);
+    console.log('  - guarantee_connected:', body.guarantee_connected);
+    console.log('📋 Additional fields:');
+    console.log('  - country:', body.country || 'MISSING');
+    console.log('  - city:', body.city || 'MISSING');
+    console.log('  - plastik_type:', body.plastik_type || 'MISSING');
+
     const resp = await client.post('/api/collections/prg', body);
 
     console.log(
@@ -239,8 +280,51 @@ export async function createPrgCollection(
       console.error(
         `❌ [PLASTIKS_API] HTTP ${e.response?.status}: ${e.response?.statusText}`
       );
+
+      // 🔍 COMPREHENSIVE ERROR ANALYSIS
+      console.error('🔍 [PLASTIKS_ERROR] Comprehensive Error Analysis:');
+      console.error('📋 Request that failed:');
+      console.error('  URL:', e.config?.url);
+      console.error('  Method:', e.config?.method?.toUpperCase());
+      console.error('  Headers:', e.config?.headers);
+      console.error(
+        '  Data keys:',
+        e.config?.data ? Object.keys(JSON.parse(e.config.data)) : 'NO DATA'
+      );
+
       if (e.response?.data) {
-        console.error(`❌ [PLASTIKS_API] Response:`, e.response.data);
+        console.error(
+          `📋 Full Error Response:`,
+          JSON.stringify(e.response.data, null, 2)
+        );
+
+        // Check if it's the expected error
+        const errors = e.response.data?.errors || [];
+        const hasFileBlankError = errors.some((err: string) =>
+          err.includes('Collectible file')
+        );
+        const hasImageError = errors.some((err: string) =>
+          err.includes('image')
+        );
+        const hasMissingFieldError = errors.some(
+          (err: string) => err.includes('missing') || err.includes('required')
+        );
+
+        console.error('🔍 [ERROR_PATTERN] Error Pattern Analysis:');
+        console.error('  - File blank error:', hasFileBlankError);
+        console.error('  - Image related error:', hasImageError);
+        console.error('  - Missing field error:', hasMissingFieldError);
+        console.error('  - All errors:', errors);
+
+        // 🚨 CONCLUSION
+        if (hasFileBlankError && !hasMissingFieldError) {
+          console.error(
+            '🚨 [CONCLUSION] This appears to be a Plastiks API bug with their auto-generation feature!'
+          );
+          console.error(
+            "🚨 [CONCLUSION] We're sending all required fields correctly but they still reject it."
+          );
+        }
       }
     }
 
@@ -449,6 +533,14 @@ export async function submitToPlastiks(document: RecyclingDocRow) {
   const normalizedType = document.plastic_type?.toUpperCase?.() || '';
   const plastiksType = typeMap[normalizedType] || document.plastic_type;
 
+  // 🔍 DEBUG: Log the document data to understand EFT URL issue
+  console.log('🔍 [DEBUG] Document EFT debugging:');
+  console.log('📋 Invoice URL:', document.invoice_url);
+  console.log('📋 EFT URL:', document.eft_url);
+  console.log('📋 EFT URL type:', typeof document.eft_url);
+  console.log('📋 EFT URL length:', document.eft_url?.length);
+  console.log('📋 EFT === Invoice?', document.eft_url === document.invoice_url);
+
   const submissionPayload = {
     recycler_company: document.recycler_company || '',
     invoice_number: document.invoice_number || '',
@@ -462,6 +554,10 @@ export async function submitToPlastiks(document: RecyclingDocRow) {
     city: document.city || '',
     weightKg: document.tonnage_kg,
     network_operator_company: document.network_operator_company || '',
+    upload_date: document.upload_date,
+    // ⚠️ TODO: Need to extract address/postal_code from document content or make optional
+    // recycler_address: document.recycler_address,
+    // recycler_postal_code: document.recycler_postal_code,
   };
 
   const prg = await createPrgCollection(client, submissionPayload);

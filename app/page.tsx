@@ -193,6 +193,7 @@ function HomeContent({ session }: HomeContentProps) {
   // 🚀 PHASE 1: Database-driven state for button control
   const [readyDocumentsCount, setReadyDocumentsCount] = useState(0);
   const [tempDocumentsCount, setTempDocumentsCount] = useState(0);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [duplicateFilesCount, setDuplicateFilesCount] = useState(0);
 
   // 🚀 PHASE 2: Track skipped files for duplicate status display
@@ -465,18 +466,50 @@ function HomeContent({ session }: HomeContentProps) {
     console.log('🔍 [checkDocumentsStatus] Checking database status...');
 
     try {
-      // Check temp_documents (preprocessing queue)
+      let activeBatchId = currentBatchId;
+
+      if (!activeBatchId) {
+        const { data: latestBatch, error: latestError } = await supabase
+          .from('temp_documents')
+          .select('upload_batch_id')
+          .eq('user_id', session.user.id)
+          .in('status', ['uploaded', 'processing'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestError) {
+          console.warn(
+            '⚠️ [checkDocumentsStatus] Error fetching latest batch:',
+            latestError
+          );
+        }
+
+        if (latestBatch?.upload_batch_id) {
+          activeBatchId = latestBatch.upload_batch_id;
+          setCurrentBatchId(latestBatch.upload_batch_id);
+        }
+      }
+
+      if (!activeBatchId) {
+        setTempDocumentsCount(0);
+        setReadyDocumentsCount(0);
+        return { temp: 0, ready: 0 };
+      }
+
       const { data: tempDocs, error: tempError } = await supabase
         .from('temp_documents')
         .select('id')
-        .eq('user_id', session.user.id);
+        .eq('user_id', session.user.id)
+        .eq('upload_batch_id', activeBatchId)
+        .in('status', ['uploaded', 'processing']);
 
-      // Check single_documents (ready for AI)
       const { data: singleDocs, error: singleError } = await supabase
         .from('single_documents')
         .select('id')
-        .eq('status', 'uploaded')
-        .eq('user_id', session.user.id);
+        .eq('user_id', session.user.id)
+        .eq('upload_batch_id', activeBatchId)
+        .eq('status', 'uploaded');
 
       if (tempError) {
         console.warn(
@@ -495,7 +528,7 @@ function HomeContent({ session }: HomeContentProps) {
       const readyCount = singleDocs?.length || 0;
 
       console.log(
-        `📊 [checkDocumentsStatus] Database state: temp=${tempCount}, ready=${readyCount}`
+        `📊 [checkDocumentsStatus] Batch ${activeBatchId}: temp=${tempCount}, ready=${readyCount}`
       );
 
       setTempDocumentsCount(tempCount);
@@ -504,9 +537,11 @@ function HomeContent({ session }: HomeContentProps) {
       return { temp: tempCount, ready: readyCount };
     } catch (error) {
       console.error('❌ [checkDocumentsStatus] Database check failed:', error);
+      setTempDocumentsCount(0);
+      setReadyDocumentsCount(0);
       return { temp: 0, ready: 0 };
     }
-  }, [session?.user?.id]);
+  }, [currentBatchId, session?.user?.id]);
 
   // Toggle group expansion
   const toggleGroupExpansion = (invoiceKey: string) => {
@@ -2385,6 +2420,11 @@ function HomeContent({ session }: HomeContentProps) {
   const uploadToTempDocuments = useCallback(
     async (files: File[]) => {
       const uploadId = Math.random().toString(36).substring(2, 15);
+      const batchId =
+        typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      setCurrentBatchId(batchId);
       console.log(`🚀 [upload:${uploadId}] === UPLOAD BATCH STARTED ===`);
       console.log(
         `⏰ [upload:${uploadId}] Timestamp: ${new Date().toISOString()}`
@@ -2575,6 +2615,7 @@ function HomeContent({ session }: HomeContentProps) {
                 user_id: session.user.id,
                 pdf_path: pdfPath,
                 upload_date: new Date().toISOString(),
+                upload_batch_id: batchId,
               });
 
             if (insertError) {
@@ -2687,6 +2728,7 @@ function HomeContent({ session }: HomeContentProps) {
               body: JSON.stringify({
                 pdf_paths: uploadedPaths,
                 user_id: session.user.id,
+                upload_batch_id: batchId,
               }),
             });
 
@@ -2879,12 +2921,18 @@ function HomeContent({ session }: HomeContentProps) {
     );
 
     // Fetch ready documents for AI processing (all uploaded documents, no time restriction)
-    const { data: singleDocs, error: fetchError } = await supabase
+    let singleDocsQuery = supabase
       .from('single_documents')
       .select('*')
       .eq('status', 'uploaded')
-      .eq('user_id', session?.user?.id) // Filter by current user
+      .eq('user_id', session?.user?.id)
       .order('upload_date', { ascending: true });
+
+    if (currentBatchId) {
+      singleDocsQuery = singleDocsQuery.eq('upload_batch_id', currentBatchId);
+    }
+
+    const { data: singleDocs, error: fetchError } = await singleDocsQuery;
 
     console.log(
       `📊 [process:${processId}] Found ${
