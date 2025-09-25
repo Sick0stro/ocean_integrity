@@ -198,7 +198,7 @@ export async function createPrgCollection(
     description: `Recycling collection for invoice ${params.invoice_number} from ${params.recycler_company}`,
     plastik_type: params.plastic_type, // ✅ Changed from plastik_type to plastic_type
     weight: params.weightKg,
-    guarantee_connected: true, // ✅ Added new field
+    guarantee_connected: null,
     city: params.city || '',
     country: params.country || params.origin || '',
     use_autogen_image: true,
