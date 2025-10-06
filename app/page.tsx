@@ -34,6 +34,15 @@ interface RecyclingDocument {
   plastiks_submitted_at?: string | null;
   human_verified?: boolean;
   verified_at?: string | null;
+  // Fields from matched_records
+  invoice_date?: string;
+  bill_from_company?: string;
+  ship_to_company?: string;
+  invoice_weight_kg?: number;
+  invoice_vehicle?: string;
+  eway_vehicle?: string;
+  invoice_file_url?: string;
+  eway_file_url?: string;
 }
 
 import {
@@ -162,8 +171,7 @@ function HomeContent({ session }: HomeContentProps) {
     'upload' | 'results' | 'dashboard' | 'blockchain' | 'data'
   >('upload');
 
-  // Document grouping state
-  const [groups, setGroups] = useState<Record<string, InvoiceGroup>>({});
+  // Document grouping state (DEPRECATED - kept for old data structure compatibility)
   const [recyclingDocs, setRecyclingDocs] = useState<
     Record<string, RecyclingDocument>
   >({});
@@ -517,190 +525,11 @@ function HomeContent({ session }: HomeContentProps) {
   // Track active polling intervals to prevent duplicates
   const activePollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Poll for updated Plastiks submission details
-  const [submitResult, setSubmitResult] = useState<
-    Record<string, SubmitResult>
-  >({});
+  // Poll for updated Plastiks submission details (DEPRECATED - no longer used)
+  // const [submitResult, setSubmitResult] = useState<Record<string, SubmitResult>>({});
 
-  useEffect(() => {
-    if (!submitResult || Object.keys(submitResult).length === 0) return;
-
-    // Clear any existing polling interval
-    if (activePollingRef.current) {
-      console.log('🧹 Clearing existing polling interval');
-      clearInterval(activePollingRef.current);
-      activePollingRef.current = null;
-    }
-
-    // Find all invoice numbers that were just submitted successfully
-    const submittedInvoices = Object.entries(submitResult)
-      .filter(([, result]) => result?.ok)
-      .map(([invoice]) => invoice);
-
-    if (submittedInvoices.length === 0) {
-      console.log('⏹️ No successful submissions to poll for');
-      return;
-    }
-
-    // 🚀 CRITICAL FIX: Don't poll for failed submissions
-    const hasAnyFailedSubmissions = submittedInvoices.some((invoice) => {
-      const doc = recyclingDocs[invoice];
-      return doc && doc.status === 'failed';
-    });
-
-    if (hasAnyFailedSubmissions) {
-      console.log('❌ Found failed submissions. Not starting polling.');
-      return;
-    }
-
-    // Check if all submitted invoices already have complete Plastiks data
-    const allHaveCompleteData = submittedInvoices.every((invoice) => {
-      const doc = recyclingDocs[invoice];
-      return (
-        doc &&
-        doc.plastiks_collection_id &&
-        doc.plastiks_collection_address &&
-        doc.plastiks_metadata_hash &&
-        doc.status === 'submitted'
-      );
-    });
-
-    if (allHaveCompleteData) {
-      console.log(
-        '✅ All documents have complete Plastiks data. Stopping polling.'
-      );
-      return; // Don't poll if we already have all the data
-    }
-
-    let pollCount = 0;
-    const maxPolls = 10; // Stop after 30 seconds (10 polls × 3s interval)
-
-    // Initial fetch
-    const fetchUpdatedDocs = async () => {
-      try {
-        pollCount++;
-        console.log(
-          `Polling for updated Plastiks details for invoices (${pollCount}/${maxPolls}):`,
-          submittedInvoices
-        );
-
-        const supabase = getSupabaseBrowser();
-        const { data: updatedDocs, error } = await supabase
-          .from('recycling_docs')
-          .select('*')
-          .in('invoice_number', submittedInvoices);
-
-        if (error) {
-          // Silently handle polling errors
-          return;
-        }
-
-        console.log(
-          'Received updated docs:',
-          JSON.stringify(updatedDocs, null, 2)
-        );
-
-        if (updatedDocs && updatedDocs.length > 0) {
-          setRecyclingDocs((prev) => {
-            const updated = { ...prev };
-            updatedDocs.forEach((doc) => {
-              if (doc.invoice_number) {
-                const updatedDoc = {
-                  ...(updated[doc.invoice_number] || {}),
-                  ...doc,
-                  plastiks_collection_address:
-                    doc.plastiks_collection_address ||
-                    updated[doc.invoice_number]?.plastiks_collection_address,
-                  plastiks_metadata_hash:
-                    doc.plastiks_metadata_hash ||
-                    updated[doc.invoice_number]?.plastiks_metadata_hash,
-                  plastiks_submitted_at:
-                    doc.plastiks_submitted_at ||
-                    updated[doc.invoice_number]?.plastiks_submitted_at,
-                };
-
-                console.log(`Updating doc ${doc.invoice_number}:`, {
-                  hasAddress: !!updatedDoc.plastiks_collection_address,
-                  hasHash: !!updatedDoc.plastiks_metadata_hash,
-                  doc: updatedDoc,
-                });
-
-                updated[doc.invoice_number] = updatedDoc;
-              }
-            });
-            return updated;
-          });
-
-          // Check if we now have complete data for all invoices
-          const nowHaveCompleteData = submittedInvoices.every((invoice) => {
-            const doc = updatedDocs.find((d) => d.invoice_number === invoice);
-            return (
-              doc &&
-              doc.plastiks_collection_id &&
-              doc.plastiks_collection_address &&
-              doc.plastiks_metadata_hash &&
-              doc.status === 'submitted'
-            );
-          });
-
-          if (nowHaveCompleteData) {
-            console.log(
-              '✅ All documents now have complete Plastiks data. Stopping polling.'
-            );
-            if (activePollingRef.current) {
-              clearInterval(activePollingRef.current);
-              activePollingRef.current = null;
-            }
-            return;
-          }
-        }
-
-        // Stop polling for failed submissions
-        const hasFailedSubmissions = updatedDocs.some(
-          (doc) =>
-            doc.status === 'failed' &&
-            submittedInvoices.includes(doc.invoice_number)
-        );
-
-        if (hasFailedSubmissions) {
-          console.log('❌ Found failed submissions. Stopping polling.');
-          if (activePollingRef.current) {
-            clearInterval(activePollingRef.current);
-            activePollingRef.current = null;
-          }
-          return;
-        }
-
-        // Stop polling after max attempts
-        if (pollCount >= maxPolls) {
-          console.log('⚠️ Max polling attempts reached. Stopping polling.');
-          if (activePollingRef.current) {
-            clearInterval(activePollingRef.current);
-            activePollingRef.current = null;
-          }
-        }
-      } catch (err) {
-        console.error('Error in polling function:', err);
-      }
-    };
-
-    // Initial fetch
-    fetchUpdatedDocs();
-
-    // Set up polling interval (every 3 seconds)
-    activePollingRef.current = setInterval(fetchUpdatedDocs, 3000);
-    console.log('🔄 Started new polling interval');
-
-    // Clean up interval on component unmount or when dependencies change
-    return () => {
-      if (activePollingRef.current) {
-        console.log('🧹 Cleaning up polling interval');
-        clearInterval(activePollingRef.current);
-        activePollingRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitResult]); // 🚀 CRITICAL FIX: Removed recyclingDocs to prevent infinite loop
+  // DEPRECATED: Old submitResult polling logic removed
+  // Blockchain submission now handled directly through matched_records
 
   // Blob URLs for PDF previews - moved to the main state section
 
@@ -829,12 +658,11 @@ function HomeContent({ session }: HomeContentProps) {
             `⏱️ Frontend: [grouping:${groupingId}] Processing time: ${result.processing_time_ms}ms`
           );
 
-          // Reset groups to force refresh from new document_groups table
+          // DEPRECATED: Old grouping system
           console.log(
-            `🔄 Frontend: [grouping:${groupingId}] Resetting groups state to load from document_groups table`
+            `🔄 Frontend: [grouping:${groupingId}] Old grouping system (deprecated)`
           );
           setHasInitializedGroups(false);
-          setGroups({});
 
           // Log rules applied
           if (
@@ -1132,402 +960,8 @@ function HomeContent({ session }: HomeContentProps) {
   }, [session.user.id, fetchFailedDocuments]); // Only depend on user ID, load on mount
 
   // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
-  useEffect(() => {
-    // Only load groups data when the blockchain tab is active
-    if (activeTab !== 'blockchain') return;
-
-    let cancelled = false;
-
-    const loadInitial = async () => {
-      console.time('⏱️ [PERFORMANCE] Groups data loading');
-
-      const supabase = getSupabaseBrowser();
-
-      try {
-        console.log(
-          '📊 [PERFORMANCE] Loading document groups (NEW BACKEND GROUPING)...'
-        );
-        console.log(
-          '📊 [PERFORMANCE] Loading document groups for current user:',
-          session.user.email
-        );
-        console.log('🔍 [DEBUG] User ID for filtering:', session.user.id);
-
-        // 🚀 NEW: Load from document_groups table (created by backend grouping service)
-        const { data, error } = await supabase
-          .from('document_groups')
-          .select(
-            `
-            id, 
-            invoice_number, 
-            group_key, 
-            country, 
-            recycler_company, 
-            plastic_type,
-            applied_rule_name,
-            required_document_types,
-            optional_document_types,
-            minimum_required,
-            present_document_types,
-            present_document_ids,
-            completion_count,
-            missing_document_types,
-            is_complete,
-            can_verify,
-            completion_percentage,
-            last_processed_at,
-            created_at,
-            user_id,
-            human_verified,
-            verified_at,
-            needs_human_verification,
-            verification_reason,
-            grouping_phase
-          `
-          )
-          .eq('user_id', session.user.id) // 👈 FILTER BY USER ID
-          .order('last_processed_at', { ascending: false })
-          .limit(100);
-
-        if (error) {
-          console.error('❌ [GROUPS] Failed to load document_groups:', error);
-          console.error('❌ [GROUPS] Error details:', error);
-          return;
-        }
-
-        if (cancelled) return;
-
-        console.log(
-          `📊 [GROUPS] Loaded ${data?.length || 0} document groups for user`
-        );
-        console.log('🔍 [GROUPS] Raw data sample:', data?.slice(0, 2));
-
-        // Check if groups have the correct user_id
-        if (data && data.length > 0) {
-          const userIds = [
-            ...new Set(data.map((d: { user_id: string }) => d.user_id)),
-          ];
-          console.log('🔍 [GROUPS] User IDs in loaded groups:', userIds);
-          console.log('🔍 [GROUPS] Expected user ID:', session.user.id);
-          console.log('🔍 [GROUPS] Group statuses found:', [
-            ...new Set(
-              data.map((d: { is_complete: boolean }) =>
-                d.is_complete ? 'complete' : 'incomplete'
-              )
-            ),
-          ]);
-          console.log('🔍 [GROUPS] Countries found:', [
-            ...new Set(
-              data
-                .map((d: { country?: string | null }) => d.country)
-                .filter(Boolean)
-            ),
-          ]);
-          console.log('🔍 [GROUPS] Rules applied:', [
-            ...new Set(
-              data
-                .map(
-                  (d: { applied_rule_name?: string | null }) =>
-                    d.applied_rule_name
-                )
-                .filter(Boolean)
-            ),
-          ]);
-        }
-
-        // Process groups even if data is empty
-        if (data && data.length > 0) {
-          console.log(
-            `🔄 [GROUPS] Processing ${data.length} document groups...`
-          );
-
-          // 🚀 STEP 2: Load actual parsed documents for all present document IDs
-          console.log(
-            `📊 [GROUPS] Loading parsed documents for group content...`
-          );
-
-          // Collect all document IDs from all groups
-          const allDocumentIds = data
-            .flatMap(
-              (group: { present_document_ids?: string[] }) =>
-                group.present_document_ids || []
-            )
-            .filter((id: string | null | undefined) => id); // Remove any null/undefined IDs
-
-          console.log(
-            `🔍 [GROUPS] Found ${allDocumentIds.length} document IDs to load`
-          );
-
-          // Load all parsed documents in one query
-          const { data: parsedDocs, error: docsError } = await supabase
-            .from('parsed_documents')
-            .select(
-              'id, document_type, file_url, created_at, raw_json, user_id'
-            )
-            .in('id', allDocumentIds);
-
-          if (docsError) {
-            console.error(
-              '❌ [GROUPS] Failed to load parsed documents:',
-              docsError
-            );
-            // Continue anyway with empty docs
-          }
-
-          console.log(
-            `📊 [GROUPS] Loaded ${parsedDocs?.length || 0} parsed documents`
-          );
-
-          // Create document lookup map by ID
-          const docLookup = new Map();
-          if (parsedDocs) {
-            parsedDocs.forEach((doc) => {
-              docLookup.set(doc.id, doc);
-            });
-          }
-
-          const map: Record<string, InvoiceGroup> = {};
-
-          interface DocumentGroupRow {
-            id: string;
-            invoice_number: string;
-            group_key?: string;
-            country?: string | null;
-            recycler_company?: string | null;
-            plastic_type?: string | null;
-            applied_rule_name?: string | null;
-            required_document_types?: string[];
-            optional_document_types?: string[];
-            minimum_required?: number;
-            present_document_types?: string[];
-            present_document_ids?: string[];
-            completion_count?: number;
-            missing_document_types?: string[];
-            is_complete?: boolean;
-            can_verify?: boolean;
-            completion_percentage?: number;
-            last_processed_at?: string;
-            created_at: string;
-            human_verified?: boolean;
-            verified_at?: string | null;
-            needs_human_verification?: boolean;
-            verification_reason?: string | null;
-            grouping_phase?: 'exact' | 'fuzzy';
-          }
-
-          // 🚀 STEP 3: Convert document_groups data to InvoiceGroup format with actual document data
-          data.forEach((groupRow: DocumentGroupRow) => {
-            if (!groupRow || !groupRow.invoice_number) return;
-
-            const invoiceKey = groupRow.group_key || groupRow.invoice_number;
-
-            // 🚀 Build docs structure from actual parsed documents
-            const docs: Partial<
-              Record<'invoice' | 'eft_receipt' | 'e-way-bill', GroupDoc[]>
-            > = {};
-
-            if (groupRow.present_document_ids) {
-              groupRow.present_document_ids.forEach((docId: string) => {
-                const parsedDoc = docLookup.get(docId);
-                if (parsedDoc) {
-                  const docType = parsedDoc.document_type as
-                    | 'invoice'
-                    | 'eft_receipt'
-                    | 'e-way-bill';
-                  if (!docs[docType]) {
-                    docs[docType] = [];
-                  }
-
-                  // Convert parsed document to GroupDoc format
-                  const groupDoc: GroupDoc = {
-                    id: parsedDoc.id,
-                    document_type: parsedDoc.document_type,
-                    file_url: parsedDoc.file_url,
-                    created_at: parsedDoc.created_at,
-                    raw_json: parsedDoc.raw_json || {},
-                  };
-
-                  docs[docType]!.push(groupDoc);
-                }
-              });
-            }
-
-            // 🚀 NEW: Create InvoiceGroup from document_groups row with actual document data
-            const group: InvoiceGroup = {
-              invoice: invoiceKey,
-              docs,
-              invoiceKey,
-              invoiceNumber: groupRow.invoice_number,
-              isComplete: groupRow.is_complete || false,
-              completionCount: groupRow.completion_count || 0,
-              requiredCount: groupRow.minimum_required || 3,
-              missingTypes: groupRow.missing_document_types || [],
-              presentTypes: groupRow.present_document_types || [],
-              completionPercentage: groupRow.completion_percentage || 0,
-              country: groupRow.country || null,
-              recyclerCompany: groupRow.recycler_company || null,
-              plasticType: groupRow.plastic_type || null,
-              appliedRuleName: groupRow.applied_rule_name || null,
-              human_verified: groupRow.human_verified || false,
-              verified_at: groupRow.verified_at || null,
-              needsHumanVerification:
-                groupRow.needs_human_verification || false,
-              verificationReason: groupRow.verification_reason || null,
-              groupingPhase: groupRow.grouping_phase || undefined,
-              lastProcessedAt:
-                groupRow.last_processed_at || groupRow.created_at,
-              processingLogs: {
-                backendGrouped: true,
-                groupId: groupRow.id,
-                ruleName: groupRow.applied_rule_name,
-                requiredTypes: groupRow.required_document_types || [],
-                optionalTypes: groupRow.optional_document_types || [],
-                groupingPhase: groupRow.grouping_phase || undefined,
-                needsHumanVerification:
-                  groupRow.needs_human_verification || false,
-                verificationReason: groupRow.verification_reason || null,
-              },
-            };
-
-            // Add to map
-            map[invoiceKey] = group;
-
-            // Enhanced logging with document details
-            const docCounts = Object.entries(docs)
-              .map(([type, docArray]) => `${type}: ${docArray?.length || 0}`)
-              .join(', ');
-
-            console.log(
-              `📋 [GROUPS] Group "${invoiceKey}": ${
-                group.isComplete ? '✅ Complete' : '⚠️ Incomplete'
-              } (${group.completionCount}/${
-                group.requiredCount
-              }) - Docs: {${docCounts}}${
-                group.country ? ` - Country: ${group.country}` : ''
-              }${
-                group.appliedRuleName ? ` - Rule: ${group.appliedRuleName}` : ''
-              }${
-                group.groupingPhase ? ` - Phase: ${group.groupingPhase}` : ''
-              }${
-                group.needsHumanVerification ? ' - 🚨 Needs verification' : ''
-              }${
-                group.verificationReason ? ` (${group.verificationReason})` : ''
-              }`
-            );
-          });
-
-          // Update the groups state
-          console.log(
-            `✅ [GROUPS] Loaded ${
-              Object.keys(map).length
-            } groups from backend document_groups table`
-          );
-          console.log(
-            `📊 [GROUPS] Complete groups: ${
-              Object.values(map).filter((g) => g.isComplete).length
-            }`
-          );
-          console.log(
-            `📊 [GROUPS] Incomplete groups: ${
-              Object.values(map).filter((g) => !g.isComplete).length
-            }`
-          );
-          setGroups(map);
-          setIsDocumentsLoaded(true);
-          setHasInitializedGroups(true);
-        } else {
-          console.log('📭 [GROUPS] No document groups found for user');
-          setGroups({});
-          setIsDocumentsLoaded(true);
-          setHasInitializedGroups(true);
-        }
-      } catch (error) {
-        console.error('❌ [GROUPS] Error loading initial data:', error);
-        setGroups({});
-        setIsDocumentsLoaded(true);
-        setHasInitializedGroups(true);
-      } finally {
-        if (!cancelled) {
-          console.timeEnd('⏱️ [PERFORMANCE] Groups data loading');
-        }
-      }
-    };
-
-    // Only load if we haven't initialized groups yet
-    if (!hasInitializedGroups) {
-      loadInitial();
-    }
-
-    // Define the payload type for the postgres_changes event
-    type PostgresChangePayload = {
-      eventType: 'INSERT' | 'UPDATE' | 'DELETE';
-      new: Record<string, unknown> | null;
-      old: Record<string, unknown> | null;
-      schema: string;
-      table: string;
-    };
-
-    const channel = supabase
-      .channel('parsed_documents_changes')
-      .on<PostgresChangePayload>(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'parsed_documents' },
-        (payload) => {
-          setGroups((prev: Record<string, InvoiceGroup>) => {
-            const map = { ...prev };
-            const row = (payload.new || payload.old) as unknown as GroupDoc & {
-              raw_json: Record<string, unknown>;
-            };
-            // Accept all realtime rows; show immediately
-            if (payload.eventType === 'DELETE' && row) {
-              // Rebuild affected groups conservatively: remove this id from all types in its groups
-              const rj = (row.raw_json || {}) as Record<string, unknown>;
-              const keys = [
-                (rj as Record<string, unknown>)['anchor_key'] ||
-                  (rj as Record<string, unknown>)['invoice'],
-                (rj as Record<string, unknown>)['second_invoice'],
-                (rj as Record<string, unknown>)['third_invoice'],
-              ]
-                .filter(Boolean)
-                .map((s) => String(s).trim());
-              keys.forEach((k: string) => {
-                const g = map[k];
-                if (!g) return;
-                const types: Array<'invoice' | 'eft_receipt' | 'e-way-bill'> = [
-                  'invoice',
-                  'eft_receipt',
-                  'e-way-bill',
-                ];
-                types.forEach((t) => {
-                  const list = g.docs[t];
-                  if (list) g.docs[t] = list.filter((d) => d.id !== row.id);
-                });
-              });
-              return { ...map };
-            }
-            if (
-              payload.eventType === 'INSERT' ||
-              payload.eventType === 'UPDATE'
-            ) {
-              mergeRowIntoGroups(row, map);
-            }
-            return { ...map };
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, [
-    mergeRowIntoGroups,
-    activeTab,
-    session.user.id,
-    session.user.email,
-    hasInitializedGroups,
-  ]); // 🚀 Added required dependencies without groups
+  // DEPRECATED: Old document_groups loading logic removed
+  // Blockchain tab now loads verified records directly from matched_records
 
   // 🚀 NEW: Lazy load verified recycling docs only when Blockchain tab is active
   useEffect(() => {
@@ -1629,14 +1063,13 @@ function HomeContent({ session }: HomeContentProps) {
         );
 
         if (data && data.length > 0) {
-          // Convert to map format like recyclingDocs
+          // Convert to map format for easy access
           const verifiedMap = data.reduce(
             (acc, doc) => ({
               ...acc,
               [doc.invoice_number]: {
                 ...doc,
-                // Ensure all expected fields are present
-                recycler_company: doc.recycler_company || 'Unknown',
+                // Ensure Plastiks submission fields are present
                 plastiks_collection_id: doc.plastiks_collection_id || null,
                 plastiks_collection_address:
                   doc.plastiks_collection_address || null,
@@ -3169,10 +2602,9 @@ function HomeContent({ session }: HomeContentProps) {
       // 🚀 Reset groups when new documents are processed (but keep documents loaded)
       if (processedCount > 0) {
         console.log(
-          `🔄 Frontend: Resetting groups due to ${processedCount} new documents`
+          `🔄 Frontend: Processing completed for ${processedCount} new documents`
         );
         setHasInitializedGroups(false);
-        setGroups({});
       }
     } catch (batchError) {
       console.error(`💥 Frontend: Batch processing error:`, batchError);
@@ -3993,37 +3425,6 @@ function HomeContent({ session }: HomeContentProps) {
                   ) : (
                     <div className='space-y-6'>
                       {Object.entries(verifiedDocs).map(([invoiceKey, doc]) => {
-                        // Get the same data source as Human Verify card
-                        const group = groups[invoiceKey];
-                        const latestByType = group
-                          ? {
-                              invoice: group.docs?.['invoice']?.[0],
-                              'e-way-bill': group.docs?.['e-way-bill']?.[0],
-                              eft_receipt: group.docs?.['eft_receipt']?.[0],
-                            }
-                          : null;
-
-                        // Show loading state if groups data isn't ready yet
-                        if (!latestByType || !latestByType.invoice) {
-                          return (
-                            <div
-                              key={invoiceKey}
-                              className='border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-all border-slate-200 w-full max-w-4xl mx-auto'
-                            >
-                              <div className='flex items-start justify-between gap-4'>
-                                <div className='flex-1'>
-                                  <div className='font-medium text-slate-800'>
-                                    Invoice: {invoiceKey}
-                                  </div>
-                                  <div className='text-xs text-slate-600 mt-2'>
-                                    Loading document data...
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }
-
                         return (
                           <div
                             key={invoiceKey}
@@ -4076,7 +3477,7 @@ function HomeContent({ session }: HomeContentProps) {
                                 <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
                                   <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
                                     <CheckCircle2 className='h-4 w-4' />
-                                    Human Verified Document Data
+                                    Verified Compliant Record
                                   </h4>
                                   <div className='grid grid-cols-2 gap-6 text-sm'>
                                     <div>
@@ -4084,30 +3485,31 @@ function HomeContent({ session }: HomeContentProps) {
                                         Invoice #
                                       </div>
                                       <div className='text-sm text-slate-700'>
-                                        {latestByType?.invoice
-                                          ? String(
-                                              latestByType.invoice.raw_json
-                                                ?.invoice_number ||
-                                                latestByType.invoice.raw_json
-                                                  ?.invoice ||
-                                                'N/A'
-                                            )
-                                          : invoiceKey}
+                                        {doc.invoice_number || 'N/A'}
                                       </div>
                                     </div>
                                     <div>
                                       <div className='text-slate-500 text-xs font-medium mb-1'>
-                                        Company
+                                        Invoice Date
                                       </div>
                                       <div className='text-sm text-slate-700'>
-                                        {String(
-                                          latestByType?.invoice?.raw_json
-                                            ?.bill_to_company_name ||
-                                            latestByType?.['e-way-bill']
-                                              ?.raw_json
-                                              ?.ship_to_company_name ||
-                                            'N/A'
-                                        )}
+                                        {doc.invoice_date || 'N/A'}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        From Company
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {doc.bill_from_company || 'N/A'}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        To Company
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {doc.ship_to_company || 'N/A'}
                                       </div>
                                     </div>
                                     <div>
@@ -4115,45 +3517,29 @@ function HomeContent({ session }: HomeContentProps) {
                                         Plastic Type
                                       </div>
                                       <div className='text-sm text-slate-700'>
-                                        {String(
-                                          latestByType?.invoice?.raw_json
-                                            ?.plastic_type ||
-                                            latestByType?.['e-way-bill']
-                                              ?.raw_json?.plastic_type ||
-                                            'N/A'
-                                        )}
+                                        {doc.plastic_type || 'N/A'}
                                       </div>
                                     </div>
                                     <div>
                                       <div className='text-slate-500 text-xs font-medium mb-1'>
-                                        Weight
+                                        Weight (MT)
                                       </div>
                                       <div className='text-sm text-slate-700'>
-                                        {latestByType?.invoice?.raw_json?.weight
-                                          ? `${String(
-                                              latestByType.invoice.raw_json
-                                                .weight
-                                            )} ${String(
-                                              latestByType.invoice.raw_json
-                                                .weight_unit || 'kg'
-                                            )}`
+                                        {doc.invoice_weight_kg
+                                          ? Math.round(
+                                              doc.invoice_weight_kg / 1000
+                                            )
                                           : 'N/A'}
                                       </div>
                                     </div>
                                     <div>
                                       <div className='text-slate-500 text-xs font-medium mb-1'>
-                                        City
+                                        Vehicle Number
                                       </div>
                                       <div className='text-sm text-slate-700'>
-                                        {String(
-                                          latestByType?.['e-way-bill']?.raw_json
-                                            ?.from_location ||
-                                            latestByType?.['e-way-bill']
-                                              ?.raw_json?.city ||
-                                            latestByType?.invoice?.raw_json
-                                              ?.city ||
-                                            'N/A'
-                                        )}
+                                        {doc.invoice_vehicle ||
+                                          doc.eway_vehicle ||
+                                          'N/A'}
                                       </div>
                                     </div>
                                     <div>
@@ -4161,18 +3547,30 @@ function HomeContent({ session }: HomeContentProps) {
                                         Country
                                       </div>
                                       <div className='text-sm text-slate-700'>
-                                        {String(
-                                          latestByType?.['e-way-bill']?.raw_json
-                                            ?.ship_to_country_code ||
-                                            latestByType?.['e-way-bill']
-                                              ?.raw_json?.origin_country ||
-                                            latestByType?.['e-way-bill']
-                                              ?.raw_json?.country ||
-                                            latestByType?.invoice?.raw_json
-                                              ?.country ||
-                                            'N/A'
-                                        )}
+                                        {doc.country || 'N/A'}
                                       </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Document Links */}
+                                  <div className='mt-4 pt-4 border-t border-green-200'>
+                                    <div className='flex items-center gap-4'>
+                                      <a
+                                        href={doc.invoice_file_url}
+                                        target='_blank'
+                                        rel='noopener noreferrer'
+                                        className='inline-flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium'
+                                      >
+                                        📄 View Invoice
+                                      </a>
+                                      <a
+                                        href={doc.eway_file_url}
+                                        target='_blank'
+                                        rel='noopener noreferrer'
+                                        className='inline-flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium'
+                                      >
+                                        📄 View Eway Bill
+                                      </a>
                                     </div>
                                   </div>
 
