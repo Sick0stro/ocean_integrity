@@ -57,8 +57,14 @@ export async function GET(req: Request) {
       0
     );
     const totalWeightMT = Math.round(totalWeightKG / 1000);
-    const compliantRecords = records.filter((r) => r.in_compliance).length;
-    const flaggedRecords = records.filter((r) => r.flagged).length;
+    // ✅ Compliant = verified records (auto or manual)
+    const compliantRecords = records.filter(
+      (r) => r.human_verified === true
+    ).length;
+    // ✅ Flagged = has flags AND not verified yet
+    const flaggedRecords = records.filter(
+      (r) => r.flagged === true && r.human_verified === false
+    ).length;
     const percentageFlagged =
       totalRecords > 0
         ? ((flaggedRecords / totalRecords) * 100).toFixed(1)
@@ -96,8 +102,9 @@ export async function GET(req: Request) {
     };
 
     // ========== COMPLIANCE RECORDS ==========
+    // ✅ Show verified records (both auto-verified + manually-verified)
     const compliantRecordsData = records
-      .filter((r) => r.in_compliance)
+      .filter((r) => r.human_verified === true)
       .map((r) => ({
         user_id: r.user_id,
         invoice_file_url: r.invoice_file_url,
@@ -115,9 +122,11 @@ export async function GET(req: Request) {
       }));
 
     // ========== FLAGGED RECORDS ==========
+    // ✅ Show flagged records that need verification (not yet verified)
     const flaggedRecordsData = records
-      .filter((r) => r.flagged)
+      .filter((r) => r.flagged === true && r.human_verified === false)
       .map((r) => ({
+        id: r.id, // ✅ Include ID for verification
         user_id: r.user_id,
         invoice_file_url: r.invoice_file_url,
         eway_file_url: r.eway_file_url,

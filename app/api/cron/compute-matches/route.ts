@@ -190,6 +190,10 @@ export async function POST(req: Request) {
             return null;
           }
 
+          // ✅ AUTO-VERIFICATION: Records without flags are auto-verified
+          const hasFlags =
+            record.flag_reason && record.flag_reason.trim() !== '';
+
           return {
             user_id: record.user_id,
             invoice_id, // ✅ Looked up from parsed_documents
@@ -216,6 +220,8 @@ export async function POST(req: Request) {
               ? { details: record.flagged_pair_value }
               : null,
             in_compliance: record.in_compliance === 'yes',
+            human_verified: !hasFlags, // ✅ Auto-verify compliant records
+            verified_at: !hasFlags ? new Date().toISOString() : null,
             created_at: record.created_at,
           };
         })

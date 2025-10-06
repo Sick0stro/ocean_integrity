@@ -151,6 +151,34 @@ export default function DashboardView({ session }: DashboardViewProps) {
     }
   };
 
+  const handleVerifyRecord = async (recordId: string) => {
+    try {
+      console.log(`✅ Verifying record: ${recordId}`);
+
+      const response = await fetch('/api/matched-records/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          record_id: recordId,
+          user_id: session.user.id,
+        }),
+      });
+
+      if (response.ok) {
+        console.log(`✅ Record ${recordId} verified successfully`);
+        // Refresh dashboard to show updated data
+        fetchDashboardMetrics();
+      } else {
+        const errorData = await response.json();
+        console.error('Verification failed:', errorData);
+        alert('Failed to verify record. Please try again.');
+      }
+    } catch (error) {
+      console.error('Verification error:', error);
+      alert('Failed to verify record. Please try again.');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className='flex items-center justify-center py-12'>
@@ -407,6 +435,7 @@ export default function DashboardView({ session }: DashboardViewProps) {
                     <th className='text-left p-2 font-medium'>Weight (MT)</th>
                     <th className='text-left p-2 font-medium'>From Company</th>
                     <th className='text-left p-2 font-medium'>Flag Reasons</th>
+                    <th className='text-left p-2 font-medium'>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -442,6 +471,18 @@ export default function DashboardView({ session }: DashboardViewProps) {
                         <span className='text-red-600 font-medium'>
                           {(record.flag_reasons as string[]).join(', ')}
                         </span>
+                      </td>
+                      <td className='p-2'>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          onClick={() =>
+                            handleVerifyRecord(record.id as string)
+                          }
+                          className='bg-green-50 hover:bg-green-100 text-green-700 border-green-300'
+                        >
+                          ✅ Verify
+                        </Button>
                       </td>
                     </tr>
                   ))}

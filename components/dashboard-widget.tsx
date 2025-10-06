@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 
-import { FileText, FolderOpen, Scale, Calendar } from 'lucide-react';
+import { FileText, Scale, Calendar } from 'lucide-react';
 import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import { Session } from '@supabase/supabase-js';
 
@@ -44,40 +44,16 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
     try {
       const supabase = getSupabaseBrowser();
 
-      // Orange (Total Processed Tons) - from completed groups only
-      const { data: completeGroupsData, error: groupsDataError } =
-        await supabase
-          .from('document_groups')
-          .select(
-            `
-          id,
-          invoice_number,
-          present_document_ids,
-          last_processed_at
-        `
-          )
-          .eq('user_id', session.user.id)
-          .eq('is_complete', true)
-          .gte('last_processed_at', dateRange.from + 'T00:00:00.000Z')
-          .lte('last_processed_at', dateRange.to + 'T23:59:59.999Z');
+      // Orange (Total Processed Tons) - from matched_records
+      const { data: matchedRecordsData, error: matchedError } = await supabase
+        .from('matched_records')
+        .select('invoice_weight_kg, created_at')
+        .eq('user_id', session.user.id)
+        .gte('created_at', dateRange.from + 'T00:00:00.000Z')
+        .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
-      // Get tonnage from parsed_documents for complete groups
-      let tonnageData: { raw_json: Record<string, unknown> }[] = [];
-      if (completeGroupsData && completeGroupsData.length > 0) {
-        const allDocumentIds = completeGroupsData
-          .flatMap((group) => group.present_document_ids || [])
-          .filter((id) => id);
-
-        if (allDocumentIds.length > 0) {
-          const { data: parsedDocsWithTonnage } = await supabase
-            .from('parsed_documents')
-            .select('raw_json')
-            .in('id', allDocumentIds)
-            .eq('user_id', session.user.id);
-
-          tonnageData = parsedDocsWithTonnage || [];
-        }
-      }
+      // Calculate total tons from matched records (convert kg to metric tons)
+      const tonnageData = matchedRecordsData || [];
 
       // Green (Processed Docs) - from parsed_documents
       const { data: parsedData, error: parsedError } = await supabase
@@ -87,18 +63,10 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
         .gte('created_at', dateRange.from + 'T00:00:00.000Z')
         .lte('created_at', dateRange.to + 'T23:59:59.999Z');
 
-      // Blue (Groups) - from document_groups (all groups, not just verified)
-      const { data: groupsData, error: groupsError } = await supabase
-        .from('document_groups')
-        .select('id, created_at')
-        .eq('user_id', session.user.id)
-        .gte('created_at', dateRange.from + 'T00:00:00.000Z')
-        .lte('created_at', dateRange.to + 'T23:59:59.999Z');
-
       // Handle database connection errors gracefully
-      if (groupsDataError) {
+      if (matchedError) {
         console.warn(
-          '⚠️ Dashboard: Could not fetch complete groups - using fallback values'
+          '⚠️ Dashboard: Could not fetch matched records - using fallback values'
         );
       }
       if (parsedError) {
@@ -106,29 +74,20 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
           '⚠️ Dashboard: Could not fetch parsed documents - using fallback values'
         );
       }
-      if (groupsError) {
-        console.warn(
-          '⚠️ Dashboard: Could not fetch groups - using fallback values'
-        );
-      }
 
       // Calculate stats
-      // Extract tonnage from parsed documents and convert kilos to tonnes
+      // Extract tonnage from matched records (invoice_weight_kg is in kg)
       const totalTons =
-        tonnageData.reduce((sum, doc) => {
-          const rawJson = doc.raw_json || {};
-          const weight = Number(
-            rawJson.weight || rawJson.tonnage_tons || rawJson.weight_kg || 0
-          );
-          return sum + weight;
-        }, 0) / 1000; // Convert from kilos to tonnes
-      const groupsCount = groupsData?.length || 0;
+        tonnageData.reduce((sum, record) => {
+          const weightKg = Number(record.invoice_weight_kg || 0);
+          return sum + weightKg;
+        }, 0) / 1000; // Convert from kg to metric tonnes
       const processedCount = parsedData?.length || 0;
 
       setStats({
         totalTons: Math.round(totalTons * 100) / 100, // Round to 2 decimal places
         processedCount,
-        groupsCount,
+        groupsCount: 0, // Remove groups count (deprecated)
         loading: false,
       });
     } catch (error) {
@@ -157,54 +116,48 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
 
   return (
     <>
-      {/* Navbar Stats */}
-      <div className='flex items-center gap-4'>
-        {/* Stats Boxes - Left to Right: Total Tons, Processed Docs, Groups */}
-        <div className='flex items-center gap-3'>
+      {/* Navbar Stats - Responsive */}
+      <div className='flex flex-wrap items-center gap-2 lg:gap-3'>
+        {/* Stats Boxes */}
+        <div className='flex items-center gap-2'>
           {/* Orange - Total Tons */}
-          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 rounded-md border border-orange-200'>
-            <Scale className='h-4 w-4 text-orange-600' />
-            <span className='font-semibold text-orange-700'>
-              Total Processed Tons: {stats.totalTons.toFixed(2)}
+          <div className='flex items-center gap-1 px-2 py-1 bg-orange-50 rounded border border-orange-200'>
+            <Scale className='h-3.5 w-3.5 text-orange-600 flex-shrink-0' />
+            <span className='text-xs font-medium text-orange-700 whitespace-nowrap'>
+              <span className='hidden sm:inline'>Matched: </span>
+              {stats.totalTons.toFixed(2)} MT
             </span>
           </div>
 
           {/* Green - Processed Docs */}
-          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-green-100 rounded-md border border-green-200'>
-            <FileText className='h-4 w-4 text-green-600' />
-            <span className='font-semibold text-green-700'>
-              Processed Docs: {stats.processedCount}
-            </span>
-          </div>
-
-          {/* Blue - Groups */}
-          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 rounded-md border border-blue-200'>
-            <FolderOpen className='h-4 w-4 text-blue-600' />
-            <span className='font-semibold text-blue-700'>
-              Groups: {stats.groupsCount}
+          <div className='flex items-center gap-1 px-2 py-1 bg-green-50 rounded border border-green-200'>
+            <FileText className='h-3.5 w-3.5 text-green-600 flex-shrink-0' />
+            <span className='text-xs font-medium text-green-700 whitespace-nowrap'>
+              <span className='hidden sm:inline'>Docs: </span>
+              {stats.processedCount}
             </span>
           </div>
         </div>
 
-        {/* Date Range Filter - After stats */}
-        <div className='flex items-center gap-2 text-sm'>
-          <Calendar className='h-4 w-4 text-muted-foreground' />
+        {/* Date Range Filter - Hidden on small screens */}
+        <div className='hidden md:flex items-center gap-1.5 text-xs ml-2'>
+          <Calendar className='h-3.5 w-3.5 text-gray-400' />
           <input
             type='date'
             value={dateRange.from}
             onChange={(e) =>
               setDateRange((prev) => ({ ...prev, from: e.target.value }))
             }
-            className='px-2 py-1 border rounded text-xs'
+            className='px-1.5 py-0.5 border rounded text-xs w-28'
           />
-          <span className='text-muted-foreground'>to</span>
+          <span className='text-gray-400'>-</span>
           <input
             type='date'
             value={dateRange.to}
             onChange={(e) =>
               setDateRange((prev) => ({ ...prev, to: e.target.value }))
             }
-            className='px-2 py-1 border rounded text-xs'
+            className='px-1.5 py-0.5 border rounded text-xs w-28'
           />
         </div>
       </div>
