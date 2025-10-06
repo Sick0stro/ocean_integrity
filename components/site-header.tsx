@@ -43,14 +43,17 @@ export function SiteHeader() {
 
   return (
     <header className='sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-sm'>
-      <div className='container flex h-14 items-center justify-between px-4'>
+      <div className='container flex h-14 items-center justify-between gap-4 px-4'>
         {/* Left side - Dashboard Stats */}
-        <div className='flex-1'>
+        <div className='flex-shrink-0'>
           {session && <DashboardWidget session={session} />}
         </div>
 
+        {/* Spacer to push right content to the far right */}
+        <div className='flex-1' />
+
         {/* Right-aligned user info */}
-        <div className='flex items-center gap-3'>
+        <div className='flex items-center gap-3 flex-shrink-0'>
           {isLoading ? (
             <Loader2 className='h-4 w-4 animate-spin' />
           ) : session ? (

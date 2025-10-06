@@ -2857,7 +2857,7 @@ function HomeContent({ session }: HomeContentProps) {
             className='space-y-6'
           >
             <div className='flex justify-center'>
-              <TabsList className='grid w-full grid-cols-5'>
+              <TabsList className='grid w-full grid-cols-4'>
                 <TabsTrigger value='upload' className='text-base py-1'>
                   Upload & Process
                 </TabsTrigger>

@@ -116,8 +116,8 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
 
   return (
     <>
-      {/* Navbar Stats - Responsive */}
-      <div className='flex flex-wrap items-center gap-2 lg:gap-3'>
+      {/* Navbar Stats - Compact & Responsive */}
+      <div className='flex items-center gap-2 lg:gap-3'>
         {/* Stats Boxes */}
         <div className='flex items-center gap-2'>
           {/* Orange - Total Tons */}
@@ -139,16 +139,16 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
           </div>
         </div>
 
-        {/* Date Range Filter - Hidden on small screens */}
-        <div className='hidden md:flex items-center gap-1.5 text-xs ml-2'>
-          <Calendar className='h-3.5 w-3.5 text-gray-400' />
+        {/* Date Range Filter - Hidden on smaller screens */}
+        <div className='hidden lg:flex items-center gap-1.5 text-xs ml-2'>
+          <Calendar className='h-3.5 w-3.5 text-gray-400 flex-shrink-0' />
           <input
             type='date'
             value={dateRange.from}
             onChange={(e) =>
               setDateRange((prev) => ({ ...prev, from: e.target.value }))
             }
-            className='px-1.5 py-0.5 border rounded text-xs w-28'
+            className='px-1.5 py-0.5 border rounded text-xs w-24'
           />
           <span className='text-gray-400'>-</span>
           <input
@@ -157,7 +157,7 @@ export function DashboardWidget({ session }: DashboardWidgetProps) {
             onChange={(e) =>
               setDateRange((prev) => ({ ...prev, to: e.target.value }))
             }
-            className='px-1.5 py-0.5 border rounded text-xs w-28'
+            className='px-1.5 py-0.5 border rounded text-xs w-24'
           />
         </div>
       </div>
