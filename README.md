@@ -1,6 +1,42 @@
 # Ocean Integrity
 
-A comprehensive document processing and management system for handling invoices, EFT receipts, and e-way bills with human verification workflow and real-time dashboard analytics.
+A comprehensive document processing and management system for handling invoices, EFT receipts, and e-way bills with intelligent matching, automated verification, and real-time analytics dashboards.
+
+## 🎉 Latest: Intelligent Matching System v2.0 (Jan 2025)
+
+**Major architectural upgrade**: Replaced legacy grouping with intelligent invoice-eway pairing system.
+
+### ✨ Key Features
+
+- **🤖 Smart Matching**: Automatically pairs invoices with e-way bills using multi-dimensional scoring (vehicle, company, weight)
+- **🧠 OCR Error Handling**: Fuzzy matching corrects common OCR mistakes (O→0, I→1, L→1, S→5)
+- **⚖️ Weight Normalization**: Intelligent KG conversion with decimal rule logic (e.g., "55.5" → 5550 kg)
+- **🚩 Multi-Dimensional Flagging**: Detects weight, vehicle, and company mismatches with detailed flag reasons
+- **✅ Auto-Verification**: Compliant records (no flags) are automatically verified and ready for blockchain
+- **🔍 Review Modal** _(Coming Soon)_: Side-by-side comparison for manually reviewing flagged records
+- **📊 Rich Analytics Dashboard**: 6 KPI cards, compliance tables, top recyclers, plastic type distribution, flag analysis
+- **📈 Business Intelligence**: Leadership tables, time trends, and flag reason breakdowns
+- **📥 Smart CSV Exports**: Separate exports for compliant and flagged records
+
+### 🏗️ Architecture Changes
+
+```
+OLD: parsed_documents → document-grouping → document_groups → verify → blockchain
+NEW: parsed_documents → compute-matches → matched_records → dashboard → blockchain
+                        (validate pairs)   (flag mismatches)  (analytics)  (verified)
+```
+
+### 📚 Documentation
+
+- **[Matching System Overview](docs/matching-system-overview.md)** - Complete technical documentation
+- **[Implementation Plan](plan.md)** - Detailed development roadmap
+- **[Migration Guide](docs/matching-system-overview.md#migration-from-legacy-system)** - Upgrading from v1.0
+
+### 🔄 Legacy System
+
+The old grouping service (`/api/cron/document-grouping`) is **deprecated** but kept for rollback safety. All new features use the matching system.
+
+---
 
 ## Recent Updates
 
@@ -443,6 +479,23 @@ All API endpoints now require valid JWT authentication tokens passed via `Author
 - `npm run build` - Build for production
 - `npm start` - Start production server
 - `npm run lint` - Run ESLint
+- Manual grouping test via `curl` (see below)
+
+#### Manual Grouping Test via `curl`
+
+Trigger the backend grouping service for a specific user to validate the two-phase composite grouping pipeline:
+
+```bash
+curl -X POST http://localhost:3000/api/cron/document-grouping \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \\
+  -d '{
+        "user_id": "f3115200-2cb9-483e-8651-946a2b5c1c87",
+        "trigger": "manual-curl-test"
+      }'
+```
+
+Inspect the JSON response for the fields `phase1_groups`, `phase2_groups`, `verification_groups`, and `duplicate_details` to confirm the two-phase grouping logic is active and duplicates are being tracked.
 
 ## Contributing
 
@@ -951,4 +1004,792 @@ Ensure your Supabase project has email authentication enabled:
 - **v3.0 **: Complete authentication system with user isolation, smart UX, and security features
 - **v2.1 **: Performance optimizations, Plastiks attachment support, UI/UX improvements
 - **v2.0**: Initial Plastiks integration with Web3 signing
+- **v1.0**: Core document processing with Google Gemini AI
+
+-- Enable Row Level Security
+
+alter table public.parsed_documents enable row level security;
+
+-- Create RLS policies for user isolation
+
+create policy "users_own_parsed_documents" on public.parsed_documents
+
+for all using (auth.uid() = user_id);
+
+````
+
+
+
+#### Table: `business_rules` (NEW)
+
+
+
+Defines country-specific document requirements for flexible grouping logic.
+
+
+
+```sql
+
+-- Business rules table for country-specific document requirements
+
+CREATE TABLE IF NOT EXISTS public.business_rules (
+
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  rule_name TEXT NOT NULL UNIQUE,
+
+  country TEXT, -- 'IN', 'US', 'BR', etc. NULL = global default
+
+  required_documents TEXT[] NOT NULL, -- e.g., ['invoice', 'e-way-bill']
+
+  optional_documents TEXT[] DEFAULT '{}',
+
+  minimum_required INTEGER NOT NULL,
+
+  description TEXT,
+
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+
+);
+
+
+
+-- Initial business rules
+
+INSERT INTO business_rules (rule_name, country, required_documents, optional_documents, minimum_required, description) VALUES
+
+('global_default', NULL, ARRAY['invoice', 'eft_receipt', 'e-way-bill'], '{}', 3, 'Default rule for all countries'),
+
+('indian_recyclers', 'IN', ARRAY['invoice', 'e-way-bill'], ARRAY['eft_receipt'], 2, 'Indian domestic recyclers: Invoice + E-way Bill required, EFT optional');
+
+
+
+-- Note: The system combines country detection (IN) with advanced recycler company detection
+
+-- to determine if the 2-document rule applies. Only Indian domestic companies get this exception.
+
+
+
+-- Enable Row Level Security
+
+ALTER TABLE public.business_rules ENABLE ROW LEVEL SECURITY;
+
+
+
+-- RLS policy for business rules (read-only for authenticated users)
+
+CREATE POLICY "authenticated_read_business_rules" ON public.business_rules
+
+  FOR SELECT USING (auth.role() = 'authenticated');
+
+````
+
+#### Table: `document_groups` (NEW)
+
+Stores pre-computed document groups with completion status and applied business rules.
+
+```sql
+
+-- Document groups table for backend grouping results
+
+CREATE TABLE IF NOT EXISTS public.document_groups (
+
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+
+  invoice_number TEXT NOT NULL,
+
+  group_key TEXT NOT NULL, -- Can be same as invoice_number or more complex
+
+  country TEXT,
+
+  recycler_company TEXT,
+
+  plastic_type TEXT,
+
+  applied_rule_name TEXT,
+
+  required_document_types TEXT[],
+
+  optional_document_types TEXT[],
+
+  minimum_required INTEGER,
+
+  present_document_types TEXT[],
+
+  present_document_ids UUID[], -- IDs of parsed_documents in this group
+
+  completion_count INTEGER NOT NULL DEFAULT 0,
+
+  missing_document_types TEXT[],
+
+  is_complete BOOLEAN NOT NULL DEFAULT FALSE,
+
+  can_verify BOOLEAN NOT NULL DEFAULT FALSE, -- Indicates if ready for human verification
+
+  completion_percentage INTEGER NOT NULL DEFAULT 0,
+
+  last_processed_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+
+  processing_logs JSONB, -- Detailed logs for debugging
+
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+
+  UNIQUE (user_id, invoice_number)
+
+);
+
+
+
+-- Enable Row Level Security
+
+ALTER TABLE public.document_groups ENABLE ROW LEVEL SECURITY;
+
+
+
+-- RLS policy for document groups
+
+CREATE POLICY "users_own_document_groups" ON public.document_groups
+
+  FOR ALL USING (auth.uid() = user_id);
+
+
+
+-- Indexes for performance
+
+CREATE INDEX IF NOT EXISTS idx_document_groups_user_id ON public.document_groups(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_document_groups_complete ON public.document_groups(user_id, is_complete);
+
+```
+
+#### Table: `recycling_docs`
+
+One row per `invoice_number` per user. You can safely run this to add any missing columns.
+
+```sql
+
+-- Add all required columns including user ownership and human verification
+
+alter table public.recycling_docs
+
+  add column if not exists invoice_number text,
+
+  add column if not exists invoice_url text,
+
+  add column if not exists eft_url text,
+
+  add column if not exists ewaybill_url text,
+
+  add column if not exists recycler_company text,
+
+  add column if not exists network_operator_company text,
+
+  add column if not exists plastic_type text,
+
+  add column if not exists tonnage_tons numeric(18,3),     -- canonical unit
+
+  add column if not exists weight_kg numeric(18,3),        -- back-compat (derived)
+
+  add column if not exists country text,
+
+  add column if not exists city text,
+
+  add column if not exists origin text,
+
+  add column if not exists currency text,
+
+  add column if not exists upload_date date,
+
+  add column if not exists uploaded_by text,
+
+  add column if not exists status text default 'new',
+
+  add column if not exists human_verified boolean default false,  -- HUMAN VERIFICATION
+
+  add column if not exists verified_at timestamptz,               -- VERIFICATION TIMESTAMP
+
+  add column if not exists plastiks_collection_id bigint,
+
+  add column if not exists plastiks_collection_address text,
+
+  add column if not exists plastiks_metadata_hash text,
+
+  add column if not exists plastiks_tx_hash text,
+
+  add column if not exists plastiks_last_error text,
+
+  add column if not exists plastiks_submitted_at timestamptz,
+
+  add column if not exists created_at timestamptz default now(),
+
+  add column if not exists updated_at timestamptz default now(),
+
+  add column if not exists user_id uuid references auth.users(id) not null; -- USER OWNERSHIP
+
+
+
+-- Enable Row Level Security
+
+alter table public.recycling_docs enable row level security;
+
+
+
+-- Create RLS policies for user isolation
+
+create policy "users_own_recycling_docs" on public.recycling_docs
+
+  for all using (auth.uid() = user_id);
+
+
+
+-- Create indexes
+
+create index if not exists idx_recycling_docs_status on public.recycling_docs(status);
+
+create index if not exists idx_recycling_docs_user_id on public.recycling_docs(user_id);
+
+create index if not exists idx_parsed_documents_user_id on public.parsed_documents(user_id);
+
+```
+
+Notes:
+
+- We store `tonnage_tons` as the source of truth (you send tonnes). We also fill `weight_kg` for deployments where the column is NOT NULL.
+
+- `status` transitions: `new|updated` → `submitted` or `failed`.
+
+- `human_verified` tracks manual verification status for quality control workflow.
+
+- `verified_at` records the timestamp when human verification was completed.
+
+- Dashboard analytics are calculated from verified documents only (`human_verified = true`).
+
+### API endpoints (server)
+
+- POST `/api/cron/recycling-docs`
+
+  - Purpose: Idempotent upsert of payload rows by `invoice_number`.
+
+  - Auth: include header `x-cron-secret: <CRON_INGEST_SECRET>` or `?secret=...` (query param allowed in dev).
+
+  - Body: JSON array of objects, e.g.:
+
+    ```json
+    [
+      {
+        "invoice_number": "INV-2025-0007",
+
+        "invoice_url": "https://…/inv.pdf",
+
+        "eft_url": "https://…/eft.pdf",
+
+        "ewaybill_url": "https://…/ewb.pdf",
+
+        "recycler_company": "Green Recyclers Ltd",
+
+        "plastic_type": "PET",
+
+        "tonnage_value": 12.75,
+
+        "tonnage_unit": "t",
+
+        "country": "IN",
+
+        "city": "Mumbai",
+
+        "currency": "INR",
+
+        "upload_date": "2025-08-06",
+
+        "uploaded_by": "partner-system"
+      }
+    ]
+    ```
+
+  - Validation:
+
+    - Required: `invoice_number`, all three URLs, `recycler_company`, `plastic_type`, `tonnage_value`, `country`, `city`, `currency`.
+
+    - Plastic types allowed now: `LDPE`, `PET`, `PP`, `PVC` (case-insensitive).
+
+    - Units: if `tonnage_unit` omitted, defaults to tonnes.
+
+  - Behavior:
+
+    - Stores `tonnage_tons` and also fills `weight_kg = tonnage_tons * 1000` (for back-compat).
+
+    - Upsert by `invoice_number`.
+
+  - Responses:
+
+    - 200: `{ "success": true, "upserted": N }`
+
+    - 400: `{ "error": "Ingestion failed", "details": "…" }` (DB validation will be surfaced here)
+
+- POST `/api/plastiks/submit`
+
+  - Purpose: Find rows with `status in ('new','updated')` and submit to Plastiks staging with full attachment support.
+
+  - Auth: header `x-cron-secret: <CRON_SUBMIT_SECRET>` or `?secret=...`.
+
+  - Optional: `?invoice=INV-…` to limit to one invoice.
+
+  - **Current Request to Plastiks API**:
+
+    - **URL**: `POST https://stage-app.plastiks.io/api/collections/prg`
+
+    - **Headers**:
+
+      ```json
+      {
+        "API-key": "[YOUR_PLASTIKS_API_KEY]",
+
+        "User-Address": "0x155398F860C1B19CBb243496D2e6B932eD4aD143",
+
+        "Content-Type": "application/json"
+      }
+      ```
+
+    - **Payload**:
+
+      ```json
+      {
+        "name": "SANDBERRY FIBRETECH PRIVATE LIMITED - MAT/UP/24-25/032",
+
+        "description": "Recycling collection for invoice MAT/UP/24-25/032 from SANDBERRY FIBRETECH PRIVATE LIMITED",
+
+        "plastik_type": "PET 1",
+
+        "instant_sale_price": 1000000000,
+
+        "no_of_copies": 18,
+
+        "weight": 18050,
+
+        "use_autogen_image": true,
+
+        "recycler_company": "SANDBERRY FIBRETECH PRIVATE LIMITED",
+
+        "invoice_number": "MAT/UP/24-25/032",
+
+        "invoice_url": "https://vmycmabjfzgkephnaxpu.supabase.co/storage/v1/object/public/documents/documents/...",
+
+        "eft_url": "https://vmycmabjfzgkephnaxpu.supabase.co/storage/v1/object/public/documents/documents/...",
+
+        "ewaybill_url": "https://vmycmabjfzgkephnaxpu.supabase.co/storage/v1/object/public/documents/documents/...",
+
+        "origin": "IN",
+
+        "currency": "INR",
+
+        "country": "IN",
+
+        "city": "Rangpar",
+
+        "network_operator_company": "RECITY Network Private Limited"
+      }
+      ```
+
+  - Behavior:
+
+    - Loads Plastiks blockchain config.
+
+    - Creates a PRG collection with:
+
+      - **✅ All Required Fields**: `name`, `description`, `plastik_type`, `instant_sale_price`, `no_of_copies`, `weight`, `use_autogen_image`
+
+      - Name: `<recycler_company> - <invoice_number>`
+
+      - Description: `"Recycling collection for invoice <invoice_number> from <recycler_company>"`
+
+      - Plastic type mapping: `PET→"PET 1"`, `PP→"PP 5"`, `PVC→"PVC 3"`, `LDPE→"LDPE 4"`
+
+      - **Attachment URLs**: `invoice_url`, `eft_url`, `ewaybill_url` (now properly included in Plastiks submission)
+
+      - `instant_sale_price`: 1000000000 (1 Gwei minimum)
+
+      - `no_of_copies`: Math.max(1, Math.round(weightKg / 1000)) (1 copy per ton)
+
+      - `use_autogen_image`: true
+
+    - **Advanced Logging**: Comprehensive logging of all request data and Plastiks API responses
+
+    - Performs Web3 signing with your `PRIVATE_KEY`:
+
+      - sign metadata hash → save
+
+      - sign fixed price (EIP‑712)
+
+      - sign PRG voucher (EIP‑712)
+
+    - On success, updates row to `submitted` with: `plastiks_collection_id`, `plastiks_collection_address`, `plastiks_metadata_hash`, `plastiks_submitted_at`.
+
+    - On failure, sets `status='failed'` and stores `plastiks_last_error` (includes HTTP status and body).
+
+  - **Successful Plastiks Response** (HTTP 201):
+
+    ```json
+    {
+      "success": true,
+
+      "collection": {
+        "id": 3414,
+
+        "address": "82e88f70587dc2154096e616dcbacbad",
+
+        "name": "SANDBERRY FIBRETECH PRIVATE LIMITED - MAT/UP/24-25/032",
+
+        "instant_sale_price": "1000000000.0",
+
+        "no_of_copies": 18,
+
+        "weight": 18050,
+
+        "guarantee_connected": null,
+
+        "image_hash": "QmZEC68egdUSixnM9wtBpjxw7wTXkcdUkioPQrLxKS71N8",
+
+        "metadata_hash": "QmWGyCNsLhUM4cuvYJCMhB6X9KiFgcGcNueJPHzyVLPkKQ"
+      }
+    }
+    ```
+
+  - Response: summary object with per-invoice status.
+
+### Local testing
+
+- Start dev server:
+
+  ```bash
+
+  npm install
+
+  npm run dev
+
+  ```
+
+- Ingest (Git Bash / WSL):
+
+  ```bash
+
+  curl -sS -X POST "http://localhost:3000/api/cron/recycling-docs?secret=local-dev-ingest-123" \
+
+    -H "Content-Type: application/json" \
+
+    --data-binary @data/payload.json
+
+  ```
+
+- Ingest (PowerShell):
+
+  ```powershell
+
+  Invoke-RestMethod -Uri "http://localhost:3000/api/cron/recycling-docs?secret=local-dev-ingest-123" -Method Post -ContentType "application/json" -Body (Get-Content -Path "data/payload.json" -Raw)
+
+  ```
+
+- Submit (any shell):
+
+  ```bash
+
+  curl -sS -X POST "http://localhost:3000/api/plastiks/submit?secret=local-dev-submit-123"
+
+  ```
+
+### Storage URLs — public vs signed
+
+- Current UI uses public Supabase Storage URLs via `getPublicUrl()` from the `documents` bucket.
+
+- If needed later, you can switch to private buckets and signed URLs (server-minted, time-limited) and store `storage_path` instead.
+
+### Troubleshooting
+
+- **✅ Duplicate Detection False Positives - FIXED**
+
+  - **Issue**: Legitimate files with different invoice/e-way bill numbers were incorrectly flagged as duplicates
+
+  - **Common Pattern**: "25.INVOICE NO.343.pdf" and "37. INVOICE NO. 47.pdf" marked as duplicates despite having different numbers (343 vs 47)
+
+  - **Solution**: Replaced pattern-based matching with exact filename matching and smart business fingerprinting
+
+  - **Test**: Use `curl "http://localhost:3001/api/test-duplicate-detection"` to verify your file patterns work correctly
+
+  - **Status**: ✅ Each unique invoice/e-way bill number now gets a unique fingerprint, eliminating false positives
+
+- **✅ "Failed to fetch" Errors - FIXED**
+
+  - **Issue**: Console shows "TypeError: Failed to fetch" or "net::ERR_CONNECTION_CLOSED"
+
+  - **Solution**: These errors have been resolved with comprehensive error handling
+
+  - **What was fixed**: Added proper error destructuring for all Supabase queries to prevent uncaught exceptions
+
+  - **Status**: ✅ All Supabase queries now have graceful error handling with fallback values
+
+- **✅ Dashboard Stats Not Loading - COMMON ISSUE**
+
+  - **Issue**: Dashboard shows "Loading..." or zero values for all statistics
+
+  - **Solution**: Check browser console for authentication errors or database connection issues
+
+  - **Common Causes**:
+
+    - Invalid session token (sign out and sign back in)
+
+    - Database column mismatch (ensure `human_verified` and `verified_at` columns exist)
+
+    - Network connectivity issues
+
+  - **Status**: ✅ User authentication required for all dashboard queries with error recovery
+
+- **✅ File Upload Limit Issues**
+
+  - **Issue**: Users can't upload more than 100 files or experience session timeouts
+
+  - **Solution**: Upload limit has been optimized to 100 files maximum with clear user notification
+
+  - **Display**: Users see "Max 100 files at once" in the upload interface
+
+  - **Benefits**: Prevents system overload and session timeouts while maintaining functionality
+
+- **✅ Human Verification Not Working - FIXED**
+
+  - **Issue**: "Human Verify" button shows errors or doesn't update status
+
+  - **Solution**: Ensure proper authentication headers and database schema
+
+  - **Status**: ✅ Resolved in latest version with proper JWT token handling
+
+- **✅ Infinite polling loops - FIXED**
+
+  - **Issue**: Console showed endless polling messages
+
+  - **Solution**: Polling now stops correctly, replaced Plastiks polling with dashboard stats refresh
+
+  - **Status**: ✅ Resolved in latest version
+
+- **401 Unauthorized**
+
+  - Ensure header `x-cron-secret` matches `.env`, or pass `?secret=…` in dev.
+
+  - Restart `npm run dev` after changing `.env`.
+
+- **400 Ingestion failed**
+
+  - The response `details` includes the DB or validation error (e.g., NOT NULL on a missing column).
+
+  - Ensure `recycling_docs` has the columns listed above.
+
+  - Ensure the JSON body is an array, not a single object.
+
+- **Plastiks errors (500/422/etc.)**
+
+  - The response includes HTTP status and the returned body (also saved in `plastiks_last_error`).
+
+  - Verify `API_TOKEN_CALL`, `USER_ADDRESS` (checksummed), and `PRIVATE_KEY` match.
+
+  - Confirm plastic type mapping is correct for your case.
+
+  - Check browser console for advanced logging showing exact request data sent to Plastiks.
+
+- **Performance Issues**
+
+  - Monitor console for performance logs: `⏱️ [PERFORMANCE] Groups data loading: Xs`
+
+  - Slow tab switching may indicate database query issues or large dataset processing.
+
+  - Check browser Network tab for long-running requests.
+
+  - **Note**: Most infinite loop issues have been resolved in the latest version.
+
+- **Column Mismatch Errors**
+
+  - Ensure database schema matches code expectations (e.g., `weight_kg` vs `tonnage_kg`).
+
+  - Run the database migration script provided above to add missing columns.
+
+- **UI Issues**
+
+  - If buttons appear incorrectly, check for JavaScript errors in browser console.
+
+  - **Note**: Infinite polling and subscription cleanup issues have been resolved.
+
+  - Missing tabs or layout issues may be due to CSS grid misconfigurations.
+
+  - Use collapsible groups feature to improve UI performance with large datasets.
+
+### Security
+
+- Keep `PRIVATE_KEY` and secrets in server-side env only; never expose to the client.
+
+- Use long, random secrets for ingestion/submit endpoints if exposing them beyond internal cron.
+
+### Notes & next steps
+
+- **Performance Optimized**: The UI now uses lazy loading for better user experience - data loads only when needed.
+
+- **Real-time Updates**: Supabase subscriptions provide real-time document status updates without manual refresh.
+
+- **Comprehensive Logging**: All Plastiks submissions include detailed logging for debugging and monitoring.
+
+- The legacy "serve from DB as base64" endpoints are present but not used by this flow.
+
+- You can schedule submissions via Vercel Cron to POST `/api/plastiks/submit` on an interval.
+
+- If multiple EFT/waybills per invoice are needed, introduce a child table; current design assumes one of each per invoice.
+
+## Authentication Setup
+
+### 1. Supabase Auth Configuration
+
+Ensure your Supabase project has email authentication enabled:
+
+1. Go to **Authentication > Settings** in your Supabase dashboard
+
+2. Enable **Email** provider
+
+3. Configure **Email Templates** for verification emails
+
+4. Set **Site URL** to your application URL (e.g., `http://localhost:3001` for development)
+
+### 2. User Experience
+
+#### First-Time Users
+
+- See "Create Account" form by default
+
+- Get contextual email suggestions based on domain
+
+- Receive green success alert: "📧 Check your email to verify your account!"
+
+- Must click verification link in email before accessing the app
+
+#### Returning Users
+
+- Can easily toggle to "Sign in" mode
+
+- Get helpful suggestions if they're in the wrong mode
+
+- Automatic login after email verification
+
+### 3. Security Features
+
+- **Email Verification Required**: Users cannot access the app until they verify their email
+
+- **JWT-Based Sessions**: Secure token-based authentication
+
+- **Automatic Session Management**: Handles token refresh and expiration
+
+- **Row Level Security**: Database-level user isolation
+
+- **API Protection**: All endpoints validate user tokens
+
+## Development Notes
+
+### Authentication Flow
+
+1. **User Registration**: New users sign up with email/password
+
+2. **Email Verification**: Verification email sent automatically
+
+3. **Account Activation**: Users click link to verify and auto-login
+
+4. **Session Management**: JWT tokens handle ongoing authentication
+
+5. **Data Association**: All user actions are tied to their user ID
+
+6. **Secure Access**: RLS policies ensure users only see their own data
+
+### Testing Authentication
+
+1. **Sign Up**: Create a new account with a real email address
+
+2. **Check Email**: Look for verification email (check spam folder)
+
+3. **Verify**: Click the verification link
+
+4. **Upload Documents**: Test that documents are user-specific
+
+5. **Sign Out/In**: Verify session persistence
+
+## Current Workflow Summary
+
+### 1. Upload & Process Tab
+
+- Upload PDF documents (invoices, EFT receipts, e-way bills)
+
+- AI processes documents using Google Gemini 2.0 Flash
+
+- Real-time processing status with progress indicators
+
+### 2. Review
+
+- Review extracted data from AI processing
+
+- Preview PDF documents alongside extracted information
+
+- Export processed data to CSV
+
+### 3. Verify & Submit Tab
+
+- Documents automatically grouped by invoice number using backend grouping service
+
+- Status badges: Incomplete → Complete → Verified
+
+- 🇮🇳 Smart recycler-specific business rules (Indian domestic recyclers: flexible 2 or 3 documents, others: strict 3 documents)
+
+- Human verification button for quality control
+
+- Combined verification status display with dynamic visual feedback
+
+- CSV export for verified documents only
+
+### 4. Blockchain Tab (NEW)
+
+- Displays only human-verified documents ready for blockchain submission
+
+- "Push to Plastiks" button unlocked only after human verification
+
+- Comprehensive backend logging for debugging blockchain submissions
+
+- Shows blockchain submission status and transaction details
+
+- Uses Plastiks staging environment for safe testing
+
+### 5. Dashboard Analytics
+
+- **Sticky Header**: Always visible statistics during scrolling
+
+- **Real-Time Updates**: Refreshes every 30 seconds automatically
+
+- **Date Range Filtering**: Filter by document processing date
+
+- **Three Key Metrics**: Total verified tons, processed document count, verified document count
+
+### Change Log
+
+- **v5.3 **: 🔥 **SMART DUPLICATE DETECTION FIX** - Completely redesigned preprocessing duplicate detection to eliminate false positives where files with different invoice/e-way bill numbers were incorrectly flagged as duplicates; replaced ILIKE pattern matching with exact filename matching and business-aware fingerprinting; added comprehensive testing endpoint `/api/test-duplicate-detection` for validation
+
+- **v5.2 **: 🐛 **CRITICAL BUG FIXES & PERFORMANCE** - Fixed "Failed to fetch" errors with comprehensive Supabase error handling, optimized file upload limit to 100 files with user notification, added advanced Plastiks API debugging logs for 401 troubleshooting, cleaned up console output while maintaining error recovery, and improved dashboard stability with network failure fallbacks
+
+- **v5.1 **: 🇮🇳 **ENHANCED INDIAN RECYCLER LOGIC** - Advanced Indian recycler detection, dynamic file counting (2 of 2 vs 3 of 3), context-aware UI sections, backend validation enhancement, and smart human verification rules
+
+- **v5.0 **: 🚀 **BACKEND GROUPING & BLOCKCHAIN INTEGRATION** - Moved document grouping to backend with business rules engine, added Indian recycler 2-document exception, new Blockchain tab with Push to Plastiks functionality, comprehensive backend logging, and staging environment confirmation
+
+- **v4.0 **: 🚀 **HUMAN VERIFICATION WORKFLOW** - Replaced direct Plastiks submission with human verification, added real-time dashboard with sticky header, date range analytics, CSV export for verified docs, and streamlined 4-tab UI
+
+- **v3.1 **: 🚀 **PRODUCTION READY** - Fixed all critical Plastiks submission issues, eliminated infinite loops, added password reset, collapsible groups, smart file processing, and comprehensive error handling
+
+- **v3.0 **: Complete authentication system with user isolation, smart UX, and security features
+
+- **v2.1 **: Performance optimizations, Plastiks attachment support, UI/UX improvements
+
+- **v2.0**: Initial Plastiks integration with Web3 signing
+
 - **v1.0**: Core document processing with Google Gemini AI

@@ -49,7 +49,6 @@ export type PlastiksCollection = {
 
 export function getPlastiksConfig(): PlastiksConfig {
   const baseUrl =
-    // process.env.PLASTIKS_BASE_URL || 'https://c15d0a96de53.ngrok-free.app';
     process.env.PLASTIKS_BASE_URL || 'https://stage-app.plastiks.io';
   const apiToken = process.env.API_TOKEN_CALL || '';
   const userAddress = process.env.USER_ADDRESS || '';
@@ -202,6 +201,8 @@ export async function createPrgCollection(
     city: params.city || '',
     country: params.country || params.origin || '',
     use_autogen_image: true,
+    attachment:
+      params.invoice_url || params.ewaybill_url || params.eft_url || '',
     // ✅ Documents at top level (not nested in documents object)
     invoice: params.invoice_url || '',
     proof_invoice: params.eft_url || '',

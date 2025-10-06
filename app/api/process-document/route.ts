@@ -760,12 +760,15 @@ Template for additional_document
                 is_same_user: doc.user_id === user.id,
               }));
 
-              console.log(`🔄 [${requestId}] DUPLICATE DETECTED - Auto-skipping`, {
-                fingerprint: businessFingerprint,
-                fingerprintDisplay,
-                existingDocuments: duplicateInfo,
-                totalDuplicates: existingDocs.length,
-              });
+              console.log(
+                `🔄 [${requestId}] DUPLICATE DETECTED - Auto-skipping`,
+                {
+                  fingerprint: businessFingerprint,
+                  fingerprintDisplay,
+                  existingDocuments: duplicateInfo,
+                  totalDuplicates: existingDocs.length,
+                }
+              );
 
               // Update single_documents status to skipped_duplicate
               if (documentId) {
@@ -895,6 +898,32 @@ Template for additional_document
           console.log(
             `✅ [${requestId}] Saved parsed document to parsed_documents`
           );
+
+          // ========== UPDATE single_documents STATUS TO 'processed' ==========
+          // This mirrors the temp_documents → single_documents pattern
+          if (documentId) {
+            const { error: statusUpdateError } = await supabase
+              .from('single_documents')
+              .update({ status: 'processed' })
+              .eq('id', documentId)
+              .eq('user_id', user.id); // Safety: only update own documents
+
+            if (statusUpdateError) {
+              console.error(
+                `❌ [${requestId}] Failed to update single_documents status to 'processed':`,
+                statusUpdateError
+              );
+              // Don't fail the request - data is already saved to parsed_documents
+            } else {
+              console.log(
+                `✅ [${requestId}] Updated single_documents status to 'processed' for ${fileName}`
+              );
+            }
+          } else {
+            console.warn(
+              `⚠️ [${requestId}] No documentId provided, cannot update single_documents status`
+            );
+          }
         }
       }
     } catch (e) {

@@ -36,29 +36,60 @@ export async function GET(request: Request) {
     let data, error, totalCount;
 
     // Handle special case for unprocessed_documents (virtual table)
+    // "Unprocessed" means documents that are:
+    // 1. Ready for AI but not yet AI-processed (single_documents.status='uploaded')
+    // 2. Failed during preprocessing or AI processing (status='failed')
+    //
+    // Document Lifecycle Status Flow:
+    // - temp_documents.status: 'uploaded' → 'processed' (after preprocessing)
+    // - single_documents.status: 'uploaded' → 'processing' → 'processed' (after AI)
+    // - parsed_documents: Created when AI processing completes
     if (table === 'unprocessed_documents') {
-      console.log(`📊 [data-management] Fetching unprocessed documents for user ${userId}`);
+      console.log(
+        `📊 [data-management] Fetching unprocessed documents for user ${userId}`
+      );
+
+      // Get documents ready for AI (preprocessed but not AI-processed)
+      const { data: readyDocs, error: readyError } = await supabase
+        .from('single_documents')
+        .select(
+          'id, pdf_path, original_filename, upload_date, status, file_size, mime_type, page_number, total_pages, upload_batch_id, created_at'
+        )
+        .eq('user_id', userId)
+        .in('status', ['uploaded', 'processing']) // Ready for AI or currently being processed
+        .order('upload_date', { ascending: false });
 
       // Get failed documents from temp_documents
       const { data: failedTempDocs, error: tempError } = await supabase
         .from('temp_documents')
-        .select('id, pdf_path, upload_date, status, last_error, retry_count')
+        .select(
+          'id, pdf_path, upload_date, status, last_error, upload_batch_id, created_at'
+        )
         .eq('user_id', userId)
-        .in('status', ['failed', 'uploaded'])
+        .eq('status', 'failed')
         .order('upload_date', { ascending: false });
 
       // Get failed documents from single_documents
       const { data: failedSingleDocs, error: singleError } = await supabase
         .from('single_documents')
-        .select('id, pdf_path, original_filename, upload_date, status, last_error, retry_count, temp_document_id, page_number, total_pages')
+        .select(
+          'id, pdf_path, original_filename, upload_date, status, last_error, page_number, total_pages, upload_batch_id, created_at'
+        )
         .eq('user_id', userId)
-        .in('status', ['failed', 'uploaded'])
+        .eq('status', 'failed')
         .order('upload_date', { ascending: false });
 
-      if (tempError || singleError) {
-        console.error('❌ [data-management] Error fetching unprocessed documents:', tempError || singleError);
+      if (readyError || tempError || singleError) {
+        console.error(
+          '❌ [data-management] Error fetching unprocessed documents:',
+          readyError || tempError || singleError
+        );
         return NextResponse.json(
-          { error: `Failed to fetch unprocessed documents: ${(tempError || singleError)?.message}` },
+          {
+            error: `Failed to fetch unprocessed documents: ${
+              (readyError || tempError || singleError)?.message
+            }`,
+          },
           { status: 500 }
         );
       }
@@ -66,28 +97,48 @@ export async function GET(request: Request) {
       // Combine and format the results
       const unprocessedDocs = [];
 
+      // Add documents ready for AI processing (status='uploaded' in single_documents)
+      if (readyDocs) {
+        unprocessedDocs.push(
+          ...readyDocs.map((doc) => ({
+            ...doc,
+            source_table: 'single_documents',
+            doc_type: 'ready_for_ai',
+            last_error: null, // No error, just waiting for AI processing
+          }))
+        );
+      }
+
       // Add failed temp_documents
       if (failedTempDocs) {
-        unprocessedDocs.push(...failedTempDocs.map(doc => ({
-          ...doc,
-          source_table: 'temp_documents',
-          original_filename: doc.pdf_path,
-          temp_document_id: null,
-          page_number: null,
-          total_pages: 1
-        })));
+        unprocessedDocs.push(
+          ...failedTempDocs.map((doc) => ({
+            ...doc,
+            source_table: 'temp_documents',
+            doc_type: 'failed',
+            original_filename: doc.pdf_path,
+            page_number: null,
+            total_pages: 1,
+          }))
+        );
       }
 
       // Add failed single_documents
       if (failedSingleDocs) {
-        unprocessedDocs.push(...failedSingleDocs.map(doc => ({
-          ...doc,
-          source_table: 'single_documents'
-        })));
+        unprocessedDocs.push(
+          ...failedSingleDocs.map((doc) => ({
+            ...doc,
+            source_table: 'single_documents',
+            doc_type: 'failed',
+          }))
+        );
       }
 
       // Sort by upload_date and apply pagination
-      unprocessedDocs.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
+      unprocessedDocs.sort(
+        (a, b) =>
+          new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime()
+      );
 
       // Apply offset and limit
       const paginatedDocs = unprocessedDocs.slice(offset, offset + limit);
@@ -96,7 +147,14 @@ export async function GET(request: Request) {
       totalCount = unprocessedDocs.length;
       error = null;
 
-      console.log(`✅ [data-management] Found ${data.length} unprocessed documents (${totalCount} total)`);
+      console.log(
+        `✅ [data-management] Found ${data.length} unprocessed documents (${totalCount} total)`
+      );
+      console.log(
+        `   📊 Ready for AI: ${readyDocs?.length || 0}, Failed temp: ${
+          failedTempDocs?.length || 0
+        }, Failed single: ${failedSingleDocs?.length || 0}`
+      );
       console.log(`🔍 [data-management] Sample data:`, data.slice(0, 2));
     } else {
       // Build the query for regular tables
@@ -320,7 +378,7 @@ export async function DELETE(request: Request) {
       if (!siblingsError && siblingPages) {
         // Check if all other siblings are processed or will be deleted
         const otherUnprocessedSiblings = siblingPages.filter(
-          page => page.id !== recordId && page.status !== 'processed'
+          (page) => page.id !== recordId && page.status !== 'processed'
         );
 
         console.log(
@@ -345,7 +403,9 @@ export async function DELETE(request: Request) {
               tempDeleteError
             );
           } else {
-            console.log(`✅ [delete] Successfully deleted parent temp_document`);
+            console.log(
+              `✅ [delete] Successfully deleted parent temp_document`
+            );
           }
         } else {
           console.log(

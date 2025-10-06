@@ -1,0 +1,111 @@
+table_name,column_name,pos,data_type,udt_name,max_len,is_nullable,column_default
+business_rules,id,1,uuid,uuid,null,NO,gen_random_uuid()
+business_rules,rule_name,2,text,text,null,NO,null
+business_rules,rule_version,3,text,text,null,NO,'v1'::text
+business_rules,description,4,text,text,null,YES,null
+business_rules,country,5,text,text,null,YES,null
+business_rules,region,6,text,text,null,YES,null
+business_rules,business_type,7,text,text,null,YES,null
+business_rules,required_documents,8,ARRAY,_text,null,NO,null
+business_rules,optional_documents,9,ARRAY,_text,null,YES,'{}'::text[]
+business_rules,minimum_required,10,integer,int4,null,NO,3
+business_rules,is_active,11,boolean,bool,null,NO,true
+business_rules,priority,12,integer,int4,null,NO,100
+business_rules,created_at,13,timestamp with time zone,timestamptz,null,NO,now()
+business_rules,updated_at,14,timestamp with time zone,timestamptz,null,NO,now()
+document_groups,id,1,uuid,uuid,null,NO,gen_random_uuid()
+document_groups,user_id,2,uuid,uuid,null,NO,null
+document_groups,invoice_number,3,text,text,null,NO,null
+document_groups,group_key,4,text,text,null,NO,null
+document_groups,country,5,text,text,null,YES,null
+document_groups,region,6,text,text,null,YES,null
+document_groups,plastic_type,7,text,text,null,YES,null
+document_groups,recycler_company,8,text,text,null,YES,null
+document_groups,applied_rule_name,9,text,text,null,YES,null
+document_groups,required_document_types,10,ARRAY,_text,null,NO,null
+document_groups,optional_document_types,11,ARRAY,_text,null,YES,'{}'::text[]
+document_groups,minimum_required,12,integer,int4,null,NO,3
+document_groups,present_document_types,13,ARRAY,_text,null,NO,'{}'::text[]
+document_groups,present_document_ids,14,ARRAY,_uuid,null,NO,'{}'::uuid[]
+document_groups,completion_count,15,integer,int4,null,NO,0
+document_groups,missing_document_types,16,ARRAY,_text,null,NO,'{}'::text[]
+document_groups,is_complete,17,boolean,bool,null,NO,false
+document_groups,can_verify,18,boolean,bool,null,NO,false
+document_groups,completion_percentage,19,integer,int4,null,NO,0
+document_groups,is_promoted,20,boolean,bool,null,NO,false
+document_groups,is_human_verified,21,boolean,bool,null,NO,false
+document_groups,human_verified_at,22,timestamp with time zone,timestamptz,null,YES,null
+document_groups,last_processed_at,23,timestamp with time zone,timestamptz,null,NO,now()
+document_groups,processing_version,24,text,text,null,NO,'v1'::text
+document_groups,processing_logs,25,jsonb,jsonb,null,YES,'{}'::jsonb
+document_groups,created_at,26,timestamp with time zone,timestamptz,null,NO,now()
+document_groups,updated_at,27,timestamp with time zone,timestamptz,null,NO,now()
+document_groups,human_verified,28,boolean,bool,null,YES,false
+document_groups,verified_at,29,timestamp with time zone,timestamptz,null,YES,null
+document_groups,grouping_version,30,character varying,varchar,10,YES,'v1'::character varying
+document_groups,confidence_score,31,integer,int4,null,YES,100
+document_groups,composite_key_metadata,32,jsonb,jsonb,null,YES,null
+document_groups,needs_human_verification,33,boolean,bool,null,YES,false
+document_groups,verification_reason,34,text,text,null,YES,null
+document_groups,grouping_phase,35,character varying,varchar,20,YES,'unknown'::character varying
+parsed_documents,id,1,uuid,uuid,null,NO,gen_random_uuid()
+parsed_documents,anchor_key,2,text,text,null,NO,null
+parsed_documents,document_type,3,text,text,null,NO,null
+parsed_documents,raw_json,4,jsonb,jsonb,null,NO,null
+parsed_documents,file_url,5,text,text,null,NO,null
+parsed_documents,created_at,6,timestamp with time zone,timestamptz,null,YES,now()
+parsed_documents,user_id,7,uuid,uuid,null,NO,null
+parsed_documents,business_fingerprint,8,text,text,null,YES,null
+parsed_documents,duplicate_group_id,9,uuid,uuid,null,YES,gen_random_uuid()
+parsed_documents,original_uploader_id,10,uuid,uuid,null,YES,null
+recycling_docs,id,1,uuid,uuid,null,NO,gen_random_uuid()
+recycling_docs,invoice_number,2,text,text,null,NO,null
+recycling_docs,invoice_url,3,text,text,null,NO,null
+recycling_docs,eft_url,4,text,text,null,YES,null
+recycling_docs,ewaybill_url,5,text,text,null,NO,null
+recycling_docs,recycler_company,6,text,text,null,NO,null
+recycling_docs,plastic_type,7,text,text,null,NO,null
+recycling_docs,weight_kg,8,numeric,numeric,null,NO,null
+recycling_docs,origin,9,text,text,null,NO,null
+recycling_docs,currency,10,text,text,null,NO,null
+recycling_docs,upload_date,11,date,date,null,YES,null
+recycling_docs,uploaded_by,12,text,text,null,YES,null
+recycling_docs,status,13,text,text,null,NO,'new'::text
+recycling_docs,plastiks_collection_id,14,bigint,int8,null,YES,null
+recycling_docs,plastiks_collection_address,15,text,text,null,YES,null
+recycling_docs,plastiks_metadata_hash,16,text,text,null,YES,null
+recycling_docs,plastiks_tx_hash,17,text,text,null,YES,null
+recycling_docs,plastiks_last_error,18,text,text,null,YES,null
+recycling_docs,plastiks_submitted_at,19,timestamp with time zone,timestamptz,null,YES,null
+recycling_docs,created_at,20,timestamp with time zone,timestamptz,null,NO,now()
+recycling_docs,updated_at,21,timestamp with time zone,timestamptz,null,NO,now()
+recycling_docs,country,22,text,text,null,YES,null
+recycling_docs,city,23,text,text,null,YES,null
+recycling_docs,tonnage_tons,24,numeric,numeric,null,YES,null
+recycling_docs,network_operator_company,25,text,text,null,YES,null
+recycling_docs,user_id,26,uuid,uuid,null,NO,null
+single_documents,id,1,uuid,uuid,null,NO,gen_random_uuid()
+single_documents,user_id,2,uuid,uuid,null,NO,null
+single_documents,pdf_path,3,text,text,null,NO,null
+single_documents,upload_date,4,timestamp with time zone,timestamptz,null,YES,now()
+single_documents,status,6,text,text,null,YES,null
+single_documents,original_filename,8,text,text,null,YES,null
+single_documents,file_size,9,text,text,null,YES,null
+single_documents,mime_type,10,text,text,null,YES,null
+single_documents,temp_document_id,13,uuid,uuid,null,YES,null
+single_documents,page_number,14,integer,int4,null,YES,null
+single_documents,total_pages,15,integer,int4,null,YES,null
+single_documents,updated_at,16,timestamp with time zone,timestamptz,null,NO,now()
+single_documents,last_error,17,text,text,null,YES,null
+single_documents,upload_batch_id,18,uuid,uuid,null,NO,gen_random_uuid()
+single_documents,created_at,19,timestamp with time zone,timestamptz,null,YES,now()
+single_documents,processed_at,20,timestamp with time zone,timestamptz,null,YES,null
+temp_documents,id,1,uuid,uuid,null,NO,gen_random_uuid()
+temp_documents,user_id,2,uuid,uuid,null,NO,null
+temp_documents,pdf_path,4,text,text,null,NO,null
+temp_documents,upload_date,19,timestamp with time zone,timestamptz,null,YES,now()
+temp_documents,status,28,text,text,null,YES,'uploaded'::text
+temp_documents,updated_at,29,timestamp with time zone,timestamptz,null,NO,now()
+temp_documents,last_error,30,text,text,null,YES,null
+temp_documents,upload_batch_id,31,uuid,uuid,null,NO,gen_random_uuid()
+temp_documents,created_at,32,timestamp with time zone,timestamptz,null,YES,now()

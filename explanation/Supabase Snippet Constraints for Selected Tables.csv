@@ -1,0 +1,81 @@
+table_name,constraint_name,constraint_type,column_name,foreign_table,foreign_column
+business_rules,2200_61398_10_not_null,CHECK,null,null,null
+business_rules,2200_61398_11_not_null,CHECK,null,null,null
+business_rules,2200_61398_12_not_null,CHECK,null,null,null
+business_rules,2200_61398_13_not_null,CHECK,null,null,null
+business_rules,2200_61398_14_not_null,CHECK,null,null,null
+business_rules,2200_61398_1_not_null,CHECK,null,null,null
+business_rules,2200_61398_2_not_null,CHECK,null,null,null
+business_rules,2200_61398_3_not_null,CHECK,null,null,null
+business_rules,2200_61398_8_not_null,CHECK,null,null,null
+business_rules,business_rules_pkey,PRIMARY KEY,id,business_rules,id
+business_rules,business_rules_rule_name_key,UNIQUE,rule_name,business_rules,rule_name
+document_groups,2200_61418_10_not_null,CHECK,null,null,null
+document_groups,2200_61418_12_not_null,CHECK,null,null,null
+document_groups,2200_61418_13_not_null,CHECK,null,null,null
+document_groups,2200_61418_14_not_null,CHECK,null,null,null
+document_groups,2200_61418_15_not_null,CHECK,null,null,null
+document_groups,2200_61418_16_not_null,CHECK,null,null,null
+document_groups,2200_61418_17_not_null,CHECK,null,null,null
+document_groups,2200_61418_18_not_null,CHECK,null,null,null
+document_groups,2200_61418_19_not_null,CHECK,null,null,null
+document_groups,2200_61418_1_not_null,CHECK,null,null,null
+document_groups,2200_61418_20_not_null,CHECK,null,null,null
+document_groups,2200_61418_21_not_null,CHECK,null,null,null
+document_groups,2200_61418_23_not_null,CHECK,null,null,null
+document_groups,2200_61418_24_not_null,CHECK,null,null,null
+document_groups,2200_61418_26_not_null,CHECK,null,null,null
+document_groups,2200_61418_27_not_null,CHECK,null,null,null
+document_groups,2200_61418_2_not_null,CHECK,null,null,null
+document_groups,2200_61418_3_not_null,CHECK,null,null,null
+document_groups,2200_61418_4_not_null,CHECK,null,null,null
+document_groups,valid_completion_count,CHECK,null,document_groups,completion_count
+document_groups,valid_completion_percentage,CHECK,null,document_groups,completion_percentage
+document_groups,document_groups_applied_rule_name_fkey,FOREIGN KEY,applied_rule_name,business_rules,rule_name
+document_groups,document_groups_user_id_fkey,FOREIGN KEY,user_id,null,null
+document_groups,document_groups_pkey,PRIMARY KEY,id,document_groups,id
+document_groups,document_groups_user_id_group_key_key,UNIQUE,group_key,document_groups,group_key
+document_groups,document_groups_user_id_group_key_key,UNIQUE,user_id,document_groups,group_key
+document_groups,document_groups_user_id_group_key_key,UNIQUE,user_id,document_groups,user_id
+document_groups,document_groups_user_id_group_key_key,UNIQUE,group_key,document_groups,user_id
+parsed_documents,2200_19122_1_not_null,CHECK,null,null,null
+parsed_documents,2200_19122_2_not_null,CHECK,null,null,null
+parsed_documents,2200_19122_3_not_null,CHECK,null,null,null
+parsed_documents,2200_19122_4_not_null,CHECK,null,null,null
+parsed_documents,2200_19122_5_not_null,CHECK,null,null,null
+parsed_documents,2200_19122_7_not_null,CHECK,null,null,null
+parsed_documents,parsed_documents_document_type_check,CHECK,null,parsed_documents,document_type
+parsed_documents,parsed_documents_original_uploader_id_fkey,FOREIGN KEY,original_uploader_id,null,null
+parsed_documents,parsed_documents_user_id_fkey,FOREIGN KEY,user_id,null,null
+parsed_documents,parsed_documents_pkey,PRIMARY KEY,id,parsed_documents,id
+recycling_docs,2200_27258_10_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_13_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_1_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_20_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_21_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_26_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_2_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_3_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_5_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_6_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_7_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_8_not_null,CHECK,null,null,null
+recycling_docs,2200_27258_9_not_null,CHECK,null,null,null
+recycling_docs,recycling_docs_user_id_fkey,FOREIGN KEY,user_id,null,null
+recycling_docs,recycling_docs_pkey,PRIMARY KEY,id,recycling_docs,id
+recycling_docs,recycling_docs_invoice_number_key,UNIQUE,invoice_number,recycling_docs,invoice_number
+single_documents,2200_53240_16_not_null,CHECK,null,null,null
+single_documents,2200_53240_18_not_null,CHECK,null,null,null
+single_documents,2200_53240_1_not_null,CHECK,null,null,null
+single_documents,2200_53240_2_not_null,CHECK,null,null,null
+single_documents,2200_53240_3_not_null,CHECK,null,null,null
+single_documents,single_documents_temp_document_id_fkey,FOREIGN KEY,temp_document_id,temp_documents,id
+single_documents,single_documents_user_id_fkey,FOREIGN KEY,user_id,null,null
+single_documents,single_documents_pkey,PRIMARY KEY,id,single_documents,id
+temp_documents,2200_17445_1_not_null,CHECK,null,null,null
+temp_documents,2200_17445_29_not_null,CHECK,null,null,null
+temp_documents,2200_17445_2_not_null,CHECK,null,null,null
+temp_documents,2200_17445_31_not_null,CHECK,null,null,null
+temp_documents,2200_17445_4_not_null,CHECK,null,null,null
+temp_documents,documents_user_id_fkey,FOREIGN KEY,user_id,null,null
+temp_documents,documents_pkey,PRIMARY KEY,id,temp_documents,id

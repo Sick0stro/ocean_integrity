@@ -1,0 +1,29 @@
+type,json_structure
+invoice,"{
+    ""weight"": 331.86,
+    ""invoice"": ""MP0510007319"",
+    ""invoice_date"": ""04-08-2022"",
+    ""plastic_type"": ""MIXED"",
+    ""document_type"": ""invoice"",
+    ""vehicle_number"": null,
+    ""bill_to_address"": ""VILLAGE NANDGAON, PALGHAR, CHINCHOLI, MALAD WEST, 401403 PALGHAR INDIA"",
+    ""bill_to_company_name"": ""THE SHAKTI PLASTIC INDUSTRIES"",
+    ""bill_from_company_name"": ""AVENUE SUPERMARTS LTD."",
+    ""weight_unit_of_mesurement"": null
+}"
+e-way-bill,"{
+    ""city"": ""Indore"",
+    ""mode"": ""Road"",
+    ""weight"": null,
+    ""invoice"": ""2866"",
+    ""eway_bill_no"": ""7512 9387 0378"",
+    ""plastic_type"": ""OTHER"",
+    ""document_type"": ""e-way-bill"",
+    ""generated_date"": ""22/10/2022 04:18 pm"",
+    ""vehicle_number"": ""UP14HT6208"",
+    ""ship_to_address"": ""373/1,373/10, Gram Rajoda, Indore, MADHYA PRADESH-453551"",
+    ""ship_to_company_name"": ""The Shakti Plastic Industries"",
+    ""ship_to_country_code"": ""IN"",
+    ""ship_from_company_name"": ""KALPNA ENTERPRISES"",
+    ""weight_unit_of_mesurement"": null
+}"

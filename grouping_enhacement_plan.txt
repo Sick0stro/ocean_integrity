@@ -1,0 +1,172 @@
+Enhanced Document Grouping Implementation Guide
+Phase 1: Understanding the Problem
+Current Situation:
+
+Your system groups documents ONLY by exact invoice number match
+Same invoice numbers (like "455") are being reused for completely different shipments
+This creates false groupings - 20 different shipments all grouped as one
+Valid document pairs aren't matching because they have slightly different invoice formats
+
+Goal:
+
+Create ~1,800 proper groups (instead of current incorrect groupings)
+Match documents that actually belong to the same shipment
+Handle invoice number variations and duplicates
+
+Phase 2: Core Logic Changes
+What to Change:
+
+Replace Simple Invoice Matching with Composite Key
+
+Current: Groups by anchor_key (invoice number) only
+New: Group by combination of:
+
+Last 4 digits of invoice
+Vehicle number (normalized)
+Invoice date
+
+Why This Works:
+
+Invoice "455" + Vehicle "TN XC 1234" + Date "2023-01-15" = Unique shipment
+Invoice "455" + Vehicle "AP 29 TB 9277" + Date "2022-09-16" = Different shipment
+These become two separate groups instead of one incorrect group
+
+Phase 3: Implementation Steps
+Step 1: Add New Function for Composite Key Creation
+Add this function to /app/api/cron/document-grouping/route.ts:
+typescriptfunction createCompositeGroupKey(doc: ParsedDocument, requestId: string): string | null {
+// Get invoice number (last 4 digits)
+// Get vehicle number (normalized)
+// Get invoice date
+// Return: "lastDigits_vehicle_date"
+}
+Key Points:
+
+Extract last 4 digits: "OE23/24-001455" → "1455"
+Normalize vehicle: "TN XC 1234 2345" → "TNXC1234" (remove trip number)
+Keep date as-is: "19-02-2023"
+Result: "1455_TNXC1234_19-02-2023"
+
+Step 2: Modify Grouping Function
+Replace groupDocumentsByInvoice function:
+What changes:
+
+Use createCompositeGroupKey instead of extractInvoiceKey
+Add duplicate detection (same type + same composite key = duplicate)
+Skip duplicates instead of adding them to groups
+
+Step 3: Update Database Storage
+In processDocumentGroup function:
+
+Store composite key in group_key field
+Keep original invoice in invoice_number field for reference
+Change conflict resolution to use group_key instead of invoice_number
+
+Phase 4: Database Changes
+Step 1: Clean Up Existing Duplicates
+Run this SQL to remove duplicate documents:
+sql-- This will delete duplicate documents, keeping only the first one
+WITH duplicates AS (
+SELECT id, ROW_NUMBER() OVER (
+PARTITION BY
+user_id,
+document_type,
+anchor_key,
+raw_json->>'vehicle_number',
+raw_json->>'invoice_date'
+ORDER BY created_at ASC
+) as rn
+FROM parsed_documents
+)
+DELETE FROM parsed_documents WHERE id IN (
+SELECT id FROM duplicates WHERE rn > 1
+);
+Step 2: Update Table Constraints
+sql-- Drop old constraint
+ALTER TABLE document_groups
+DROP CONSTRAINT IF EXISTS document_groups_user_id_invoice_number_key;
+
+-- Add new constraint on composite key
+ALTER TABLE document_groups
+ADD CONSTRAINT document_groups_user_id_group_key_key
+UNIQUE (user_id, group_key);
+
+Phase 5: Testing Strategy
+Test Case 1: Verify Grouping Works
+sql-- Check if documents with same last 4 digits but different vehicles are separated
+SELECT
+group_key,
+invoice_number,
+present_document_types,
+completion_percentage
+FROM document_groups
+WHERE invoice_number LIKE '%455%'
+ORDER BY group_key;
+Expected: Multiple separate groups, not one big group
+Test Case 2: Verify Complete Groups
+sql-- Count groups that have both invoice and e-way bill
+SELECT COUNT(\*) as complete_groups
+FROM document_groups
+WHERE completion_percentage >= 66;
+Expected: Should approach ~1,800 groups
+
+Phase 6: Implementation Checklist
+Backend Changes:
+
+Add createCompositeGroupKey function
+Update groupDocumentsByInvoice to use composite keys
+Add duplicate detection logic
+Update processDocumentGroup to store composite keys
+Change upsert conflict to use group_key
+
+Database Changes:
+
+Run duplicate cleanup SQL
+Update unique constraint on document_groups
+Verify no data loss after cleanup
+
+Testing:
+
+Run grouping on test data
+Verify ~1,800 groups are created
+Check that invoice 455 creates multiple distinct groups
+Confirm groups have matching vehicle numbers
+
+Phase 7: Rollback Plan
+If something goes wrong:
+
+Keep backup of current data:
+
+sql-- Before making changes
+CREATE TABLE document_groups_backup AS
+SELECT \* FROM document_groups;
+
+Restore if needed:
+
+sql-- If rollback needed
+TRUNCATE document_groups;
+INSERT INTO document_groups SELECT \* FROM document_groups_backup;
+
+Key Concepts to Remember
+
+Composite Key = Real Shipment Identity
+
+Invoice alone is not unique
+Vehicle + Date + Invoice = Unique shipment
+
+Normalization is Critical
+
+Vehicle "TN XC 1234 2345" and "TN XC 1234" should match
+Remove extra trip numbers, spaces, special characters
+
+Duplicates Must Go
+
+Same document appearing multiple times breaks grouping
+Keep only one copy of each unique document
+
+This Creates More Groups, Not Fewer
+
+Current: Few large incorrect groups
+After: Many smaller correct groups (~1,800)
+
+Would you like me to elaborate on any specific part of this implementation guide?

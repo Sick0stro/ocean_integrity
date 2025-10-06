@@ -1,0 +1,4 @@
+table_name,row_count,unique_users,doc_types
+parsed_documents,40927,8,3
+document_groups,22594,8,15233
+recycling_docs,2,1,null

@@ -1,4 +1,16 @@
-// Backend Document Grouping Service
+// ⚠️ DEPRECATION WARNING ⚠️
+// This service is DEPRECATED and replaced by the new matching system.
+// New route: /api/cron/compute-matches
+//
+// This file is kept for:
+// 1. Rollback safety during transition
+// 2. Historical reference
+// 3. Migration script compatibility
+//
+// DO NOT use this for new features. Use the matching system instead.
+// See: docs/matching-system-overview.md
+//
+// Backend Document Grouping Service (LEGACY)
 // Processes parsed_documents and applies country-specific business rules
 // Called immediately after AI processing completes
 
@@ -26,7 +38,50 @@ interface BusinessRule {
   minimum_required: number;
 }
 
-// Removed unused DocumentGroup interface
+interface CompositeIdentifiers {
+  compositeKey: string;
+  invoiceDigits: string | null;
+  vehicleNumber: string | null;
+  invoiceDate: string | null;
+  rawInvoice: string | null;
+  quality: number;
+}
+
+interface GroupMetadata extends CompositeIdentifiers {
+  primaryInvoice: string | null;
+  needsHumanVerification?: boolean;
+  verificationReason?: string | null;
+  groupingPhase?: 'exact' | 'fuzzy';
+}
+
+interface DuplicateRecord {
+  compositeKey: string;
+  originalId: string;
+  duplicateId: string;
+  documentType: DocumentType;
+}
+
+interface GroupEntry {
+  documents: ParsedDocument[];
+  metadata: GroupMetadata;
+  duplicates: DuplicateRecord[];
+}
+
+interface GroupingStats {
+  totalDocuments: number;
+  groupedDocuments: number;
+  skippedMissingKey: number;
+  skippedDuplicates: number;
+  duplicateRecords: DuplicateRecord[];
+  phase1Groups: number;
+  phase2Groups: number;
+  verifyGroups: number;
+}
+
+interface GroupingMapResult {
+  groups: Record<string, GroupEntry>;
+  stats: GroupingStats;
+}
 
 interface GroupingResult {
   groups_processed: number;
@@ -42,11 +97,24 @@ interface GroupingResult {
     completion: string;
     status: 'created' | 'updated' | 'error';
   }>;
+  duplicates_skipped: number;
+  duplicate_details: DuplicateRecord[];
+  phase1_groups: number;
+  phase2_groups: number;
+  verification_groups: number;
 }
 
 export async function POST(req: Request) {
   const requestId = Math.random().toString(36).substring(2, 15);
   const startTime = Date.now();
+
+  console.warn(`
+⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
+⚠️ DEPRECATION WARNING: This endpoint is DEPRECATED!
+⚠️ Use /api/cron/compute-matches instead
+⚠️ This legacy grouping service will be removed in a future release
+⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
+  `);
 
   console.log(
     `🚀 [grouping:${requestId}] ========================================`
@@ -115,22 +183,31 @@ export async function POST(req: Request) {
       });
     }
 
-    // ========== GROUP DOCUMENTS BY INVOICE ==========
+    // ========== GROUP DOCUMENTS BY COMPOSITE SHIPMENT KEY ==========
     console.log(
-      `🔄 [grouping:${requestId}] Grouping documents by invoice number...`
+      `🔄 [grouping:${requestId}] Grouping documents by composite shipment key...`
     );
-    const documentGroups = await groupDocumentsByInvoice(parsedDocs, requestId);
+    const { groups: documentGroups, stats: groupingStats } =
+      groupDocumentsTwoPhase(parsedDocs, requestId);
 
     console.log(
       `📊 [grouping:${requestId}] Created ${
         Object.keys(documentGroups).length
-      } invoice groups`
+      } composite groups (processed ${groupingStats.groupedDocuments}/${
+        groupingStats.totalDocuments
+      } docs; skipped missing key: ${
+        groupingStats.skippedMissingKey
+      }; skipped duplicates: ${groupingStats.skippedDuplicates})`
     );
-    Object.entries(documentGroups).forEach(([invoice, docs]) => {
+    Object.entries(documentGroups).forEach(([groupKey, entry]) => {
       console.log(
-        `   📄 [grouping:${requestId}] Invoice "${invoice}": ${
-          docs.length
-        } documents (${docs.map((d) => d.document_type).join(', ')})`
+        `   📄 [grouping:${requestId}] Group "${groupKey}": ${
+          entry.documents.length
+        } documents (${entry.documents
+          .map((d) => d.document_type)
+          .join(', ')}) phase=${entry.metadata.groupingPhase || 'unknown'}$${
+          entry.metadata.needsHumanVerification ? ' (needs verification)' : ''
+        }`
       );
     });
 
@@ -146,17 +223,20 @@ export async function POST(req: Request) {
       errors: [],
       processing_time_ms: 0,
       details: [],
+      duplicates_skipped: groupingStats.skippedDuplicates,
+      duplicate_details: groupingStats.duplicateRecords,
+      phase1_groups: groupingStats.phase1Groups,
+      phase2_groups: groupingStats.phase2Groups,
+      verification_groups: groupingStats.verifyGroups,
     };
 
-    for (const [invoiceNumber, documents] of Object.entries(documentGroups)) {
+    for (const [groupKey, entry] of Object.entries(documentGroups)) {
       try {
-        console.log(
-          `🎯 [grouping:${requestId}] Processing group: ${invoiceNumber}`
-        );
+        console.log(`🎯 [grouping:${requestId}] Processing group: ${groupKey}`);
 
         const groupResult = await processDocumentGroup(
-          invoiceNumber,
-          documents,
+          groupKey,
+          entry,
           user_id,
           requestId,
           supabase
@@ -172,7 +252,11 @@ export async function POST(req: Request) {
         results.rules_applied[groupResult.rule_applied]++;
 
         results.details.push({
-          invoice: invoiceNumber,
+          invoice:
+            groupResult.primaryInvoice ||
+            entry.metadata.primaryInvoice ||
+            entry.metadata.rawInvoice ||
+            entry.metadata.compositeKey,
           country: groupResult.country,
           rule_applied: groupResult.rule_applied,
           completion: `${groupResult.completion_count}/${groupResult.minimum_required}`,
@@ -180,21 +264,24 @@ export async function POST(req: Request) {
         });
 
         console.log(
-          `✅ [grouping:${requestId}] Group "${invoiceNumber}" processed successfully`
+          `✅ [grouping:${requestId}] Group "${groupKey}" processed successfully`
         );
       } catch (error) {
         console.error(
-          `❌ [grouping:${requestId}] Error processing group "${invoiceNumber}":`,
+          `❌ [grouping:${requestId}] Error processing group "${groupKey}":`,
           error
         );
         results.errors.push(
-          `${invoiceNumber}: ${
+          `${groupKey}: ${
             error instanceof Error ? error.message : 'Unknown error'
           }`
         );
 
         results.details.push({
-          invoice: invoiceNumber,
+          invoice:
+            entry.metadata.primaryInvoice ||
+            entry.metadata.rawInvoice ||
+            entry.metadata.compositeKey,
           country: null,
           rule_applied: 'error',
           completion: 'error',
@@ -230,6 +317,12 @@ export async function POST(req: Request) {
     if (results.errors.length > 0) {
       console.log(`❌ [grouping:${requestId}] ERRORS ENCOUNTERED:`);
       results.errors.forEach((error) => console.log(`   🚨 ${error}`));
+    }
+
+    if (groupingStats.skippedDuplicates > 0) {
+      console.log(
+        `⚠️ [grouping:${requestId}] Duplicates skipped: ${groupingStats.skippedDuplicates}`
+      );
     }
 
     return NextResponse.json({
@@ -315,85 +408,371 @@ async function authenticateRequest(req: Request, requestId: string) {
   };
 }
 
-async function groupDocumentsByInvoice(
+function groupDocumentsTwoPhase(
   documents: ParsedDocument[],
   requestId: string
-): Promise<Record<string, ParsedDocument[]>> {
+): GroupingMapResult {
+  const groups: Record<string, GroupEntry> = {};
+  const stats: GroupingStats = {
+    totalDocuments: documents.length,
+    groupedDocuments: 0,
+    skippedMissingKey: 0,
+    skippedDuplicates: 0,
+    duplicateRecords: [],
+    phase1Groups: 0,
+    phase2Groups: 0,
+    verifyGroups: 0,
+  };
+
+  const dedupeTracker = new Map<string, string>();
+  const groupedDocsPhase1 = new Set<string>();
+
   console.log(
-    `🔄 [grouping:${requestId}] Grouping ${documents.length} documents by invoice...`
+    `🔄 [grouping:${requestId}] Phase 1: Exact invoice + date matching...`
   );
 
-  const groups: Record<string, ParsedDocument[]> = {};
+  documents.forEach((doc) => {
+    const invoiceNormalized = normalizeInvoiceNumber(
+      (doc.raw_json?.invoice as string) || doc.anchor_key
+    );
+    const invoiceDate = normalizeInvoiceDate(
+      doc.raw_json?.invoice_date as string
+    );
 
-  for (const doc of documents) {
-    const invoiceKey = extractInvoiceKey(doc, requestId);
+    if (!invoiceNormalized || !invoiceDate) {
+      return;
+    }
 
-    if (!invoiceKey) {
-      console.warn(
-        `⚠️ [grouping:${requestId}] Document ${doc.id} has no invoice key - skipping`
-      );
+    const groupKey = `EXACT_${invoiceNormalized}_${invoiceDate}`;
+    const dedupeKey = `${groupKey}:${doc.document_type}`;
+
+    if (dedupeTracker.has(dedupeKey)) {
+      const originalId = dedupeTracker.get(dedupeKey)!;
+      stats.skippedDuplicates++;
+      const duplicateRecord: DuplicateRecord = {
+        compositeKey: groupKey,
+        originalId,
+        duplicateId: doc.id,
+        documentType: doc.document_type,
+      };
+      stats.duplicateRecords.push(duplicateRecord);
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          documents: [],
+          metadata: {
+            compositeKey: groupKey,
+            invoiceDigits: null,
+            vehicleNumber: null,
+            invoiceDate,
+            rawInvoice: invoiceNormalized,
+            quality: 95,
+            primaryInvoice: invoiceNormalized,
+            groupingPhase: 'exact',
+          },
+          duplicates: [],
+        };
+      }
+
+      groups[groupKey].duplicates.push(duplicateRecord);
+      return;
+    }
+
+    dedupeTracker.set(dedupeKey, doc.id);
+    groupedDocsPhase1.add(doc.id);
+
+    if (!groups[groupKey]) {
+      groups[groupKey] = {
+        documents: [],
+        metadata: {
+          compositeKey: groupKey,
+          invoiceDigits: null,
+          vehicleNumber: null,
+          invoiceDate,
+          rawInvoice: invoiceNormalized,
+          quality: 95,
+          primaryInvoice: invoiceNormalized,
+          groupingPhase: 'exact',
+        },
+        duplicates: [],
+      };
+      stats.phase1Groups++;
+    }
+
+    groups[groupKey].documents.push(doc);
+    stats.groupedDocuments++;
+  });
+
+  const remainingDocs = documents.filter(
+    (doc) => !groupedDocsPhase1.has(doc.id)
+  );
+
+  console.log(
+    `🔄 [grouping:${requestId}] Phase 2: Fuzzy matching for ${remainingDocs.length} documents...`
+  );
+
+  for (const doc of remainingDocs) {
+    const identifiers = createFuzzyCompositeIdentifiers(doc, requestId);
+
+    if (!identifiers) {
+      stats.skippedMissingKey++;
       continue;
     }
 
-    if (!groups[invoiceKey]) {
-      groups[invoiceKey] = [];
+    const missingVehicle = !identifiers.vehicleNumber;
+    const missingDate = !identifiers.invoiceDate;
+    const needsVerification = missingVehicle || missingDate;
+
+    const groupKey = identifiers.compositeKey;
+    const dedupeKey = `${groupKey}:${doc.document_type}`;
+
+    if (dedupeTracker.has(dedupeKey)) {
+      const originalId = dedupeTracker.get(dedupeKey)!;
+      stats.skippedDuplicates++;
+      const duplicateRecord: DuplicateRecord = {
+        compositeKey: groupKey,
+        originalId,
+        duplicateId: doc.id,
+        documentType: doc.document_type,
+      };
+      stats.duplicateRecords.push(duplicateRecord);
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          documents: [],
+          metadata: {
+            ...identifiers,
+            primaryInvoice: identifiers.rawInvoice,
+            groupingPhase: 'fuzzy',
+            needsHumanVerification: needsVerification,
+            verificationReason: needsVerification
+              ? `Missing: ${missingVehicle ? 'vehicle' : ''} ${
+                  missingDate ? 'date' : ''
+                }`.trim()
+              : null,
+          },
+          duplicates: [],
+        };
+      }
+
+      groups[groupKey].duplicates.push(duplicateRecord);
+      continue;
     }
 
-    groups[invoiceKey].push(doc);
+    dedupeTracker.set(dedupeKey, doc.id);
+
+    if (!groups[groupKey]) {
+      groups[groupKey] = {
+        documents: [],
+        metadata: {
+          ...identifiers,
+          primaryInvoice: identifiers.rawInvoice,
+          groupingPhase: 'fuzzy',
+          needsHumanVerification: needsVerification,
+          verificationReason: needsVerification
+            ? `Missing: ${missingVehicle ? 'vehicle' : ''} ${
+                missingDate ? 'date' : ''
+              }`.trim()
+            : null,
+        },
+        duplicates: [],
+      };
+
+      if (needsVerification) {
+        stats.verifyGroups++;
+      } else {
+        stats.phase2Groups++;
+      }
+    }
+
+    groups[groupKey].documents.push(doc);
+    stats.groupedDocuments++;
   }
 
   console.log(
-    `✅ [grouping:${requestId}] Grouped into ${
-      Object.keys(groups).length
-    } invoice groups`
+    `✅ [grouping:${requestId}] Phase 1 groups: ${stats.phase1Groups}`
   );
-  return groups;
+  console.log(
+    `✅ [grouping:${requestId}] Phase 2 groups: ${stats.phase2Groups}`
+  );
+  console.log(
+    `✅ [grouping:${requestId}] Verification groups: ${stats.verifyGroups}`
+  );
+  console.log(
+    `✅ [grouping:${requestId}] Total groups formed: ${
+      Object.keys(groups).length
+    }`
+  );
+
+  return { groups, stats };
 }
 
-function extractInvoiceKey(
+function createFuzzyCompositeIdentifiers(
   doc: ParsedDocument,
   requestId: string
-): string | null {
-  const raw_json = doc.raw_json || {};
-
-  // Try anchor_key first (most reliable)
-  if (doc.anchor_key) {
-    console.log(
-      `📋 [grouping:${requestId}] Document ${doc.id}: Using anchor_key "${doc.anchor_key}"`
-    );
-    return doc.anchor_key;
-  }
-
-  // Fallback to invoice field in raw_json
-  const invoice = raw_json.invoice as string;
-  if (invoice) {
-    console.log(
-      `📋 [grouping:${requestId}] Document ${doc.id}: Using raw_json.invoice "${invoice}"`
-    );
-    return invoice;
-  }
-
-  console.warn(
-    `⚠️ [grouping:${requestId}] Document ${doc.id}: No invoice key found in anchor_key or raw_json.invoice`
+): CompositeIdentifiers | null {
+  const raw = doc.raw_json || {};
+  const primaryInvoice = normalizeInvoiceNumber(
+    (doc.anchor_key || (raw.invoice as string) || '') as string
   );
-  return null;
+  const last4 = extractInvoiceLastFour(primaryInvoice);
+  const vehicle = normalizeVehicleNumber(
+    (raw.vehicle_number as string) || (raw.vehicleNo as string) || ''
+  );
+  const date = normalizeInvoiceDate((raw.invoice_date as string) || '');
+
+  const hasInvoiceDigits = Boolean(last4);
+  const hasVehicle = Boolean(vehicle);
+  const hasDate = Boolean(date);
+
+  let compositeKey = '';
+  let quality = 0;
+
+  if (hasInvoiceDigits && hasVehicle && hasDate) {
+    compositeKey = `${last4}_${vehicle}_${date}`;
+    quality = 100;
+  } else if (hasInvoiceDigits && hasVehicle) {
+    compositeKey = `${last4}_${vehicle}_NODATE`;
+    quality = 80;
+  } else if (hasInvoiceDigits && hasDate) {
+    compositeKey = `${last4}_NOVEHICLE_${date}`;
+    quality = 70;
+  } else if (hasVehicle && hasDate) {
+    compositeKey = `NOINV_${vehicle}_${date}`;
+    quality = 60;
+  } else if (hasInvoiceDigits) {
+    compositeKey = `INVONLY_${last4}`;
+    quality = 40;
+  } else if (hasVehicle) {
+    compositeKey = `VEHONLY_${vehicle}`;
+    quality = 30;
+  } else if (hasDate) {
+    compositeKey = `DATEONLY_${date}`;
+    quality = 20;
+  }
+
+  if (!compositeKey) {
+    console.warn(
+      `⚠️ [grouping:${requestId}] Could not derive composite key for document ${doc.id}`
+    );
+    return null;
+  }
+
+  console.log(
+    `🔑 [grouping:${requestId}] Document ${doc.id} composite key: ${compositeKey} (quality ${quality})`
+  );
+
+  return {
+    compositeKey,
+    invoiceDigits: last4 || null,
+    vehicleNumber: vehicle || null,
+    invoiceDate: date || null,
+    rawInvoice: primaryInvoice || null,
+    quality,
+  };
+}
+
+function extractInvoiceLastFour(invoice: string | undefined | null): string {
+  if (!invoice) return '';
+  const cleaned = invoice.replace(/[^a-zA-Z0-9]/g, '');
+  const digitsOnly = cleaned.replace(/\D/g, '');
+
+  if (digitsOnly.length >= 4) {
+    return digitsOnly.slice(-4);
+  }
+
+  if (digitsOnly.length > 0) {
+    return digitsOnly.padStart(4, '0');
+  }
+
+  if (cleaned.length >= 4) {
+    return cleaned.slice(-4);
+  }
+
+  return cleaned.padStart(4, '0');
+}
+
+function normalizeInvoiceNumber(invoice: string | undefined | null): string {
+  if (!invoice) return '';
+  return invoice.replace(/[\s\-_.\/]/g, '').toUpperCase();
+}
+
+function normalizeVehicleNumber(vehicle: string | undefined | null): string {
+  if (!vehicle) return '';
+
+  let normalized = vehicle.toUpperCase();
+  const segments = normalized.trim().split(/[\s-]+/);
+  if (segments.length > 4) {
+    normalized = segments.slice(0, 4).join(' ');
+  }
+
+  const statePattern =
+    /^([A-Z]{2})\s*([A-Z0-9]{1,2})\s*([A-Z]{1,2})\s*(\d{3,4})/;
+  const match = normalized.match(statePattern);
+  if (match) {
+    return `${match[1]}${match[2]}${match[3]}${match[4]}`;
+  }
+
+  return normalized.replace(/[^A-Z0-9]/g, '');
+}
+
+function normalizeInvoiceDate(dateString: string | undefined | null): string {
+  if (!dateString) return '';
+
+  const trimmed = dateString.trim();
+  const patterns: RegExp[] = [
+    /(\d{1,2})-(\d{1,2})-(\d{4})/, // DD-MM-YYYY
+    /(\d{4})-(\d{1,2})-(\d{1,2})/, // YYYY-MM-DD
+    /(\d{1,2})\/(\d{1,2})\/(\d{4})/, // DD/MM/YYYY
+  ];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    if (!match) continue;
+
+    if (pattern === patterns[0] || pattern === patterns[2]) {
+      const day = match[1].padStart(2, '0');
+      const month = match[2].padStart(2, '0');
+      const year = match[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    if (pattern === patterns[1]) {
+      const year = match[1];
+      const month = match[2].padStart(2, '0');
+      const day = match[3].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  const normalized = new Date(trimmed);
+  if (!Number.isNaN(normalized.getTime())) {
+    const iso = normalized.toISOString().slice(0, 10);
+    return iso;
+  }
+
+  return trimmed.replace(/[^0-9-]/g, '');
 }
 
 async function processDocumentGroup(
-  invoiceNumber: string,
-  documents: ParsedDocument[],
+  groupKey: string,
+  entry: GroupEntry,
   user_id: string,
   requestId: string,
   supabase: SupabaseClient
 ) {
   console.log(
-    `🎯 [grouping:${requestId}] Processing group "${invoiceNumber}" with ${documents.length} documents`
+    `🎯 [grouping:${requestId}] Processing group "${groupKey}" with ${entry.documents.length} documents`
   );
+
+  const documents = entry.documents;
+  const primaryInvoice =
+    entry.metadata.primaryInvoice || entry.metadata.rawInvoice;
 
   // ========== EXTRACT COUNTRY ==========
   const country = extractCountryFromDocuments(documents, requestId);
   console.log(
-    `🌍 [grouping:${requestId}] Detected country for "${invoiceNumber}": ${
+    `🌍 [grouping:${requestId}] Detected country for "${groupKey}": ${
       country || 'Unknown'
     }`
   );
@@ -459,7 +838,7 @@ async function processDocumentGroup(
   );
 
   console.log(
-    `📊 [grouping:${requestId}] Completion status for "${invoiceNumber}":`,
+    `📊 [grouping:${requestId}] Completion status for "${groupKey}":`,
     {
       present: present_types,
       completion_count,
@@ -476,13 +855,13 @@ async function processDocumentGroup(
 
   // ========== UPSERT DOCUMENT GROUP ==========
   console.log(
-    `💾 [grouping:${requestId}] Upserting document group "${invoiceNumber}"...`
+    `💾 [grouping:${requestId}] Upserting document group "${groupKey}"...`
   );
 
   const groupData = {
     user_id,
-    invoice_number: invoiceNumber,
-    group_key: invoiceNumber, // Simple implementation, could be more sophisticated
+    invoice_number: primaryInvoice || entry.metadata.rawInvoice || groupKey,
+    group_key: groupKey,
     country,
     recycler_company,
     plastic_type,
@@ -508,6 +887,7 @@ async function processDocumentGroup(
         missing_types,
         completion_count,
         minimum_required: rule.minimum_required,
+        composite_identifiers: entry.metadata,
       },
     },
   };
@@ -515,7 +895,7 @@ async function processDocumentGroup(
   const { data: upsertResult, error: upsertError } = await supabase
     .from('document_groups')
     .upsert(groupData, {
-      onConflict: 'user_id,invoice_number',
+      onConflict: 'user_id,group_key',
       ignoreDuplicates: false,
     })
     .select()
@@ -535,7 +915,7 @@ async function processDocumentGroup(
       new Date(upsertResult.updated_at).getTime();
 
   console.log(
-    `✅ [grouping:${requestId}] Document group "${invoiceNumber}" ${
+    `✅ [grouping:${requestId}] Document group "${groupKey}" ${
       wasCreated ? 'created' : 'updated'
     } successfully`
   );
@@ -548,6 +928,7 @@ async function processDocumentGroup(
     completion_count,
     minimum_required: rule.minimum_required,
     is_complete,
+    primaryInvoice: primaryInvoice || null,
   };
 }
 

@@ -1,0 +1,336 @@
+# POST /api/collections/prg
+def create_prg
+Rails.logger.info "Starting PRG creation for user: #{request.headers['User-Address']}"
+temp_files_to_cleanup = [] # Track temp files for cleanup after transaction
+Collection.transaction do
+# Validate required parameters
+required_params = %w[name description plastik_type weight city country use_autogen_image]
+missing_params = required_params.select { |param| params[param].blank? }
+if missing_params.any?
+render json: { success: false, errors: ["Missing required parameters: #{missing_params.join(', ')}"] }, status: :bad_request
+return
+end
+
+# Determine the appropriate chain ID for PRG collections (default to Celo testnet/mainnet based on environment)
+chain_id = @blockchain_config.chain_id_for(:celo)
+# Find the recycling NFT contract for PRGs (same logic as web interface)
+recycling_nft_contract = NftContract.latest.where(chain_id: chain_id).find_by(contract_type: 'recycling_nft')
+unless recycling_nft_contract
+render json: { success: false, errors: ["No recycling NFT contract found for chain #{chain_id}"] }, status: :unprocessable_entity
+return
+end
+
+# Generate unique name for PRG collections to avoid naming conflicts
+collection_name = if params[:name].include?('Plastic Credit')
+generate_unique_collection_name(current_user)
+else
+params[:name]
+end
+
+# Calculate PRG values: 1 kg = 1 PLASTIK token = 1 copy
+weight_in_kg = params[:weight].to_f
+instant_sale_price = weight_in_kg # 1:1 ratio
+no_of_copies = weight_in_kg.to_i # 1:1 ratio
+Rails.logger.info "PRG values calculated: #{weight_in_kg}kg = #{instant_sale_price} PLASTIK tokens = #{no_of_copies} copies"
+# Create the collection with all required attributes (matching UI behavior)
+@collection = Collection.new(
+creator_id: current_user.id,
+owner_id: current_user.id,
+name: collection_name,
+description: params[:description],
+category: ['Recycling'], # PRG collections are recycling category
+instant_sale_price: instant_sale_price, # Calculated automatically from weight
+no_of_copies: no_of_copies, # Calculated automatically from weight
+owned_tokens: params[:weight].to_i, # Use weight for owned_tokens (actual recycled weight)
+guarantee_connected: nil, # Should be nil initially for API-created collections (bypasses validation)
+donation: 0.0, # Default donation to 0 for PRG collections
+collection_type: :single, # PRG collections are always single type (0 in database)
+state: :approved, # PRG collections should be approved by default
+address: Collection.generate_uniq_token, # Generate unique collection address
+art: false, # PRG collections are not art
+new_sc: true, # Use new smart contract
+put_on_sale: false, # PRG collections are not for sale by default
+is_active: true, # PRG collections are active by default
+nft_contract_id: recycling_nft_contract.id, # Link to recycling NFT contract (CRITICAL for voucher signing)
+erc20_token_id: Erc20Token.where(chain_id: chain_id).first&.id # Set ERC20 token for the chain
+)
+
+# Save the collection first
+unless @collection.save
+render json: { success: false, errors: @collection.errors.full_messages }, status: :unprocessable_entity
+return
+end
+
+begin
+@collection.reload # Ensure we have the latest state including ID
+# Set plastic type detail (stores weight and plastic_type)
+@collection.plastic_type_detail = {
+'plastic_type' => params[:plastik_type],
+'weight' => params[:weight].to_f
+}
+# Set dedicated columns for location (same as web UI)
+@collection.country = params[:country]
+@collection.city = params[:city]
+# Set up data hash with basic info
+@collection.data = {
+'info' => {
+'recycler_country' => params[:country],
+'recycler_city' => params[:city]
+}
+}
+# Save the updated collection with plastic type details
+unless @collection.save
+render json: { success: false, errors: @collection.errors.full_messages }, status: :unprocessable_entity
+return
+end
+
+# Check if using auto-generated image (default to true unless explicitly set to false)
+use_autogen_image = params[:use_autogen_image].nil? ||
+params[:use_autogen_image] == '1' ||
+params[:use_autogen_image] == 'true' ||
+params[:use_autogen_image] == true
+@collection.update_column(:use_autogen_image, use_autogen_image)
+# Handle file attachments
+if params[:attachment].present?
+# User provided their own image
+@collection.attachment.attach(params[:attachment])
+Rails.logger.info "Attached user-provided image for collection #{@collection.id}"
+elsif use_autogen_image
+# Skip attachment creation in this block - handle later based on real services config
+Rails.logger.info "Will create auto-generated image for collection #{@collection.id}"
+end
+
+# Handle document attachments (invoice, proof_invoice, way_bill, receipt)
+# Support both file uploads and URLs
+document_types = ['invoice', 'proof_invoice', 'way_bill', 'receipt']
+Rails.logger.info "Checking for document uploads in params: #{params.keys.select { |k| k.to_s.match(/invoice|way_bill|receipt/) }}"
+document_types.each do |doc_type|
+if params[doc_type].present?
+begin
+Rails.logger.info "Processing #{doc_type} document for collection #{@collection.id}"
+if params[doc_type].respond_to?(:content_type)
+# This is a file upload (multipart/form-data)
+Rails.logger.info "File upload detected for #{doc_type}: #{params[doc_type].content_type}"
+@collection.send(doc_type).attach(params[doc_type])
+Rails.logger.info "Successfully attached #{doc_type} file to collection #{@collection.id}"
+elsif params[doc_type].is_a?(String) && params[doc_type].start_with?('http')
+# This is a URL (JSON payload)
+Rails.logger.info "URL detected for #{doc_type}: #{params[doc_type]}"
+# Download the file from the URL
+document_url = params[doc_type]
+uri = URI(document_url)
+http = Net::HTTP.new(uri.host, uri.port)
+http.use_ssl = true if uri.scheme == 'https'
+http.read_timeout = 30
+http.open_timeout = 10
+request = Net::HTTP::Get.new(uri.request_uri)
+response = http.request(request)
+if response.code == '200' && response.body.present?
+Rails.logger.info "Successfully downloaded #{doc_type} from URL: #{response.body.size} bytes"
+# Create a temporary file for the downloaded content
+temp_file = Tempfile.new([doc_type, File.extname(uri.path) || '.pdf'])
+temp_file.binmode
+temp_file.write(response.body)
+temp_file.rewind
+# Attach the downloaded file to the collection
+@collection.send(doc_type).attach(
+io: temp_file,
+filename: File.basename(uri.path) || "#{doc_type}.pdf",
+content_type: response.content_type || 'application/pdf'
+)
+# Track for cleanup after transaction
+temp_files_to_cleanup << temp_file
+Rails.logger.info "Successfully attached downloaded #{doc_type} to collection #{@collection.id}"
+else
+Rails.logger.error "Failed to download #{doc_type} from URL: HTTP #{response.code}"
+raise "Failed to download #{doc_type} from URL: HTTP #{response.code}"
+end
+else
+Rails.logger.warn "Invalid #{doc_type} parameter: expected file upload or URL, got #{params[doc_type].class}"
+end
+Rails.logger.info "Document attached: #{@collection.send(doc_type).attached?}"
+Rails.logger.info "Document key: #{@collection.send(doc_type).key if @collection.send(doc_type).attached?}"
+rescue => e
+Rails.logger.error "Error processing #{doc_type} document: #{e.message}"
+Rails.logger.error "Backtrace: #{e.backtrace.first(5).join("\n")}"
+# Continue with other documents even if one fails
+end
+else
+Rails.logger.info "No #{doc_type} document provided in params"
+end
+end
+
+# Handle IPFS upload based on environment and configuration
+# Use real services when explicitly enabled via environment variable or in production/staging
+use_real_services = ENV['USE_REAL_SERVICES'] == 'true' || Rails.env.production? || Rails.env.staging?
+use_mock_services = ENV['USE_MOCK_SERVICES'] == 'true' || (!use_real_services && Rails.env.development?)
+# Check if required environment variables are available for real services
+pinata_configured = ENV['pinata_api_key'].present? && ENV['pinata_api_secret'].present? && ENV['pinata_base_url'].present?
+image_service_configured = ENV['img_generation_url'].present?
+# Check if there's any content to upload (attachment or auto-generation)
+has_content_to_upload = params[:attachment].present? || @collection.use_autogen_image?
+# Fall back to mock services if real services are requested but not properly configured
+if use_real_services && !use_mock_services && (!pinata_configured || (@collection.use_autogen_image? && !image_service_configured) || !has_content_to_upload)
+Rails.logger.warn "Real services requested but not fully configured (pinata: #{pinata_configured}, img_service: #{image_service_configured}, content: #{has_content_to_upload}). Falling back to mock mode."
+use_real_services = false
+use_mock_services = true
+end
+if use_real_services && !use_mock_services
+# Real IPFS upload for production/staging
+Rails.logger.info "Real services mode (ENV: #{Rails.env}): Using Pinata IPFS upload for collection #{@collection.id}"
+if @collection.use_autogen_image?
+# For auto-generated images, upload directly from raw content to avoid ActiveStorage transaction issues
+image_content = generate_prg_image_content
+if image_content
+Rails.logger.info "Uploading auto-generated image directly to IPFS for collection #{@collection.id}"
+# Upload the raw image content directly to IPFS (bypasses ActiveStorage entirely)
+image_ipfs_hash = Api::Pinata.new.upload_raw_content(image_content)
+unless image_ipfs_hash
+Rails.logger.error "Failed to upload auto-generated image to IPFS for collection #{@collection.id}"
+raise "Failed to upload auto-generated image to IPFS"
+end
+Rails.logger.info "Auto-generated image uploaded successfully to IPFS: #{image_ipfs_hash}"
+# Create metadata with the IPFS hash
+collection_metadata = @collection.plastic_type_detail.present? ? @collection.data.merge(@collection.plastic_type_detail) : @collection.data
+metadata = {
+name: @collection.name,
+description: @collection.description,
+image: 'https://plastiks.io/ipfs/' + image_ipfs_hash,
+data: collection_metadata,
+}
+# Upload metadata to IPFS as raw JSON content
+metadata_content = metadata.to_json
+metadata_ipfs_hash = Api::Pinata.new.upload_raw_content(metadata_content)
+unless metadata_ipfs_hash
+Rails.logger.error "Failed to upload metadata to IPFS for collection #{@collection.id}"
+raise "Failed to upload metadata to IPFS"
+end
+# Update collection with both hashes
+@collection.update_columns(image_hash: image_ipfs_hash, metadata_hash: metadata_ipfs_hash)
+Rails.logger.info "Successfully uploaded auto-generated content to IPFS for collection #{@collection.id}"
+# Create a temporary attachment for the auto-generated image (for UI consistency - optional)
+temp_file = Tempfile.new(['prg_image', '.png'])
+temp_file.binmode
+temp_file.write(image_content)
+temp_file.rewind
+@collection.attachment.attach(
+io: temp_file,
+filename: 'prg_image.png',
+content_type: 'image/png'
+)
+# Track for cleanup after transaction
+temp_files_to_cleanup << temp_file
+metadata_hash = metadata_ipfs_hash # Use the hash we just uploaded
+else
+Rails.logger.warn "Failed to generate auto-image for collection #{@collection.id}, falling back to mock mode"
+# Fall back to mock mode when image generation fails
+use_real_services = false
+use_mock_services = true
+end
+else
+# For regular attachments, check if attachment exists before uploading
+if @collection.attachment.attached?
+# Use the standard Pinata upload
+metadata_hash = Api::Pinata.new.upload(@collection)
+unless metadata_hash
+Rails.logger.error "Failed to upload collection to IPFS for collection #{@collection.id}"
+raise "Failed to upload collection to IPFS"
+end
+else
+Rails.logger.warn "No attachment found for collection #{@collection.id}, falling back to mock mode"
+# Fall back to mock mode when no attachment is present
+use_real_services = false
+use_mock_services = true
+end
+end
+end
+# Check if we need to fall back to mock mode after real services attempt
+if use_mock_services
+# Mock mode - skip IPFS upload and use dummy hashes for faster testing
+Rails.logger.info "Mock mode (ENV: #{Rails.env}): Skipping IPFS upload for collection #{@collection.id}"
+# Create dummy attachment for auto-generated images if needed
+if @collection.use_autogen_image?
+# Create a minimal mock image attachment
+temp_file = Tempfile.new(['mock_prg_image', '.png'])
+temp_file.binmode
+temp_file.write('MOCK_PNG_DATA')
+temp_file.rewind
+@collection.attachment.attach(
+io: temp_file,
+filename: 'mock_prg_image.png',
+content_type: 'image/png'
+)
+# Track for cleanup after transaction
+temp_files_to_cleanup << temp_file
+end
+# Set mock IPFS hashes for testing
+mock_image_hash = "QmMockImageHash#{@collection.id}"
+mock_metadata_hash = "QmMockMetadataHash#{@collection.id}"
+@collection.update_columns(image_hash: mock_image_hash, metadata_hash: mock_metadata_hash)
+Rails.logger.info "Mock IPFS hashes set: image=#{mock_image_hash}, metadata=#{mock_metadata_hash}"
+end
+Rails.logger.info "Successfully created PRG collection #{@collection.id} with #{@collection.no_of_copies} copies"
+# Debug: Check document attachments after save
+Rails.logger.info "Collection data after save: #{@collection.data.inspect}"
+Rails.logger.info "Invoice attached: #{@collection.invoice.attached?}"
+Rails.logger.info "Proof invoice attached: #{@collection.proof_invoice.attached?}"
+Rails.logger.info "Way bill attached: #{@collection.way_bill.attached?}"
+Rails.logger.info "Receipt attached: #{@collection.receipt.attached?}"
+if @collection.invoice.attached?
+Rails.logger.info "Invoice key: #{@collection.invoice.key}"
+end
+if @collection.proof_invoice.attached?
+Rails.logger.info "Proof invoice key: #{@collection.proof_invoice.key}"
+end
+if @collection.way_bill.attached?
+Rails.logger.info "Way bill key: #{@collection.way_bill.key}"
+end
+if @collection.receipt.attached?
+Rails.logger.info "Receipt key: #{@collection.receipt.key}"
+end
+rescue => e
+Rails.logger.error "Error creating PRG: #{e.message}"
+raise e # Re-raise to trigger transaction rollback
+end
+end
+# Clean up temp files after transaction is complete and ActiveStorage has finished processing
+temp_files_to_cleanup.each do |temp_file|
+begin
+temp_file.close unless temp_file.closed?
+temp_file.unlink rescue nil
+rescue => e
+Rails.logger.warn "Failed to cleanup temp file: #{e.message}"
+end
+end
+
+if @collection&.persisted?
+# Return successful response with all collection data
+render json: {
+success: true,
+collection: {
+id: @collection.id,
+address: @collection.address, # Include address for signing endpoints
+name: @collection.name,
+instant_sale_price: @collection.instant_sale_price.to_s,
+no_of_copies: @collection.no_of_copies,
+weight: @collection.weight,
+guarantee_connected: @collection.guarantee_connected,
+image_hash: @collection.image_hash,
+metadata_hash: @collection.metadata_hash,
+# Document attachment status
+documents: {
+invoice: @collection.invoice.attached? ? { attached: true, key: @collection.invoice.key } : { attached: false },
+proof_invoice: @collection.proof_invoice.attached? ? { attached: true, key: @collection.proof_invoice.key } : { attached: false },
+way_bill: @collection.way_bill.attached? ? { attached: true, key: @collection.way_bill.key } : { attached: false },
+receipt: @collection.receipt.attached? ? { attached: true, key: @collection.receipt.key } : { attached: false }
+}
+}
+}, status: :created
+else
+render json: { success: false, errors: ["Uuups... there seems to be an error. Try again!"] }, status: :internal_server_error
+end
+
+rescue => e
+Rails.logger.error "Error in create_prg: #{e.class.name} - #{e.message}"
+render json: { success: false, errors: ["Uuups... there seems to be an error. Try again!"] }, status: :internal_server_error
+end

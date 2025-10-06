@@ -46,10 +46,8 @@ import {
   FileCheck,
   CreditCard,
   Truck,
-  UploadCloud,
   ChevronDown,
   ChevronUp,
-  FolderOpen,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -64,7 +62,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import FileUploader from '@/components/file-uploader';
-import dynamic from 'next/dynamic';
 import { documentTemplates } from '@/constants/document-templates';
 import DocumentTypeCard from '@/components/document-type-card';
 import { documentTypes } from '@/constants/document-types';
@@ -76,12 +73,8 @@ import { LoginForm } from '@/components/login-form';
 import { GalleryVerticalEnd } from 'lucide-react';
 import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
-import { VerifiedCsvDownload } from '@/components/verified-csv-download';
 import { DataManagementDashboard } from '@/components/data-management-dashboard';
-
-const PdfPreview = dynamic(() => import('@/components/pdf-preview'), {
-  ssr: false,
-});
+import DashboardView from '@/components/dashboard-view';
 
 interface GroupDoc {
   id: string;
@@ -129,7 +122,13 @@ type InvoiceGroup = {
     ruleName?: string;
     requiredTypes?: string[];
     optionalTypes?: string[];
+    groupingPhase?: 'exact' | 'fuzzy';
+    needsHumanVerification?: boolean;
+    verificationReason?: string | null;
   };
+  needsHumanVerification?: boolean;
+  verificationReason?: string | null;
+  groupingPhase?: 'exact' | 'fuzzy';
 };
 
 // Define the shape of the submit result
@@ -160,7 +159,7 @@ function HomeContent({ session }: HomeContentProps) {
 
   // UI state
   const [activeTab, setActiveTab] = useState<
-    'upload' | 'results' | 'groups' | 'submit' | 'blockchain' | 'data'
+    'upload' | 'results' | 'dashboard' | 'blockchain' | 'data'
   >('upload');
 
   // Document grouping state
@@ -168,11 +167,7 @@ function HomeContent({ session }: HomeContentProps) {
   const [recyclingDocs, setRecyclingDocs] = useState<
     Record<string, RecyclingDocument>
   >({});
-  const [isGroupsLoading, setIsGroupsLoading] = useState(false);
   const [hasInitializedGroups, setHasInitializedGroups] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
-    {}
-  );
 
   // 🚀 NEW: Blockchain tab state - for verified recycling docs
   const [verifiedDocs, setVerifiedDocs] = useState<
@@ -220,59 +215,6 @@ function HomeContent({ session }: HomeContentProps) {
     }>
   >([]);
 
-  // 🚀 NEW: Group statistics
-  const [groupStats, setGroupStats] = useState({
-    totalGroups: 0,
-    completeGroups: 0,
-    incompleteGroups: 0,
-    ungroupedDocs: 0,
-  });
-
-  // 🚀 NEW: Calculate group statistics
-  const calculateGroupStats = useCallback(async () => {
-    if (!session?.user?.id) return;
-
-    const supabase = getSupabaseBrowser();
-
-    try {
-      // Get all groups for the user
-      const { data: groupsData } = await supabase
-        .from('document_groups')
-        .select('id, is_complete, is_human_verified, present_document_ids')
-        .eq('user_id', session.user.id);
-
-      // Get all parsed documents for the user
-      const { data: parsedData } = await supabase
-        .from('parsed_documents')
-        .select('id')
-        .eq('user_id', session.user.id);
-
-      const totalGroups = groupsData?.length || 0;
-      const completeGroups =
-        groupsData?.filter((g) => g.is_complete || g.is_human_verified)
-          .length || 0;
-      const incompleteGroups = totalGroups - completeGroups;
-
-      // Calculate ungrouped documents
-      const groupedDocIds = new Set();
-      groupsData?.forEach((group) => {
-        (group.present_document_ids || []).forEach((id: string) =>
-          groupedDocIds.add(id)
-        );
-      });
-
-      const ungroupedDocs = (parsedData?.length || 0) - groupedDocIds.size;
-
-      setGroupStats({
-        totalGroups,
-        completeGroups,
-        incompleteGroups,
-        ungroupedDocs,
-      });
-    } catch (error) {
-      console.error('Failed to calculate group stats:', error);
-    }
-  }, [session?.user?.id]);
 
   // 🚀 NEW: Fetch failed documents
   const fetchFailedDocuments = useCallback(async () => {
@@ -473,7 +415,7 @@ function HomeContent({ session }: HomeContentProps) {
           .from('temp_documents')
           .select('upload_batch_id')
           .eq('user_id', session.user.id)
-          .in('status', ['uploaded', 'processing'])
+          .in('status', ['uploaded', 'processing', 'processed']) // ✅ Include 'processed' status
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -543,14 +485,6 @@ function HomeContent({ session }: HomeContentProps) {
     }
   }, [currentBatchId, session?.user?.id]);
 
-  // Toggle group expansion
-  const toggleGroupExpansion = (invoiceKey: string) => {
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [invoiceKey]: !prev[invoiceKey], // Default to false (collapsed)
-    }));
-  };
-
   // Toggle blockchain invoice expansion
   const toggleBlockchainInvoiceExpansion = (invoiceKey: string) => {
     setExpandedBlockchainInvoices((prev) => ({
@@ -559,12 +493,7 @@ function HomeContent({ session }: HomeContentProps) {
     }));
   };
 
-  // 🚀 PERFORMANCE: Show loading immediately when switching to groups tab
-  useEffect(() => {
-    if (activeTab === 'groups' && !hasInitializedGroups) {
-      setIsGroupsLoading(true);
-    }
-  }, [activeTab, hasInitializedGroups]);
+  // Legacy grouping loading hook removed - dashboard handles its own loading
 
   // 🚀 PHASE 1: Initialize database status check
   useEffect(() => {
@@ -583,24 +512,17 @@ function HomeContent({ session }: HomeContentProps) {
       checkDocumentsStatus();
     }
   }, [activeTab, session?.user?.id, checkDocumentsStatus]);
-  // Track all processed invoice numbers for validation
-  const [processedInvoiceNumbers, setProcessedInvoiceNumbers] = useState<
-    Set<string>
-  >(new Set());
-
   // Backend grouping state
   const [isGroupingInProgress, setIsGroupingInProgress] = useState(false);
-
-  // Submission state
-  const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
-  const [submitResult, setSubmitResult] = useState<
-    Record<string, SubmitResult>
-  >({});
 
   // Track active polling intervals to prevent duplicates
   const activePollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Poll for updated Plastiks submission details
+  const [submitResult, setSubmitResult] = useState<
+    Record<string, SubmitResult>
+  >({});
+
   useEffect(() => {
     if (!submitResult || Object.keys(submitResult).length === 0) return;
 
@@ -781,265 +703,61 @@ function HomeContent({ session }: HomeContentProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitResult]); // 🚀 CRITICAL FIX: Removed recyclingDocs to prevent infinite loop
 
-  // Initialize submitting state for all groups
-  useEffect(() => {
-    const initialSubmitting: Record<string, boolean> = {};
-    Object.keys(groups).forEach((invoice) => {
-      initialSubmitting[invoice] = false;
-    });
-    setSubmitting((prev) => ({
-      ...initialSubmitting,
-      ...prev,
-    }));
-  }, [groups]);
 
   // Blob URLs for PDF previews - moved to the main state section
 
-  // Helper function to detect if a recycler company is Indian
-  const isIndianRecycler = (
-    recyclerCompany: string | null | undefined
-  ): boolean => {
-    if (!recyclerCompany) return false;
+  // 🚀 MATCHING SERVICE TRIGGER (New - replaces grouping)
+  const triggerMatchingService = useCallback(
+    async (processedCount: number) => {
+      const matchingId = Math.random().toString(36).substring(2, 15);
 
-    const company = recyclerCompany.toLowerCase();
+      try {
+        console.log(
+          `🚀 Frontend: [matching:${matchingId}] Triggering matching service for ${processedCount} documents...`
+        );
 
-    // Common Indian company indicators
-    const indianIndicators = [
-      'private limited',
-      'pvt ltd',
-      'limited',
-      'ltd',
-      'enterprises',
-      'industries',
-      'india',
-      'indian',
-      'mumbai',
-      'delhi',
-      'bangalore',
-      'chennai',
-      'kolkata',
-      'hyderabad',
-      'pune',
-      'ahmedabad',
-      'surat',
-      'jaipur',
-      'lucknow',
-      'kanpur',
-      'nagpur',
-      'indore',
-      'bhopal',
-      'visakhapatnam',
-      'patna',
-      'vadodara',
-      'ludhiana',
-      'agra',
-      'nashik',
-      'faridabad',
-      'meerut',
-      'rajkot',
-      'kalyan',
-      'vasai-virar',
-      'varanasi',
-      'srinagar',
-      'aurangabad',
-      'dhanbad',
-      'amritsar',
-      'navi mumbai',
-      'allahabad',
-      'howrah',
-      'gwalior',
-      'jabalpur',
-      'coimbatore',
-      'vijayawada',
-      'jodhpur',
-      'madurai',
-      'raipur',
-      'kota',
-      'guwahati',
-      'chandigarh',
-      'solapur',
-      'hubli-dharwad',
-      'bareilly',
-      'moradabad',
-      'mysore',
-      'gurgaon',
-      'aligarh',
-      'jalandhar',
-      'tiruchirappalli',
-      'bhubaneswar',
-      'salem',
-      'mira-bhayandar',
-      'warangal',
-      'thiruvananthapuram',
-      'guntur',
-      'bhiwandi',
-      'saharanpur',
-      'gorakhpur',
-      'bikaner',
-      'amravati',
-      'noida',
-      'jamshedpur',
-      'bhilai',
-      'cuttack',
-      'firozabad',
-      'kochi',
-      'bhavnagar',
-      'dehradun',
-      'durgapur',
-      'asansol',
-      'nanded',
-      'kolhapur',
-      'ajmer',
-      'gulbarga',
-      'jamnagar',
-      'ujjain',
-      'loni',
-      'siliguri',
-      'jhansi',
-      'ulhasnagar',
-      'nellore',
-      'jammu',
-      'sangli-miraj & kupwad',
-      'belgaum',
-      'mangalore',
-      'ambattur',
-      'tirunelveli',
-      'malegaon',
-      'gaya',
-      'jalgaon',
-      'udaipur',
-      'maheshtala',
-      'rangpar',
-    ];
+        const response = await fetch('/api/cron/compute-matches', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({
+            user_id: session?.user?.id,
+            trigger: 'frontend_after_ai_processing',
+          }),
+        });
 
-    return indianIndicators.some((indicator) => company.includes(indicator));
-  };
+        const result = await response.json();
 
-  // Calculate the status of a group (complete status, count of files, missing files)
-  const computeGroupStatus = (group: InvoiceGroup | undefined) => {
-    if (!group) {
-      return {
-        complete: false,
-        count: 0,
-        total: 3,
-        missing: ['invoice', 'eft_receipt', 'e-way-bill'],
-      };
-    }
-
-    // 🚀 NEW: Use backend-calculated completion info if available
-    if (group.processingLogs?.backendGrouped) {
-      // Count ALL present documents (required + optional), not just required ones
-      const actualFilesPresent = group.presentTypes?.length || 0;
-      const isIndian =
-        group.country === 'IN' && isIndianRecycler(group.recyclerCompany);
-
-      let complete = false;
-      let total = 3;
-
-      if (isIndian) {
-        // For Indian recyclers: flexible completion rules
-        const hasInvoice = group.presentTypes?.includes('invoice') || false;
-        const hasEWayBill = group.presentTypes?.includes('e-way-bill') || false;
-        const hasEFT = group.presentTypes?.includes('eft_receipt') || false;
-
-        // Indian recyclers can verify with just invoice + e-way-bill
-        complete = hasInvoice && hasEWayBill;
-
-        // Dynamic total based on what they actually uploaded
-        if (actualFilesPresent === 2 && hasInvoice && hasEWayBill && !hasEFT) {
-          total = 2; // Show "2 of 2" when they uploaded exactly invoice + e-way-bill
-        } else if (actualFilesPresent >= 3) {
-          total = 3; // Show "3 of 3" when they uploaded all 3 documents
+        if (response.ok && result.success) {
+          console.log(
+            `✅ Frontend: [matching:${matchingId}] Matching completed successfully:`,
+            result
+          );
+          console.log(
+            `   📊 Matched ${result.stats?.matchedPairs || 0} pairs (${
+              result.stats?.compliantPairs || 0
+            } compliant, ${result.stats?.flaggedPairs || 0} flagged)`
+          );
         } else {
-          total = 3; // Show "X of 3" for incomplete uploads
+          console.error(
+            `❌ Frontend: [matching:${matchingId}] Matching failed:`,
+            result
+          );
         }
-      } else {
-        // For non-Indian recyclers: strict 3-file requirement
-        complete =
-          actualFilesPresent >= 3 &&
-          (group.presentTypes?.includes('invoice') || false) &&
-          (group.presentTypes?.includes('eft_receipt') || false) &&
-          (group.presentTypes?.includes('e-way-bill') || false);
-        total = 3; // Always show "X of 3"
+      } catch (error) {
+        console.error(
+          `💥 Frontend: [matching:${matchingId}] Error triggering matching service:`,
+          error
+        );
       }
+    },
+    [session?.user?.id, session?.access_token]
+  );
 
-      return {
-        complete,
-        count: actualFilesPresent,
-        total,
-        missing: group.missingTypes || [],
-      };
-    }
-
-    // 🔙 FALLBACK: Old frontend calculation for backward compatibility
-    if (!group?.docs) {
-      return {
-        complete: false,
-        count: 0,
-        total: 3,
-        missing: ['invoice', 'eft_receipt', 'e-way-bill'],
-      };
-    }
-
-    const hasInvoice = Boolean(group.docs.invoice?.length);
-    const hasEftReceipt = Boolean(group.docs.eft_receipt?.length);
-    const hasEWayBill = Boolean(group.docs['e-way-bill']?.length);
-
-    const count = [hasInvoice, hasEftReceipt, hasEWayBill].filter(
-      Boolean
-    ).length;
-    const missing = [
-      !hasInvoice && 'invoice',
-      !hasEftReceipt && 'eft_receipt',
-      !hasEWayBill && 'e-way-bill',
-    ].filter(Boolean) as string[];
-
-    // For fallback, apply similar logic but with limited data
-    const isIndian =
-      group.country === 'IN' && isIndianRecycler(group.recyclerCompany);
-    let complete = false;
-    let total = 3;
-
-    if (isIndian) {
-      // Indian recyclers can verify with invoice + e-way-bill
-      complete = hasInvoice && hasEWayBill;
-      // Dynamic total for fallback
-      if (count === 2 && hasInvoice && hasEWayBill && !hasEftReceipt) {
-        total = 2;
-      } else {
-        total = 3;
-      }
-    } else {
-      // Non-Indian recyclers need all 3
-      complete = hasInvoice && hasEftReceipt && hasEWayBill;
-      total = 3;
-    }
-
-    return {
-      complete,
-      count,
-      total,
-      missing,
-    };
-  };
-
-  // Note: _isCompleteGroup implementation moved inside mergeRowIntoGroups
-  // to avoid dependency issues and keep related logic together
-
-  // Track if an invoice number is from a processed invoice (not just a reference)
-  const trackProcessedInvoice = useCallback((invoiceNumber: string) => {
-    if (invoiceNumber) {
-      setProcessedInvoiceNumbers((prev) => {
-        // Only update if the invoice number is not already in the set
-        if (prev.has(invoiceNumber)) return prev;
-        const updated = new Set(prev);
-        updated.add(invoiceNumber);
-        return updated;
-      });
-    }
-  }, []); // Removed setProcessedInvoiceNumbers from deps as it's stable
-
-  // 🚀 BACKEND GROUPING SERVICE TRIGGER
+  // 🚀 BACKEND GROUPING SERVICE TRIGGER (Legacy - being phased out)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const triggerDocumentGrouping = useCallback(
     async (processedCount: number) => {
       if (isGroupingInProgress) {
@@ -1253,10 +971,6 @@ function HomeContent({ session }: HomeContentProps) {
 
         if (primary) {
           console.log(`Primary invoice for document ${row.id}: '${primary}'`);
-          // Track the invoice number if this is an actual invoice document
-          if (row.document_type === 'invoice') {
-            trackProcessedInvoice(primary);
-          }
           ensureGroup(primary);
         } else {
           console.warn(`No primary invoice found for document ${row.id}`);
@@ -1266,18 +980,6 @@ function HomeContent({ session }: HomeContentProps) {
         if (row.document_type === 'eft_receipt') {
           const secondInvoice = ((rj.second_invoice || '') as string).trim();
           const thirdInvoice = ((rj.third_invoice || '') as string).trim();
-
-          // Only process EFT references that match our processed invoices
-          const validReferences = [secondInvoice, thirdInvoice].filter(
-            (inv) => inv && processedInvoiceNumbers.has(inv)
-          );
-
-          validReferences.forEach((invoice) => {
-            console.log(
-              `Processing valid invoice reference from EFT: '${invoice}'`
-            );
-            ensureGroup(invoice);
-          });
 
           console.log('Processed EFT receipt with references:', {
             id: row.id,
@@ -1307,7 +1009,7 @@ function HomeContent({ session }: HomeContentProps) {
         console.groupEnd();
       }
     },
-    [trackProcessedInvoice, processedInvoiceNumbers, session.user.id] // Added session.user.id for user-scoped grouping
+    [session.user.id] // Added session.user.id for user-scoped grouping
   );
 
   // 🚀 PERFORMANCE FIX: Lazy load recycling docs only when Push to Plastiks tab is active
@@ -1315,12 +1017,8 @@ function HomeContent({ session }: HomeContentProps) {
     let cancelled = false;
 
     const loadRecyclingDocs = async () => {
-      // Only load recycling docs when on verification/blockchain tabs (not during document processing)
-      if (
-        !['groups', 'submit', 'blockchain'].includes(activeTab) ||
-        !isDocumentsLoaded
-      )
-        return;
+      // Only load recycling docs when on blockchain tab (not during document processing)
+      if (activeTab !== 'blockchain' || !isDocumentsLoaded) return;
 
       try {
         console.log('📊 [PERFORMANCE] Loading recycling docs...');
@@ -1380,6 +1078,7 @@ function HomeContent({ session }: HomeContentProps) {
           '📄 [REVIEW] Loading ALL processed documents from database...'
         );
 
+        const supabase = getSupabaseBrowser();
         const { data, error } = await supabase
           .from('parsed_documents')
           .select(
@@ -1418,9 +1117,9 @@ function HomeContent({ session }: HomeContentProps) {
         // Set the documents directly - these are the processed documents that should ALWAYS be in Review
         setProcessedDocuments(convertedDocs);
         console.log(
-          `✅ [REVIEW] Set ${convertedDocs.length} documents from database to Review tab`
-        );
-      } catch (error) {
+        `✅ [REVIEW] Set ${convertedDocs.length} documents from database to Review tab`
+      );
+    } catch (error) {
         console.error('💥 [REVIEW] Error loading processed documents:', error);
       }
     };
@@ -1428,23 +1127,23 @@ function HomeContent({ session }: HomeContentProps) {
     // Load immediately on component mount
     loadProcessedDocuments();
     fetchFailedDocuments(); // Also load failed documents
-    calculateGroupStats(); // Also load group statistics
 
     return () => {
       cancelled = true;
     };
-  }, [session.user.id, fetchFailedDocuments, calculateGroupStats]); // Only depend on user ID, load on mount
+  }, [session.user.id, fetchFailedDocuments]); // Only depend on user ID, load on mount
 
   // 🚀 PERFORMANCE FIX: Lazy load groups data only when Push to Plastiks tab is clicked
   useEffect(() => {
-    // Only load groups data when the groups tab OR blockchain tab is active
-    if (activeTab !== 'groups' && activeTab !== 'blockchain') return;
+    // Only load groups data when the blockchain tab is active
+    if (activeTab !== 'blockchain') return;
 
     let cancelled = false;
 
     const loadInitial = async () => {
-      setIsGroupsLoading(true);
       console.time('⏱️ [PERFORMANCE] Groups data loading');
+
+      const supabase = getSupabaseBrowser();
 
       try {
         console.log(
@@ -1482,7 +1181,10 @@ function HomeContent({ session }: HomeContentProps) {
             created_at,
             user_id,
             human_verified,
-            verified_at
+            verified_at,
+            needs_human_verification,
+            verification_reason,
+            grouping_phase
           `
           )
           .eq('user_id', session.user.id) // 👈 FILTER BY USER ID
@@ -1492,7 +1194,6 @@ function HomeContent({ session }: HomeContentProps) {
         if (error) {
           console.error('❌ [GROUPS] Failed to load document_groups:', error);
           console.error('❌ [GROUPS] Error details:', error);
-          setIsGroupsLoading(false);
           return;
         }
 
@@ -1505,19 +1206,31 @@ function HomeContent({ session }: HomeContentProps) {
 
         // Check if groups have the correct user_id
         if (data && data.length > 0) {
-          const userIds = [...new Set(data.map((d) => d.user_id))];
+          const userIds = [
+            ...new Set(data.map((d: { user_id: string }) => d.user_id)),
+          ];
           console.log('🔍 [GROUPS] User IDs in loaded groups:', userIds);
           console.log('🔍 [GROUPS] Expected user ID:', session.user.id);
           console.log('🔍 [GROUPS] Group statuses found:', [
             ...new Set(
-              data.map((d) => (d.is_complete ? 'complete' : 'incomplete'))
+              data.map((d: { is_complete: boolean }) =>
+                d.is_complete ? 'complete' : 'incomplete'
+              )
             ),
           ]);
           console.log('🔍 [GROUPS] Countries found:', [
-            ...new Set(data.map((d) => d.country).filter(Boolean)),
+            ...new Set(
+              data
+                .map((d: { country?: string | null }) => d.country)
+                .filter(Boolean)
+            ),
           ]);
           console.log('🔍 [GROUPS] Rules applied:', [
-            ...new Set(data.map((d) => d.applied_rule_name).filter(Boolean)),
+            ...new Set(
+              data
+                .map((d: { applied_rule_name?: string | null }) => d.applied_rule_name)
+                .filter(Boolean)
+            ),
           ]);
         }
 
@@ -1534,8 +1247,11 @@ function HomeContent({ session }: HomeContentProps) {
 
           // Collect all document IDs from all groups
           const allDocumentIds = data
-            .flatMap((group) => group.present_document_ids || [])
-            .filter((id) => id); // Remove any null/undefined IDs
+            .flatMap(
+              (group: { present_document_ids?: string[] }) =>
+                group.present_document_ids || []
+            )
+            .filter((id: string | null | undefined) => id); // Remove any null/undefined IDs
 
           console.log(
             `🔍 [GROUPS] Found ${allDocumentIds.length} document IDs to load`
@@ -1571,11 +1287,38 @@ function HomeContent({ session }: HomeContentProps) {
 
           const map: Record<string, InvoiceGroup> = {};
 
+          interface DocumentGroupRow {
+            id: string;
+            invoice_number: string;
+            group_key?: string;
+            country?: string | null;
+            recycler_company?: string | null;
+            plastic_type?: string | null;
+            applied_rule_name?: string | null;
+            required_document_types?: string[];
+            optional_document_types?: string[];
+            minimum_required?: number;
+            present_document_types?: string[];
+            present_document_ids?: string[];
+            completion_count?: number;
+            missing_document_types?: string[];
+            is_complete?: boolean;
+            can_verify?: boolean;
+            completion_percentage?: number;
+            last_processed_at?: string;
+            created_at: string;
+            human_verified?: boolean;
+            verified_at?: string | null;
+            needs_human_verification?: boolean;
+            verification_reason?: string | null;
+            grouping_phase?: 'exact' | 'fuzzy';
+          }
+
           // 🚀 STEP 3: Convert document_groups data to InvoiceGroup format with actual document data
-          data.forEach((groupRow) => {
+          data.forEach((groupRow: DocumentGroupRow) => {
             if (!groupRow || !groupRow.invoice_number) return;
 
-            const invoiceKey = groupRow.invoice_number;
+            const invoiceKey = groupRow.group_key || groupRow.invoice_number;
 
             // 🚀 Build docs structure from actual parsed documents
             const docs: Partial<
@@ -1610,31 +1353,26 @@ function HomeContent({ session }: HomeContentProps) {
 
             // 🚀 NEW: Create InvoiceGroup from document_groups row with actual document data
             const group: InvoiceGroup = {
-              // Required original properties (for compatibility with existing UI)
               invoice: invoiceKey,
-              docs: docs, // ✅ NOW POPULATED WITH ACTUAL DOCUMENT DATA!
-
-              // 🚀 NEW: Backend-calculated completion info
-              invoiceKey: invoiceKey,
-              invoiceNumber: invoiceKey,
+              docs,
+              invoiceKey,
+              invoiceNumber: groupRow.invoice_number,
               isComplete: groupRow.is_complete || false,
               completionCount: groupRow.completion_count || 0,
               requiredCount: groupRow.minimum_required || 3,
               missingTypes: groupRow.missing_document_types || [],
               presentTypes: groupRow.present_document_types || [],
               completionPercentage: groupRow.completion_percentage || 0,
-
-              // 🚀 NEW: Additional metadata from backend
               country: groupRow.country || null,
               recyclerCompany: groupRow.recycler_company || null,
               plasticType: groupRow.plastic_type || null,
               appliedRuleName: groupRow.applied_rule_name || null,
-
-              // 🚀 NEW: Human verification status (moved from recycling_docs)
               human_verified: groupRow.human_verified || false,
               verified_at: groupRow.verified_at || null,
-
-              // Backend processing info
+              needsHumanVerification:
+                groupRow.needs_human_verification || false,
+              verificationReason: groupRow.verification_reason || null,
+              groupingPhase: groupRow.grouping_phase || undefined,
               lastProcessedAt:
                 groupRow.last_processed_at || groupRow.created_at,
               processingLogs: {
@@ -1643,6 +1381,10 @@ function HomeContent({ session }: HomeContentProps) {
                 ruleName: groupRow.applied_rule_name,
                 requiredTypes: groupRow.required_document_types || [],
                 optionalTypes: groupRow.optional_document_types || [],
+                groupingPhase: groupRow.grouping_phase || undefined,
+                needsHumanVerification:
+                  groupRow.needs_human_verification || false,
+                verificationReason: groupRow.verification_reason || null,
               },
             };
 
@@ -1663,6 +1405,12 @@ function HomeContent({ session }: HomeContentProps) {
                 group.country ? ` - Country: ${group.country}` : ''
               }${
                 group.appliedRuleName ? ` - Rule: ${group.appliedRuleName}` : ''
+              }${
+                group.groupingPhase ? ` - Phase: ${group.groupingPhase}` : ''
+              }${
+                group.needsHumanVerification ? ' - 🚨 Needs verification' : ''
+              }${
+                group.verificationReason ? ` (${group.verificationReason})` : ''
               }`
             );
           });
@@ -1699,9 +1447,7 @@ function HomeContent({ session }: HomeContentProps) {
         setHasInitializedGroups(true);
       } finally {
         if (!cancelled) {
-          setIsGroupsLoading(false);
           console.timeEnd('⏱️ [PERFORMANCE] Groups data loading');
-          calculateGroupStats(); // Update group statistics after loading
         }
       }
     };
@@ -1780,7 +1526,6 @@ function HomeContent({ session }: HomeContentProps) {
     session.user.id,
     session.user.email,
     hasInitializedGroups,
-    calculateGroupStats,
   ]); // 🚀 Added required dependencies without groups
 
   // 🚀 NEW: Lazy load verified recycling docs only when Blockchain tab is active
@@ -1800,21 +1545,21 @@ function HomeContent({ session }: HomeContentProps) {
         );
         console.log('👤 [BLOCKCHAIN] User:', session.user.email);
 
-        // Load human-verified document groups with plastiks submission status
+        // Load human-verified matched records with plastiks submission status
         const supabase = getSupabaseBrowser();
 
-        // First get verified document groups
-        const { data: groups, error: groupError } = await supabase
-          .from('document_groups')
+        // Get verified matched records (both auto-verified compliant + manually-verified flagged)
+        const { data: matchedRecords, error: matchedError } = await supabase
+          .from('matched_records')
           .select('*')
           .eq('user_id', session.user.id) // Filter by current user
           .eq('human_verified', true) // Only verified documents
-          .order('verified_at', { ascending: false }); // Most recent first
+          .order('created_at', { ascending: false }); // Most recent first
 
-        if (groupError) {
+        if (matchedError) {
           console.error(
-            '❌ [BLOCKCHAIN] Failed to load verified groups:',
-            groupError
+            '❌ [BLOCKCHAIN] Failed to load verified records:',
+            matchedError
           );
           return;
         }
@@ -1853,21 +1598,23 @@ function HomeContent({ session }: HomeContentProps) {
 
         // Merge the data
         const data =
-          groups?.map((group) => ({
-            ...group,
+          matchedRecords?.map((record) => ({
+            ...record,
             // Add plastiks submission data if it exists
             plastiks_submitted_at:
-              plastiksMap[group.invoice_number]?.plastiks_submitted_at || null,
+              plastiksMap[record.invoice_number]?.plastiks_submitted_at || null,
             plastiks_collection_id:
-              plastiksMap[group.invoice_number]?.plastiks_collection_id || null,
+              plastiksMap[record.invoice_number]?.plastiks_collection_id ||
+              null,
             plastiks_collection_address:
-              plastiksMap[group.invoice_number]?.plastiks_collection_address ||
+              plastiksMap[record.invoice_number]?.plastiks_collection_address ||
               null,
             plastiks_metadata_hash:
-              plastiksMap[group.invoice_number]?.plastiks_metadata_hash || null,
+              plastiksMap[record.invoice_number]?.plastiks_metadata_hash ||
+              null,
           })) || [];
 
-        const error = groupError;
+        const error = matchedError;
 
         if (error) {
           console.error('❌ [BLOCKCHAIN] Failed to load verified docs:', error);
@@ -2028,145 +1775,6 @@ function HomeContent({ session }: HomeContentProps) {
     [session.user?.email, session.user?.id]
   );
 
-  const handleSubmitGroup = useCallback(async (invoice: string) => {
-    setSubmitting((prev) => ({ ...prev, [invoice]: true }));
-    setSubmitResult((prev) => ({
-      ...prev,
-      [invoice]: { ok: false, message: '' },
-    }));
-    try {
-      // Human Verification (recycling_docs populated only on Push to Plastiks)
-      console.log(`[UI] Human verification starting for invoice='${invoice}'`);
-
-      // Get auth token from session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error('No valid session found');
-      }
-
-      const verifyUrl = `/api/human-verify?invoice=${encodeURIComponent(
-        invoice
-      )}`;
-      const resp = await fetch(verifyUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-      const json = await resp.json().catch(() => ({}));
-      console.log(`[UI] Human verification response ok=${resp.ok}`, json);
-
-      if (resp.ok) {
-        const individualResult = json?.results?.[0];
-        const isActuallySucceeded = individualResult?.status === 'verified';
-
-        if (isActuallySucceeded) {
-          setSubmitResult((prev) => ({
-            ...prev,
-            [invoice]: { ok: true, message: 'Human Verified' },
-          }));
-          console.log(
-            `[UI] Human verification succeeded for invoice='${invoice}'`
-          );
-
-          // Update the local state to reflect the verification (no page reload)
-          console.log(`[UI] Updating group state after human verification...`);
-          setGroups((prevGroups) => ({
-            ...prevGroups,
-            [invoice]: {
-              ...(prevGroups[invoice] || {}),
-              human_verified: true,
-              verified_at: new Date().toISOString(),
-            },
-          }));
-
-          console.log(
-            `[UI] Updated group state for invoice='${invoice}' - human_verified: true`
-          );
-        } else {
-          // HTTP 200 but internal failure
-          const errorMessage =
-            individualResult?.error || 'Human verification failed';
-          setSubmitResult((prev) => ({
-            ...prev,
-            [invoice]: { ok: false, message: errorMessage },
-          }));
-          console.warn(
-            `[UI] Human verification failed internally for invoice='${invoice}':`,
-            errorMessage
-          );
-        }
-      } else {
-        setSubmitResult((prev) => ({
-          ...prev,
-          [invoice]: {
-            ok: false,
-            message: json?.error || 'Verification failed',
-          },
-        }));
-        console.warn(`[UI] Human verification failed for invoice='${invoice}'`);
-      }
-
-      /* COMMENTED OUT - PLASTIKS SUBMISSION CODE
-      // Step 2: Submit to Plastiks
-      console.log(`[UI] Submit starting for invoice='${invoice}'`);
-      const submitUrl = devSecret
-        ? `/api/plastiks/submit?secret=${encodeURIComponent(
-            devSecret
-          )}&invoice=${encodeURIComponent(invoice)}`
-        : `/api/plastiks/submit?invoice=${encodeURIComponent(invoice)}`;
-      const resp = await fetch(submitUrl, { method: 'POST' });
-      const json = await resp.json().catch(() => ({}));
-      console.log(`[UI] Submit response ok=${resp.ok}`, json);
-
-      if (resp.ok) {
-        // 🚀 CRITICAL FIX: Check individual result status, not just HTTP status
-        const individualResult = json?.results?.[0];
-        const isActuallySucceeded =
-          individualResult?.status !== 'failed' && !individualResult?.error;
-
-        if (isActuallySucceeded) {
-          setSubmitResult((prev) => ({
-            ...prev,
-            [invoice]: { ok: true, message: 'Submitted' },
-          }));
-          console.log(`[UI] Submit succeeded for invoice='${invoice}'`);
-        } else {
-          // HTTP 200 but internal failure
-          const errorMessage =
-            individualResult?.error || 'Plastiks submission failed';
-          setSubmitResult((prev) => ({
-            ...prev,
-            [invoice]: { ok: false, message: errorMessage },
-          }));
-          console.warn(
-            `[UI] Submit failed internally for invoice='${invoice}':`,
-            errorMessage
-          );
-        }
-      } else {
-        setSubmitResult((prev) => ({
-          ...prev,
-          [invoice]: { ok: false, message: json?.error || 'Submission failed' },
-        }));
-        console.warn(`[UI] Submit failed for invoice='${invoice}'`);
-      }
-      */
-    } catch (e) {
-      setSubmitResult((prev) => ({
-        ...prev,
-        [invoice]: {
-          ok: false,
-          message: (e as Error)?.message || 'Network error',
-        },
-      }));
-      console.error(`[UI] Submit error for invoice='${invoice}'`, e);
-    } finally {
-      setSubmitting((prev) => ({ ...prev, [invoice]: false }));
-    }
-  }, []);
   const [currentProcessingIndex, setCurrentProcessingIndex] = useState(-1);
   const [processingProgress, setProcessingProgress] = useState(0);
   // const [blobUrls, setBlobUrls] = useState<Map<string, string>>(new Map()); // Track blob URLs for database files - Removed with Review tab
@@ -2754,21 +2362,58 @@ function HomeContent({ session }: HomeContentProps) {
               `Preprocessing completed: ${result.processed} processed, ${result.errors} errors`
             );
 
-            // Start readiness polling
-            setTimeout(async () => {
-              const successMessage =
-                result.processed > uploadedPaths.length
-                  ? `Ready! ${uploadedPaths.length} files split into ${result.processed} pages for AI processing`
-                  : `Ready! ${result.processed} pages prepared for AI processing`;
-              setPreprocessingProgress(successMessage);
-              setIsPreprocessing(false);
+            // IMMEDIATE status check after preprocessing
+            (async () => {
+              try {
+                const successMessage =
+                  result.processed > uploadedPaths.length
+                    ? `Ready! ${uploadedPaths.length} files split into ${result.processed} pages for AI processing`
+                    : `Ready! ${result.processed} pages prepared for AI processing`;
 
-              // 🚀 PHASE 4: Update database state after preprocessing completion
-              console.log(
-                `🔄 [PHASE4] Preprocessing completed - updating database state...`
-              );
-              await checkDocumentsStatus();
-            }, 2000);
+                setPreprocessingProgress(successMessage);
+                setIsPreprocessing(false);
+
+                // 🚀 CRITICAL FIX: Query database IMMEDIATELY using the known batch ID
+                console.log(
+                  `🔄 [PHASE4] Preprocessing completed - checking status for batch: ${batchId}`
+                );
+
+                const supabase = getSupabaseBrowser();
+
+                // Query single_documents directly with the batch ID we just created
+                const { data: readyDocs, error: readyError } = await supabase
+                  .from('single_documents')
+                  .select('id')
+                  .eq('user_id', session.user.id)
+                  .eq('upload_batch_id', batchId)
+                  .eq('status', 'uploaded');
+
+                if (readyError) {
+                  console.error(
+                    `❌ [PHASE4] Error checking single_documents:`,
+                    readyError
+                  );
+                } else {
+                  const count = readyDocs?.length || 0;
+                  console.log(
+                    `✅ [PHASE4] Found ${count} documents ready for AI in batch ${batchId}`
+                  );
+
+                  // FORCE state update immediately
+                  setReadyDocumentsCount(count);
+                  setTempDocumentsCount(0); // Preprocessing is done
+
+                  console.log(
+                    `✅ [PHASE4] Button should now be ENABLED with ${count} documents`
+                  );
+                }
+              } catch (error) {
+                console.error(
+                  `❌ [PHASE4] Error in post-preprocessing status check:`,
+                  error
+                );
+              }
+            })();
           } catch (error) {
             console.error(
               `❌ [preprocess-trigger:${uploadId}] Preprocessing error:`,
@@ -3535,27 +3180,25 @@ function HomeContent({ session }: HomeContentProps) {
       setCurrentProcessingIndex(-1);
       console.log(`🔄 Frontend: Processing state reset`);
 
-      // 🚀 TRIGGER BACKEND GROUPING SERVICE AFTER AI PROCESSING COMPLETES
+      // 🚀 TRIGGER MATCHING SERVICE AFTER AI PROCESSING COMPLETES
       if (localCompletedCount > 0) {
         console.log(
-          `🔧 Frontend: Triggering backend document grouping for ${localCompletedCount} processed documents...`
+          `🔧 Frontend: Triggering matching service for ${localCompletedCount} processed documents...`
         );
-        triggerDocumentGrouping(localCompletedCount);
+        triggerMatchingService(localCompletedCount);
       }
 
       // 🚀 REFRESH FAILED DOCUMENTS LIST AFTER PROCESSING
       fetchFailedDocuments();
 
-      // Auto-redirect to Verify & Submit tab after successful processing
+      // Auto-redirect to Dashboard tab after successful processing
       if (localCompletedCount > 0) {
         console.log(
-          `🔄 Frontend: Auto-redirecting to Verify & Submit tab (${localCompletedCount} pages processed)`
+          `🔄 Frontend: Auto-redirecting to Dashboard tab (${localCompletedCount} pages processed)`
         );
         setTimeout(() => {
-          setActiveTab('submit');
-          console.log(
-            `✅ Frontend: Successfully switched to Verify & Submit tab`
-          );
+          setActiveTab('dashboard');
+          console.log(`✅ Frontend: Successfully switched to Dashboard tab`);
         }, 2000); // 2 second delay to let user see completion message
       }
     }
@@ -3775,25 +3418,19 @@ function HomeContent({ session }: HomeContentProps) {
             value={activeTab}
             onValueChange={(v: string) =>
               setActiveTab(
-                v as
-                  | 'upload'
-                  | 'results'
-                  | 'groups'
-                  | 'submit'
-                  | 'blockchain'
-                  | 'data'
+                v as 'upload' | 'results' | 'dashboard' | 'blockchain' | 'data'
               )
             }
             className='space-y-6'
           >
             <div className='flex justify-center'>
-              <TabsList className='grid w-full grid-cols-4'>
+              <TabsList className='grid w-full grid-cols-5'>
                 <TabsTrigger value='upload' className='text-base py-1'>
                   Upload & Process
                 </TabsTrigger>
 
-                <TabsTrigger value='groups' className='text-base py-1'>
-                  Verify & Submit
+                <TabsTrigger value='dashboard' className='text-base py-1'>
+                  Dashboard
                 </TabsTrigger>
 
                 <TabsTrigger value='blockchain' className='text-base py-1'>
@@ -4317,715 +3954,9 @@ function HomeContent({ session }: HomeContentProps) {
               </div>
             </TabsContent>
 
-            {/* ===== New: Group & Verify Tab ===== */}
-            <TabsContent value='groups' className='space-y-6'>
-              <Card className='shadow-md border-slate-200'>
-                <CardHeader>
-                  <div className='flex justify-between items-start'>
-                    <div>
-                      <CardTitle>Group & Verify</CardTitle>
-                      <CardDescription>
-                        {isDocumentsLoaded
-                          ? 'Groups are built by backend service. Complete groups can be submitted, incomplete groups show missing documents.'
-                          : 'Loading document groups...'}
-                      </CardDescription>
-
-                      {/* 🚀 NEW: Group Statistics */}
-                      {isDocumentsLoaded && (
-                        <div className='flex items-center gap-4 mt-3'>
-                          <div className='flex items-center gap-2 px-3 py-1.5 bg-blue-100 rounded-md border border-blue-200'>
-                            <FolderOpen className='h-4 w-4 text-blue-600' />
-                            <span className='font-semibold text-blue-700 text-sm'>
-                              📁 Groups: {groupStats.totalGroups}
-                            </span>
-                          </div>
-
-                          <div className='flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-md border border-green-200'>
-                            <CheckCircle2 className='h-4 w-4 text-green-600' />
-                            <span className='font-semibold text-green-700 text-sm'>
-                              ✅ Complete: {groupStats.completeGroups}
-                            </span>
-                          </div>
-
-                          <div className='flex items-center gap-2 px-3 py-1.5 bg-red-100 rounded-md border border-red-200'>
-                            <AlertCircle className='h-4 w-4 text-red-600' />
-                            <span className='font-semibold text-red-700 text-sm'>
-                              ❌ Incomplete: {groupStats.incompleteGroups}
-                            </span>
-                          </div>
-
-                          {groupStats.ungroupedDocs > 0 && (
-                            <div className='flex items-center gap-2 px-3 py-1.5 bg-orange-100 rounded-md border border-orange-200'>
-                              <FileText className='h-4 w-4 text-orange-600' />
-                              <span className='font-semibold text-orange-700 text-sm'>
-                                📄 Ungrouped: {groupStats.ungroupedDocs}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className='flex items-center gap-2'>
-                      <VerifiedCsvDownload session={session} />
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        onClick={() => {
-                          console.log('🔄 [MANUAL] Refreshing groups...');
-                          setHasInitializedGroups(false);
-                          setIsDocumentsLoaded(false);
-                          setGroups({});
-                        }}
-                        disabled={isGroupsLoading}
-                      >
-                        {isGroupsLoading ? 'Loading...' : 'Refresh Groups'}
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className='p-6'>
-                  {isGroupsLoading || !isDocumentsLoaded ? (
-                    <div className='flex items-center gap-2 text-slate-600'>
-                      <Loader2 className='h-4 w-4 animate-spin' /> Loading
-                      {isGroupsLoading ? ' groups...' : ' documents...'}
-                    </div>
-                  ) : Object.keys(groups).length === 0 ? (
-                    <div className='text-slate-600 text-sm'>
-                      No groups found. Upload and process documents to see
-                      groups here.
-                    </div>
-                  ) : (
-                    <div className='space-y-8'>
-                      {Object.entries(groups)
-                        .sort(([, groupA], [, groupB]) => {
-                          // 🎯 SORT: Completed groups first, then incomplete
-                          const aComplete = groupA.isComplete || false;
-                          const bComplete = groupB.isComplete || false;
-
-                          // If completion status differs, complete groups come first
-                          if (aComplete !== bComplete) {
-                            return bComplete ? 1 : -1; // Complete (true) comes first
-                          }
-
-                          // If both have same completion status, sort by invoice number
-                          return groupA.invoice.localeCompare(groupB.invoice);
-                        })
-                        .map(([invoiceKey, group]) => {
-                          const latestByType = {
-                            invoice: group.docs?.['invoice']?.[0],
-                            'e-way-bill': group.docs?.['e-way-bill']?.[0],
-                            eft_receipt: group.docs?.['eft_receipt']?.[0],
-                          };
-                          if (!group) return null;
-                          const status = computeGroupStatus(group);
-                          return (
-                            <div
-                              key={invoiceKey}
-                              className='border rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-all border-slate-200 w-full max-w-4xl mx-auto'
-                            >
-                              <div className='flex items-start justify-between gap-4'>
-                                <div>
-                                  <div className='font-medium text-slate-800'>
-                                    Invoice: {group.invoice || 'N/A'}
-                                  </div>
-                                  <div className='text-xs text-slate-600'>
-                                    Status: {status.count} of {status.total}{' '}
-                                    files uploaded
-                                  </div>
-                                </div>
-                                <div className='flex items-center gap-2'>
-                                  {group.human_verified ? (
-                                    <Badge className='bg-green-100 text-green-700 border-0 flex items-center gap-1'>
-                                      <CheckCircle2 className='h-3 w-3' />
-                                      Verified
-                                    </Badge>
-                                  ) : status.complete ? (
-                                    <Badge className='bg-blue-100 text-blue-700 border-0 flex items-center gap-1'>
-                                      <FileCheck className='h-3 w-3' />
-                                      Complete
-                                    </Badge>
-                                  ) : (
-                                    <Badge className='bg-red-100 text-red-700 border-0 flex items-center gap-1'>
-                                      <AlertCircle className='h-3 w-3' />
-                                      Incomplete
-                                    </Badge>
-                                  )}
-                                  <Button
-                                    variant='ghost'
-                                    size='sm'
-                                    onClick={() =>
-                                      toggleGroupExpansion(invoiceKey)
-                                    }
-                                    className='h-8 w-8 p-0'
-                                  >
-                                    {expandedGroups[invoiceKey] ? (
-                                      <ChevronUp className='h-4 w-4' />
-                                    ) : (
-                                      <ChevronDown className='h-4 w-4' />
-                                    )}
-                                  </Button>
-                                </div>
-                              </div>
-
-                              {!status.complete &&
-                                status.missing.length > 0 && (
-                                  <div className='text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded mt-3 p-2'>
-                                    Missing: {status.missing.join(', ')}. Use
-                                    &quot;Upload & Process&quot; to add the
-                                    missing files.
-                                  </div>
-                                )}
-
-                              {/* Collapsible content - only show when expanded */}
-                              {expandedGroups[invoiceKey] && (
-                                <>
-                                  <div className='space-y-6 mt-6'>
-                                    {(() => {
-                                      // Determine which document sections to show
-                                      const isIndian =
-                                        group.country === 'IN' &&
-                                        isIndianRecycler(group.recyclerCompany);
-                                      const hasEFT = Boolean(
-                                        group.docs?.eft_receipt?.length
-                                      );
-
-                                      // For Indian recyclers: only show sections for documents they actually have
-                                      let documentsToShow: Array<
-                                        'invoice' | 'eft_receipt' | 'e-way-bill'
-                                      >;
-
-                                      if (isIndian && !hasEFT) {
-                                        // Indian recycler with only 2 files: show only invoice and e-way-bill
-                                        documentsToShow = [
-                                          'invoice',
-                                          'e-way-bill',
-                                        ];
-                                      } else {
-                                        // All other cases: show all 3 sections
-                                        documentsToShow = [
-                                          'invoice',
-                                          'eft_receipt',
-                                          'e-way-bill',
-                                        ];
-                                      }
-
-                                      return documentsToShow;
-                                    })().map((t) => {
-                                      const latest = group.docs?.[t]?.[0];
-                                      const tTitle =
-                                        documentTypes[t]?.title || t;
-                                      const docType =
-                                        latest?.document_type as keyof typeof documentTypes;
-                                      const DocIcon =
-                                        documentTypes[docType]?.icon ||
-                                        FileText;
-                                      const iconColor =
-                                        documentTypes[docType]?.color ||
-                                        'text-slate-500';
-
-                                      return (
-                                        <div
-                                          key={t}
-                                          className='border rounded-lg overflow-hidden bg-white'
-                                        >
-                                          <div className='bg-slate-50 px-4 py-2 border-b flex items-center gap-2'>
-                                            <DocIcon
-                                              className={`h-4 w-4 ${iconColor}`}
-                                            />
-                                            <h4 className='font-medium text-slate-800'>
-                                              {tTitle}
-                                            </h4>
-                                            {latest?.file_url && (
-                                              <a
-                                                href={latest.file_url}
-                                                target='_blank'
-                                                rel='noreferrer'
-                                                className='ml-auto text-xs text-blue-600 hover:underline'
-                                                title='View original PDF'
-                                              >
-                                                View PDF
-                                              </a>
-                                            )}
-                                          </div>
-                                          <div className='grid grid-cols-1 md:grid-cols-2 gap-0'>
-                                            <div className='p-4 border-r'>
-                                              {latest?.file_url ? (
-                                                <div className='h-[400px]'>
-                                                  <PdfPreview
-                                                    fileUrl={latest.file_url}
-                                                    heightClass='h-full'
-                                                  />
-                                                </div>
-                                              ) : (
-                                                <div className='h-[400px] flex items-center justify-center text-slate-400'>
-                                                  No file uploaded
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div
-                                              className='p-4 overflow-auto'
-                                              style={{ maxHeight: '500px' }}
-                                            >
-                                              {latest?.raw_json ? (
-                                                <div className='space-y-4'>
-                                                  <h5 className='font-medium text-slate-800 border-b pb-2'>
-                                                    Extracted Data
-                                                  </h5>
-                                                  <div className='space-y-2 text-sm'>
-                                                    {latest.raw_json ? (
-                                                      Object.entries(
-                                                        latest.raw_json as Record<
-                                                          string,
-                                                          unknown
-                                                        >
-                                                      ).map(([key, value]) => {
-                                                        if (
-                                                          value === null ||
-                                                          value === undefined ||
-                                                          value === ''
-                                                        )
-                                                          return null;
-                                                        if (
-                                                          typeof value ===
-                                                            'object' &&
-                                                          !Array.isArray(value)
-                                                        )
-                                                          return null;
-
-                                                        const displayValue =
-                                                          Array.isArray(value)
-                                                            ? value
-                                                                .map(String)
-                                                                .join(', ')
-                                                            : String(value);
-
-                                                        return (
-                                                          <div
-                                                            key={key}
-                                                            className='grid grid-cols-3 gap-2'
-                                                          >
-                                                            <div className='text-slate-500 capitalize'>
-                                                              {key.replace(
-                                                                /_/g,
-                                                                ' '
-                                                              )}
-                                                              :
-                                                            </div>
-                                                            <div className='col-span-2 font-medium'>
-                                                              {displayValue}
-                                                            </div>
-                                                          </div>
-                                                        );
-                                                      })
-                                                    ) : (
-                                                      <div className='text-slate-400 text-center py-2'></div>
-                                                    )}
-                                                  </div>
-                                                </div>
-                                              ) : (
-                                                <div className='text-slate-400 text-center py-8'>
-                                                  No data extracted yet
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                  <div className='mt-6 pt-4 border-t border-slate-100'>
-                                    {recyclingDocs[group.invoice]
-                                      ?.plastiks_submitted_at ? (
-                                      <div className='mb-4 space-y-2 text-sm'>
-                                        <div className='bg-green-50 p-4 rounded-lg border border-green-100'>
-                                          <h4 className='font-medium text-green-800 mb-3 flex items-center gap-2'>
-                                            <CheckCircle2 className='h-4 w-4' />
-                                            Successfully Human Verified
-                                          </h4>
-                                          <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Invoice #
-                                              </div>
-                                              <div className='font-medium text-slate-800'>
-                                                {recyclingDocs[
-                                                  group.invoice
-                                                ]?.invoice_number?.toString() ||
-                                                  'N/A'}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Recycler Company
-                                              </div>
-                                              <div className='font-medium text-slate-800'>
-                                                {recyclingDocs[
-                                                  group.invoice
-                                                ]?.recycler_company?.toString() ||
-                                                  'N/A'}
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Network Operator Company
-                                              </div>
-                                              <div className='font-medium text-slate-800'>
-                                                {recyclingDocs[
-                                                  group.invoice
-                                                ]?.network_operator_company?.toString() ||
-                                                  'N/A'}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Plastic Type
-                                              </div>
-                                              <div className='font-medium text-slate-800'>
-                                                {recyclingDocs[
-                                                  group.invoice
-                                                ]?.plastic_type?.toString() ||
-                                                  'N/A'}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Weight
-                                              </div>
-                                              <div className='font-medium text-slate-800'>
-                                                {recyclingDocs[group.invoice]
-                                                  ?.tonnage_tons !== undefined
-                                                  ? `${
-                                                      recyclingDocs[
-                                                        group.invoice
-                                                      ]?.tonnage_tons?.toString() ||
-                                                      '0'
-                                                    } tons`
-                                                  : 'N/A'}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Country
-                                              </div>
-                                              <div className='font-medium text-slate-800'>
-                                                {recyclingDocs[
-                                                  group.invoice
-                                                ]?.country?.toString() || 'N/A'}
-                                              </div>
-                                            </div>
-
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Collection ID
-                                              </div>
-                                              <div className='font-mono text-xs text-slate-600 break-all'>
-                                                {recyclingDocs[
-                                                  group.invoice
-                                                ]?.plastiks_collection_id?.toString() ||
-                                                  'N/A'}
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Metadata Hash
-                                              </div>
-                                              <div className='font-mono text-xs text-slate-600 break-all'>
-                                                {recyclingDocs[
-                                                  group.invoice
-                                                ]?.plastiks_metadata_hash?.toString() ||
-                                                  'N/A'}
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Collection Address
-                                              </div>
-                                              <div className='font-mono text-xs text-slate-600 break-all'>
-                                                {recyclingDocs[
-                                                  group.invoice
-                                                ]?.plastiks_collection_address?.toString() ||
-                                                  'N/A'}
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <div className='text-slate-500 text-xs font-medium mb-1'>
-                                                Submitted At
-                                              </div>
-                                              <div className='text-sm text-slate-700'>
-                                                {recyclingDocs[group.invoice]
-                                                  ?.plastiks_submitted_at
-                                                  ? new Date(
-                                                      recyclingDocs[
-                                                        group.invoice
-                                                      ]
-                                                        ?.plastiks_submitted_at ??
-                                                        ''
-                                                    ).toLocaleString()
-                                                  : 'N/A'}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className='text-sm text-slate-600'>
-                                        No data available
-                                      </div>
-                                    )}
-
-                                    {/* Combined Data & Verification Section */}
-                                    <div
-                                      className={`p-6 border rounded-lg mt-4 ${
-                                        group.human_verified
-                                          ? 'border-green-200 bg-green-50'
-                                          : 'border-blue-200 bg-blue-50'
-                                      }`}
-                                    >
-                                      <div className='space-y-4'>
-                                        {/* Header */}
-                                        <div className='flex items-center justify-between'>
-                                          <h4 className='font-medium text-slate-800'>
-                                            {group.human_verified
-                                              ? 'Verified Document Data'
-                                              : 'Document Data for Verification'}
-                                          </h4>
-                                          {group.human_verified && (
-                                            <div className='flex items-center gap-2 text-green-800'>
-                                              <CheckCircle2 className='h-4 w-4' />
-                                              <span className='text-sm font-semibold'>
-                                                Human Verified
-                                              </span>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* Data Grid */}
-                                        <div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-sm'>
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Invoice #
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType.invoice?.raw_json
-                                                  ?.invoice_number ||
-                                                  latestByType.invoice?.raw_json
-                                                    ?.invoice ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Company
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType.invoice?.raw_json
-                                                  ?.bill_to_company_name ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json
-                                                    ?.ship_to_company_name ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Network Operator
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType.invoice?.raw_json
-                                                  ?.bill_from_company_name ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json
-                                                    ?.ship_from_company_name ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Plastic Type
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType.invoice?.raw_json
-                                                  ?.plastic_type ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json?.plastic_type ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Weight
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {latestByType.invoice?.raw_json
-                                                ?.weight
-                                                ? `${String(
-                                                    latestByType.invoice
-                                                      .raw_json.weight
-                                                  )} ${String(
-                                                    latestByType.invoice
-                                                      .raw_json.weight_unit ||
-                                                      'kg'
-                                                  )}`
-                                                : 'N/A'}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              City
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType['e-way-bill']
-                                                  ?.raw_json?.from_location ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json?.city ||
-                                                  latestByType.invoice?.raw_json
-                                                    ?.city ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div>
-                                            <div className='text-slate-500 text-xs font-medium mb-1'>
-                                              Country
-                                            </div>
-                                            <div className='font-medium text-slate-800'>
-                                              {String(
-                                                latestByType['e-way-bill']
-                                                  ?.raw_json
-                                                  ?.ship_to_country_code ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json
-                                                    ?.origin_country ||
-                                                  latestByType['e-way-bill']
-                                                    ?.raw_json?.country ||
-                                                  latestByType.invoice?.raw_json
-                                                    ?.country ||
-                                                  'N/A'
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        {/* Verification Details (if verified) */}
-                                        {group.human_verified ? (
-                                          <div className='pt-3 border-t border-green-200'>
-                                            <div className='grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-green-700'>
-                                              <div>
-                                                <div className='text-green-600 text-xs font-medium mb-1'>
-                                                  Verified by
-                                                </div>
-                                                <div className='font-medium'>
-                                                  {session.user?.email ||
-                                                    'Unknown'}
-                                                </div>
-                                              </div>
-                                              <div>
-                                                <div className='text-green-600 text-xs font-medium mb-1'>
-                                                  Verified at
-                                                </div>
-                                                <div className='font-medium'>
-                                                  {group.verified_at
-                                                    ? new Date(
-                                                        group.verified_at
-                                                      ).toLocaleString()
-                                                    : 'Unknown'}
-                                                </div>
-                                              </div>
-                                              <div>
-                                                <div className='text-green-600 text-xs font-medium mb-1'>
-                                                  Status
-                                                </div>
-                                                <div className='font-medium'>
-                                                  ✅ Ready for blockchain
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          <div className='pt-3 border-t border-blue-200'>
-                                            <p className='text-sm text-slate-600'>
-                                              Data needs to be human-verified
-                                              before it gets sent to the
-                                              blockchain.
-                                            </p>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    <Button
-                                      size='sm'
-                                      disabled={
-                                        !status.complete ||
-                                        submitting[group.invoice] ||
-                                        group.human_verified
-                                      }
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleSubmitGroup(group.invoice);
-                                      }}
-                                      className={`w-full gap-2 mt-2 ${
-                                        group.human_verified
-                                          ? 'bg-green-600 hover:bg-green-700 text-white'
-                                          : submitResult[group.invoice] &&
-                                            !submitResult[group.invoice]?.ok
-                                          ? 'bg-red-600 hover:bg-red-700 text-white'
-                                          : ''
-                                      }`}
-                                    >
-                                      {submitting[group.invoice] ? (
-                                        <span className='flex items-center gap-2'>
-                                          <Loader2 className='h-3 w-3 animate-spin' />
-                                          Verifying...
-                                        </span>
-                                      ) : group.human_verified ? (
-                                        <span className='flex items-center gap-2'>
-                                          <CheckCircle2 className='h-3 w-3' />
-                                          Human Verified
-                                        </span>
-                                      ) : submitResult[group.invoice] &&
-                                        !submitResult[group.invoice]?.ok ? (
-                                        <span className='flex items-center gap-2'>
-                                          <AlertCircle className='h-3 w-3' />
-                                          Retry Verification
-                                        </span>
-                                      ) : (
-                                        <span className='flex items-center gap-2'>
-                                          <UploadCloud className='h-3 w-3' />
-                                          Human Verify
-                                          <ArrowRight className='h-3 w-3' />
-                                        </span>
-                                      )}
-                                    </Button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+            {/* ===== NEW: Dashboard Tab ===== */}
+            <TabsContent value='dashboard' className='space-y-6'>
+              <DashboardView session={session} />
             </TabsContent>
 
             {/* ===== NEW: Blockchain Tab ===== */}
@@ -5374,7 +4305,11 @@ function HomeContent({ session }: HomeContentProps) {
 
             {/* ===== NEW: Data Management Tab ===== */}
             <TabsContent value='data' className='space-y-6'>
-              <DataManagementDashboard session={session} />
+              <DataManagementDashboard
+                session={session}
+                onProcessDocuments={processFiles}
+                isProcessing={isProcessing}
+              />
             </TabsContent>
           </Tabs>
         </div>
@@ -5390,20 +4325,25 @@ export default function Home() {
 
   useEffect(() => {
     console.log('🔄 [HOME] Initializing session...');
+    let mounted = true;
 
     // Add timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
       console.log(
         '⏰ [HOME] Session initialization timeout - forcing completion'
       );
-      setLoading(false);
-    }, 10000); // 10 second timeout
+      if (mounted) {
+        setLoading(false);
+      }
+    }, 3000); // 3 second timeout (reduced from 10)
 
     // Get initial session
     supabase.auth
       .getSession()
       .then(({ data: { session }, error }) => {
+        if (!mounted) return;
         clearTimeout(timeoutId);
+
         if (error) {
           console.error('❌ [HOME] Session error:', error);
           // Clear invalid session data
@@ -5415,11 +4355,12 @@ export default function Home() {
             supabase.auth.signOut();
           }
         }
-        console.log('📥 [HOME] Initial session:', !!session);
+        console.log('📥 [HOME] Initial session:', session ? 'EXISTS' : 'NULL');
         setSession(session);
         setLoading(false);
       })
       .catch((error) => {
+        if (!mounted) return;
         clearTimeout(timeoutId);
         console.error('💥 [HOME] Session initialization failed:', error);
         setLoading(false);
@@ -5443,6 +4384,7 @@ export default function Home() {
 
     return () => {
       console.log('🔚 [HOME] Cleaning up auth subscription');
+      mounted = false;
       clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
@@ -5451,8 +4393,13 @@ export default function Home() {
   // Show loading
   if (loading) {
     return (
-      <div className='min-h-screen flex items-center justify-center'>
-        <div className='text-lg'>Loading...</div>
+      <div className='min-h-screen flex items-center justify-center bg-slate-50'>
+        <div className='text-center'>
+          <div className='text-lg font-semibold text-slate-700 mb-2'>
+            Loading Ocean Integrity...
+          </div>
+          <div className='text-sm text-slate-500'>Initializing session</div>
+        </div>
       </div>
     );
   }

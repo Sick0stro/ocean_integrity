@@ -1,0 +1,42 @@
+tablename,indexname,indexdef
+business_rules,business_rules_pkey,CREATE UNIQUE INDEX business_rules_pkey ON public.business_rules USING btree (id)
+business_rules,business_rules_rule_name_key,CREATE UNIQUE INDEX business_rules_rule_name_key ON public.business_rules USING btree (rule_name)
+business_rules,idx_business_rules_active,CREATE INDEX idx_business_rules_active ON public.business_rules USING btree (is_active)
+business_rules,idx_business_rules_country,CREATE INDEX idx_business_rules_country ON public.business_rules USING btree (country)
+business_rules,idx_business_rules_priority,CREATE INDEX idx_business_rules_priority ON public.business_rules USING btree (priority)
+document_groups,document_groups_pkey,CREATE UNIQUE INDEX document_groups_pkey ON public.document_groups USING btree (id)
+document_groups,document_groups_user_id_group_key_key,"CREATE UNIQUE INDEX document_groups_user_id_group_key_key ON public.document_groups USING btree (user_id, group_key)"
+document_groups,idx_document_groups_can_verify,CREATE INDEX idx_document_groups_can_verify ON public.document_groups USING btree (can_verify)
+document_groups,idx_document_groups_complete,CREATE INDEX idx_document_groups_complete ON public.document_groups USING btree (is_complete)
+document_groups,idx_document_groups_confidence,CREATE INDEX idx_document_groups_confidence ON public.document_groups USING btree (confidence_score) WHERE (confidence_score < 100)
+document_groups,idx_document_groups_country,CREATE INDEX idx_document_groups_country ON public.document_groups USING btree (country)
+document_groups,idx_document_groups_grouping_version,CREATE INDEX idx_document_groups_grouping_version ON public.document_groups USING btree (grouping_version) WHERE (grouping_version IS NOT NULL)
+document_groups,idx_document_groups_human_verified,CREATE INDEX idx_document_groups_human_verified ON public.document_groups USING btree (human_verified)
+document_groups,idx_document_groups_needs_verification,CREATE INDEX idx_document_groups_needs_verification ON public.document_groups USING btree (needs_human_verification) WHERE (needs_human_verification = true)
+document_groups,idx_document_groups_phase,CREATE INDEX idx_document_groups_phase ON public.document_groups USING btree (grouping_phase)
+document_groups,idx_document_groups_processing,CREATE INDEX idx_document_groups_processing ON public.document_groups USING btree (last_processed_at)
+document_groups,idx_document_groups_promoted,CREATE INDEX idx_document_groups_promoted ON public.document_groups USING btree (is_promoted)
+document_groups,idx_document_groups_user_complete,"CREATE INDEX idx_document_groups_user_complete ON public.document_groups USING btree (user_id, is_complete)"
+document_groups,idx_document_groups_user_group_key,"CREATE INDEX idx_document_groups_user_group_key ON public.document_groups USING btree (user_id, group_key)"
+document_groups,idx_document_groups_user_id,CREATE INDEX idx_document_groups_user_id ON public.document_groups USING btree (user_id)
+document_groups,idx_document_groups_user_verified,"CREATE INDEX idx_document_groups_user_verified ON public.document_groups USING btree (user_id, human_verified)"
+document_groups,idx_document_groups_verification_workflow,"CREATE INDEX idx_document_groups_verification_workflow ON public.document_groups USING btree (user_id, needs_human_verification, created_at) WHERE (needs_human_verification = true)"
+document_groups,idx_document_groups_verified,CREATE INDEX idx_document_groups_verified ON public.document_groups USING btree (is_human_verified)
+parsed_documents,idx_parsed_documents_duplicate_group,CREATE INDEX idx_parsed_documents_duplicate_group ON public.parsed_documents USING btree (duplicate_group_id)
+parsed_documents,idx_parsed_documents_file_url,CREATE INDEX idx_parsed_documents_file_url ON public.parsed_documents USING btree (file_url)
+parsed_documents,idx_parsed_documents_fingerprint,CREATE INDEX idx_parsed_documents_fingerprint ON public.parsed_documents USING btree (business_fingerprint)
+parsed_documents,idx_parsed_documents_user_id,CREATE INDEX idx_parsed_documents_user_id ON public.parsed_documents USING btree (user_id)
+parsed_documents,idx_pd_basename,"CREATE INDEX idx_pd_basename ON public.parsed_documents USING btree (""substring""(file_url, '[^/]+$'::text))"
+parsed_documents,parsed_documents_pkey,CREATE UNIQUE INDEX parsed_documents_pkey ON public.parsed_documents USING btree (id)
+recycling_docs,idx_recycling_docs_status,CREATE INDEX idx_recycling_docs_status ON public.recycling_docs USING btree (status)
+recycling_docs,recycling_docs_invoice_number_key,CREATE UNIQUE INDEX recycling_docs_invoice_number_key ON public.recycling_docs USING btree (invoice_number)
+recycling_docs,recycling_docs_pkey,CREATE UNIQUE INDEX recycling_docs_pkey ON public.recycling_docs USING btree (id)
+single_documents,idx_single_documents_upload_batch_status,"CREATE INDEX idx_single_documents_upload_batch_status ON public.single_documents USING btree (upload_batch_id, status, user_id)"
+single_documents,idx_single_documents_user_id,CREATE INDEX idx_single_documents_user_id ON public.single_documents USING btree (user_id)
+single_documents,single_documents_pkey,CREATE UNIQUE INDEX single_documents_pkey ON public.single_documents USING btree (id)
+single_documents,single_documents_upload_date_idx,CREATE INDEX single_documents_upload_date_idx ON public.single_documents USING btree (upload_date DESC)
+single_documents,single_documents_user_id_idx,CREATE INDEX single_documents_user_id_idx ON public.single_documents USING btree (user_id)
+temp_documents,documents_pkey,CREATE UNIQUE INDEX documents_pkey ON public.temp_documents USING btree (id)
+temp_documents,idx_documents_upload_date,CREATE INDEX idx_documents_upload_date ON public.temp_documents USING btree (upload_date DESC)
+temp_documents,idx_documents_user_id,CREATE INDEX idx_documents_user_id ON public.temp_documents USING btree (user_id)
+temp_documents,idx_temp_documents_upload_batch,"CREATE INDEX idx_temp_documents_upload_batch ON public.temp_documents USING btree (upload_batch_id, user_id)"

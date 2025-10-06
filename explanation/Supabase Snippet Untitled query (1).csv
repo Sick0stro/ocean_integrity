@@ -1,0 +1,3 @@
+from_table,to_table,via_column
+single_documents,temp_documents,temp_document_id
+document_groups,business_rules,applied_rule_name
