@@ -80,71 +80,9 @@ import { VideoText } from '@/components/magicui/video-text';
 import { Session } from '@supabase/supabase-js';
 import { LoginForm } from '@/components/login-form';
 import { GalleryVerticalEnd } from 'lucide-react';
-import { isSameInvoice, getInvoiceGroupKey } from '@/lib/invoiceUtils';
 import { supabase } from '@/utils/supabase-browser';
 import { DataManagementDashboard } from '@/components/data-management-dashboard';
 import DashboardView from '@/components/dashboard-view';
-
-interface GroupDoc {
-  id: string;
-  document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
-  file_url: string | null;
-  created_at: string;
-  raw_json: Record<string, unknown>;
-  docs?: {
-    id: string;
-    document_type: 'invoice' | 'eft_receipt' | 'e-way-bill';
-    created_at: string;
-    raw_json: Record<string, unknown>;
-  };
-}
-
-type InvoiceGroup = {
-  // Original frontend properties (for compatibility)
-  invoice: string;
-  docs: Partial<Record<'invoice' | 'eft_receipt' | 'e-way-bill', GroupDoc[]>>;
-
-  // 🚀 NEW: Backend-provided properties
-  invoiceKey?: string;
-  invoiceNumber?: string;
-  isComplete?: boolean;
-  completionCount?: number;
-  requiredCount?: number;
-  missingTypes?: string[];
-  presentTypes?: string[];
-  completionPercentage?: number;
-
-  // Backend metadata
-  country?: string | null;
-  recyclerCompany?: string | null;
-  plasticType?: string | null;
-  appliedRuleName?: string | null;
-  lastProcessedAt?: string;
-
-  // Human verification (moved from recycling_docs)
-  human_verified?: boolean;
-  verified_at?: string | null;
-
-  processingLogs?: {
-    backendGrouped?: boolean;
-    groupId?: string;
-    ruleName?: string;
-    requiredTypes?: string[];
-    optionalTypes?: string[];
-    groupingPhase?: 'exact' | 'fuzzy';
-    needsHumanVerification?: boolean;
-    verificationReason?: string | null;
-  };
-  needsHumanVerification?: boolean;
-  verificationReason?: string | null;
-  groupingPhase?: 'exact' | 'fuzzy';
-};
-
-// Define the shape of the submit result
-interface SubmitResult {
-  ok: boolean;
-  message: string;
-}
 
 interface HomeContentProps {
   session: Session;
@@ -159,7 +97,6 @@ function HomeContent({ session }: HomeContentProps) {
     ProcessedDocument[]
   >([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isDocumentsLoaded, setIsDocumentsLoaded] = useState(false);
 
   // Preprocessing state (NEW)
   const [isPreprocessing, setIsPreprocessing] = useState(false);
@@ -170,12 +107,6 @@ function HomeContent({ session }: HomeContentProps) {
   const [activeTab, setActiveTab] = useState<
     'upload' | 'results' | 'dashboard' | 'blockchain' | 'data'
   >('upload');
-
-  // Document grouping state (DEPRECATED - kept for old data structure compatibility)
-  const [recyclingDocs, setRecyclingDocs] = useState<
-    Record<string, RecyclingDocument>
-  >({});
-  const [hasInitializedGroups, setHasInitializedGroups] = useState(false);
 
   // 🚀 NEW: Blockchain tab state - for verified recycling docs
   const [verifiedDocs, setVerifiedDocs] = useState<
@@ -522,9 +453,6 @@ function HomeContent({ session }: HomeContentProps) {
   // Backend grouping state
   const [isGroupingInProgress, setIsGroupingInProgress] = useState(false);
 
-  // Track active polling intervals to prevent duplicates
-  const activePollingRef = useRef<NodeJS.Timeout | null>(null);
-
   // Poll for updated Plastiks submission details (DEPRECATED - no longer used)
   // const [submitResult, setSubmitResult] = useState<Record<string, SubmitResult>>({});
 
@@ -662,7 +590,6 @@ function HomeContent({ session }: HomeContentProps) {
           console.log(
             `🔄 Frontend: [grouping:${groupingId}] Old grouping system (deprecated)`
           );
-          setHasInitializedGroups(false);
 
           // Log rules applied
           if (
@@ -714,185 +641,6 @@ function HomeContent({ session }: HomeContentProps) {
     },
     [session?.user?.id, session?.access_token, isGroupingInProgress]
   );
-
-  // Build/merge a single parsed_documents row into groups map
-  const mergeRowIntoGroups = useCallback(
-    (row: GroupDoc, map: Record<string, InvoiceGroup>) => {
-      // Use imported functions with user scoping for better isolation
-
-      // Define isCompleteGroup inside useCallback to avoid dependency issues
-      const isCompleteGroup = (
-        invoiceKey: string,
-        groups: Record<string, InvoiceGroup>
-      ) => {
-        const group = groups[invoiceKey];
-        if (!group) return false;
-
-        const hasInvoice = (group.docs.invoice?.length || 0) > 0;
-        const hasEftReceipt = (group.docs.eft_receipt?.length || 0) > 0;
-        const hasEWayBill = (group.docs['e-way-bill']?.length || 0) > 0;
-
-        return hasInvoice && hasEftReceipt && hasEWayBill;
-      };
-
-      try {
-        console.group(`Processing document ${row.id} (${row.document_type})`);
-
-        // Helper function to ensure a group exists for an invoice key and add the document to it
-        const ensureGroup = (invoiceKey: string) => {
-          if (!invoiceKey) {
-            console.log('Skipping empty invoice key');
-            return;
-          }
-
-          console.log(`Ensuring group for invoice: '${invoiceKey}'`);
-
-          // Skip if this invoice is already part of a complete group
-          if (isCompleteGroup(invoiceKey, map)) {
-            console.log(
-              `Skipping '${invoiceKey}' - already part of a complete group`
-            );
-            return;
-          }
-
-          // Find existing group with matching invoice number (handling different formats)
-          const existingKey = Object.keys(map).find((key) =>
-            isSameInvoice(key, invoiceKey)
-          );
-
-          const groupKey =
-            existingKey || getInvoiceGroupKey(invoiceKey, session.user.id);
-
-          if (!map[groupKey]) {
-            console.log(`Creating new group for invoice: '${invoiceKey}'`);
-            map[groupKey] = {
-              invoice: invoiceKey,
-              docs: {},
-            };
-          }
-
-          // Add document to the appropriate document type array
-          const docType = row.document_type;
-          if (!map[groupKey].docs[docType]) {
-            map[groupKey].docs[docType] = [];
-          }
-
-          // Check if this document is already in the group to avoid duplicates
-          if (!map[groupKey].docs[docType]?.some((doc) => doc.id === row.id)) {
-            map[groupKey].docs[docType] = [
-              ...(map[groupKey].docs[docType] || []),
-              row,
-            ];
-            console.log(
-              `Added document ${row.id} to group ${groupKey} as type ${docType}`
-            );
-          }
-        };
-
-        // Get the primary invoice key from the document
-        const rj = (row.raw_json || {}) as Record<string, unknown>;
-        const primary = ((rj.anchor_key || rj.invoice || '') as string)
-          .toString()
-          .trim();
-
-        if (primary) {
-          console.log(`Primary invoice for document ${row.id}: '${primary}'`);
-          ensureGroup(primary);
-        } else {
-          console.warn(`No primary invoice found for document ${row.id}`);
-        }
-
-        // Handle EFT receipts that reference other invoices
-        if (row.document_type === 'eft_receipt') {
-          const secondInvoice = ((rj.second_invoice || '') as string).trim();
-          const thirdInvoice = ((rj.third_invoice || '') as string).trim();
-
-          console.log('Processed EFT receipt with references:', {
-            id: row.id,
-            primary,
-            secondInvoice,
-            thirdInvoice,
-          });
-
-          // Process additional invoices if they're different from primary
-          if (secondInvoice && secondInvoice !== primary) {
-            console.log(`Processing second_invoice: ${secondInvoice}`);
-            ensureGroup(secondInvoice);
-          }
-
-          if (
-            thirdInvoice &&
-            thirdInvoice !== primary &&
-            thirdInvoice !== secondInvoice
-          ) {
-            console.log(`Processing third_invoice: ${thirdInvoice}`);
-            ensureGroup(thirdInvoice);
-          }
-        }
-      } catch (error) {
-        console.error('Error in mergeRowIntoGroups:', error);
-      } finally {
-        console.groupEnd();
-      }
-    },
-    [session.user.id] // Added session.user.id for user-scoped grouping
-  );
-
-  // 🚀 PERFORMANCE FIX: Lazy load recycling docs only when Push to Plastiks tab is active
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadRecyclingDocs = async () => {
-      // Only load recycling docs when on blockchain tab (not during document processing)
-      if (activeTab !== 'blockchain' || !isDocumentsLoaded) return;
-
-      try {
-        console.log('📊 [PERFORMANCE] Loading recycling docs...');
-        console.time('⏱️ [PERFORMANCE] Recycling docs loading');
-
-        const supa = getSupabaseBrowser();
-        const { data, error } = await supa
-          .from('recycling_docs')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (!cancelled && !error && data) {
-          console.log(`✅ [PERFORMANCE] Loaded ${data.length} recycling docs`);
-          const docsMap = data.reduce(
-            (acc, doc) => ({
-              ...acc,
-              [doc.invoice_number]: {
-                ...doc,
-                // Ensure we have all required fields with defaults
-                tonnage_tons: doc.tonnage_tons || 0,
-                country: doc.country || doc.origin || '',
-                plastic_type: doc.plastic_type || 'Unknown',
-                recycler_company: doc.recycler_company || 'Unknown',
-                plastiks_collection_id: doc.plastiks_collection_id || null,
-                plastiks_collection_address:
-                  doc.plastiks_collection_address || null,
-                plastiks_metadata_hash: doc.plastiks_metadata_hash || null,
-                plastiks_submitted_at: doc.plastiks_submitted_at || null,
-              },
-            }),
-            {}
-          );
-          setRecyclingDocs(docsMap);
-        }
-      } catch (error) {
-        // Silently handle loading errors
-        console.log('⚠️ Recycling docs loading encountered an issue', error);
-      } finally {
-        console.timeEnd('⏱️ [PERFORMANCE] Recycling docs loading');
-      }
-    };
-
-    loadRecyclingDocs();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isDocumentsLoaded, activeTab]);
 
   // 🚀 Load processed documents from database on component mount
   useEffect(() => {
@@ -2604,7 +2352,6 @@ function HomeContent({ session }: HomeContentProps) {
         console.log(
           `🔄 Frontend: Processing completed for ${processedCount} new documents`
         );
-        setHasInitializedGroups(false);
       }
     } catch (batchError) {
       console.error(`💥 Frontend: Batch processing error:`, batchError);
