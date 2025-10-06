@@ -215,7 +215,6 @@ function HomeContent({ session }: HomeContentProps) {
     }>
   >([]);
 
-
   // 🚀 NEW: Fetch failed documents
   const fetchFailedDocuments = useCallback(async () => {
     if (!session?.user?.id) return;
@@ -703,7 +702,6 @@ function HomeContent({ session }: HomeContentProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitResult]); // 🚀 CRITICAL FIX: Removed recyclingDocs to prevent infinite loop
 
-
   // Blob URLs for PDF previews - moved to the main state section
 
   // 🚀 MATCHING SERVICE TRIGGER (New - replaces grouping)
@@ -1117,9 +1115,9 @@ function HomeContent({ session }: HomeContentProps) {
         // Set the documents directly - these are the processed documents that should ALWAYS be in Review
         setProcessedDocuments(convertedDocs);
         console.log(
-        `✅ [REVIEW] Set ${convertedDocs.length} documents from database to Review tab`
-      );
-    } catch (error) {
+          `✅ [REVIEW] Set ${convertedDocs.length} documents from database to Review tab`
+        );
+      } catch (error) {
         console.error('💥 [REVIEW] Error loading processed documents:', error);
       }
     };
@@ -1228,7 +1226,10 @@ function HomeContent({ session }: HomeContentProps) {
           console.log('🔍 [GROUPS] Rules applied:', [
             ...new Set(
               data
-                .map((d: { applied_rule_name?: string | null }) => d.applied_rule_name)
+                .map(
+                  (d: { applied_rule_name?: string | null }) =>
+                    d.applied_rule_name
+                )
                 .filter(Boolean)
             ),
           ]);

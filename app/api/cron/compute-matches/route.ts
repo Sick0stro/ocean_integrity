@@ -8,6 +8,28 @@ import { getSupabaseAdmin } from '@/utils/supabase';
 // Python API configuration
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
 
+// Python API response types
+interface PythonMatchedRecord {
+  user_id: string;
+  user_name?: string;
+  invoice_file_url?: string;
+  ewaybill_file_url?: string;
+  invoice_weight_mt?: number;
+  bill_from_company_name?: string;
+  ship_to_company_name?: string;
+  plastic_type?: string;
+  ship_to_country_code?: string;
+  vehicle_number?: string;
+  invoice?: string;
+  invoice_date?: string;
+  generated_date?: string;
+  flagged: string; // 'yes' or 'no'
+  flag_reason?: string;
+  flagged_pair_value?: string;
+  in_compliance: string; // 'yes' or 'no'
+  created_at?: string;
+}
+
 export async function POST(req: Request) {
   const requestId = Math.random().toString(36).substring(2, 15);
   const startTime = Date.now();
@@ -109,10 +131,104 @@ export async function POST(req: Request) {
         );
       }
 
+      // 🔍 LOOKUP: Get document IDs from file URLs
+      console.log(
+        `🔍 [matching:${requestId}] Looking up document IDs from file URLs...`
+      );
+
+      const fileUrls = new Set<string>();
+      matchingResult.records.forEach((record: PythonMatchedRecord) => {
+        if (record.invoice_file_url) fileUrls.add(record.invoice_file_url);
+        if (record.ewaybill_file_url) fileUrls.add(record.ewaybill_file_url);
+      });
+
+      const { data: documents, error: lookupError } = await supabase
+        .from('parsed_documents')
+        .select('id, file_url')
+        .in('file_url', Array.from(fileUrls));
+
+      if (lookupError) {
+        console.error(
+          `❌ [matching:${requestId}] Error looking up document IDs:`,
+          lookupError
+        );
+        throw new Error(
+          `Failed to lookup document IDs: ${lookupError.message}`
+        );
+      }
+
+      // Create a map of file_url -> id
+      const fileUrlToId = new Map<string, string>();
+      documents?.forEach((doc) => {
+        fileUrlToId.set(doc.file_url, doc.id);
+      });
+
+      console.log(
+        `✅ [matching:${requestId}] Found ${fileUrlToId.size} document IDs`
+      );
+
+      // 🔄 TRANSFORM: Map Python API response to Supabase schema
+      const transformedRecords = matchingResult.records
+        .map((record: PythonMatchedRecord) => {
+          const invoice_id = record.invoice_file_url
+            ? fileUrlToId.get(record.invoice_file_url)
+            : undefined;
+          const eway_id = record.ewaybill_file_url
+            ? fileUrlToId.get(record.ewaybill_file_url)
+            : undefined;
+
+          if (!invoice_id || !eway_id) {
+            console.warn(
+              `⚠️ [matching:${requestId}] Skipping record - missing IDs:`,
+              {
+                invoice_file_url: record.invoice_file_url,
+                eway_file_url: record.ewaybill_file_url,
+                invoice_id,
+                eway_id,
+              }
+            );
+            return null;
+          }
+
+          return {
+            user_id: record.user_id,
+            invoice_id, // ✅ Looked up from parsed_documents
+            eway_id, // ✅ Looked up from parsed_documents
+            invoice_number: record.invoice || '',
+            invoice_date: record.invoice_date,
+            generated_date: record.generated_date,
+            invoice_weight_kg: record.invoice_weight_mt
+              ? record.invoice_weight_mt * 1000
+              : null,
+            eway_weight_kg: null, // Will be computed from eway data
+            invoice_vehicle: record.vehicle_number,
+            eway_vehicle: record.vehicle_number,
+            bill_from_company: record.bill_from_company_name, // ✅ Remove _name suffix
+            ship_from_company: null, // Will be extracted from eway data
+            ship_to_company: record.ship_to_company_name, // ✅ Remove _name suffix
+            plastic_type: record.plastic_type,
+            country: record.ship_to_country_code,
+            invoice_file_url: record.invoice_file_url,
+            eway_file_url: record.ewaybill_file_url,
+            flagged: record.flagged === 'yes',
+            flag_reasons: record.flag_reason ? [record.flag_reason] : [],
+            flagged_details: record.flagged_pair_value
+              ? { details: record.flagged_pair_value }
+              : null,
+            in_compliance: record.in_compliance === 'yes',
+            created_at: record.created_at,
+          };
+        })
+        .filter(Boolean); // Remove null entries
+
+      console.log(
+        `🔄 [matching:${requestId}] Transformed ${transformedRecords.length} records for database`
+      );
+
       // Insert new matches
       const { error: insertError } = await supabase
         .from('matched_records')
-        .insert(matchingResult.records);
+        .insert(transformedRecords);
 
       if (insertError) {
         console.error(
