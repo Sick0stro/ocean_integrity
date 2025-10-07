@@ -43,8 +43,10 @@ class MatchedRecord(BaseModel):
     invoice_weight_mt: int
     bill_from_company_name: Optional[str]
     ship_to_company_name: Optional[str]
+    bill_to_address: Optional[str]
     plastic_type: str
     ship_to_country_code: str
+    city: Optional[str]
     vehicle_number: Optional[str]
     generated_date: Optional[str]
     created_at: str
@@ -152,6 +154,7 @@ async def compute_matches(request: ComputeMatchesRequest):
                     'vehicle_number': raw_json.get('vehicle_number'),
                     'bill_from_company_name': raw_json.get('bill_from_company_name'),
                     'bill_to_company_name': raw_json.get('bill_to_company_name'),
+                    'bill_to_address': raw_json.get('bill_to_address'),
                     'plastic_type': raw_json.get('plastic_type'),
                     'weight': raw_json.get('weight'),
                     'weight_kg': backend.normalize_weight_decimal_rule(raw_json.get('weight'))
@@ -213,6 +216,19 @@ async def compute_matches(request: ComputeMatchesRequest):
         
         print(f"✅ [matching-api] Computed {len(matched_df)} matches")
         
+        # Extract cities from bill_to_address using Gemini API
+        if not matched_df.empty and 'bill_to_address' in matched_df.columns:
+            unique_addresses = matched_df['bill_to_address'].dropna().unique().tolist()
+            if unique_addresses:
+                print(f"🌍 [matching-api] Extracting cities for {len(unique_addresses)} addresses...")
+                city_cache = backend.extract_cities_with_gemini(unique_addresses)
+                matched_df['city'] = matched_df['bill_to_address'].map(city_cache).fillna('')
+                print(f"✅ [matching-api] City extraction completed")
+            else:
+                matched_df['city'] = ''
+        else:
+            matched_df['city'] = ''
+        
         # Convert to response format
         records = []
         for _, row in matched_df.iterrows():
@@ -224,8 +240,10 @@ async def compute_matches(request: ComputeMatchesRequest):
                 invoice_weight_mt=int(row['invoice_weight_mt']) if pd.notna(row['invoice_weight_mt']) else 0,
                 bill_from_company_name=row.get('bill_from_company_name'),
                 ship_to_company_name=row.get('ship_to_company_name'),
+                bill_to_address=row.get('bill_to_address'),
                 plastic_type=str(row.get('plastic_type', '')),
                 ship_to_country_code=str(row.get('ship_to_country_code', '')),
+                city=row.get('city', ''),
                 vehicle_number=row.get('vehicle_number'),
                 generated_date=row.get('generated_date'),
                 created_at=str(row.get('created_at', '')),
