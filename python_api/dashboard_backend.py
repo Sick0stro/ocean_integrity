@@ -1,7 +1,8 @@
 import pandas as pd
-import json, ast, math, os, re
+import json, ast, math, os, re, time, random, requests
 from difflib import SequenceMatcher
 from datetime import datetime
+from tqdm import tqdm
 
 # ---------- User Map ----------
 USER_MAP = {
@@ -13,6 +14,75 @@ USER_MAP = {
     "f3115200-2cb9-483e-8651-946a2b5c1c87": "alishees",
     "c9c61043-ce21-4303-bb16-61f883f2f619": "dimemilkov"
 }
+
+# ---------- Gemini API Configuration ----------
+GEMINI_API_KEY = "AIzaSyAg1UqA4Myemif1fpa_hXQk570rHfO3da8"
+CITY_CACHE_FILE = "city_cache.json"
+BATCH_SIZE = 50
+BATCH_DELAY = 3  # fixed 3-second delay between batches
+
+# ---------- Gemini City Extraction ----------
+def gemini_batch_city_extraction(addresses, max_retries=5):
+    """Call Gemini 2.5-Flash for up to 50 addresses with retry logic."""
+    joined = "\n".join([f"{i+1}. {addr}" for i, addr in enumerate(addresses)])
+    prompt = f"""
+You are a precise location extraction model.
+Extract only the city name from each address below.
+
+Return valid JSON list like:
+[{{"index":1,"city":"Indore"}},{{"index":2,"city":"Dubai"}}]
+
+Addresses:
+{joined}
+"""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    headers = {"Content-Type": "application/json"}
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=90)
+            r.raise_for_status()
+            data = r.json()
+            text = (
+                data.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+            )
+            match = re.search(r"\[.*\]", text, re.S)
+            if match:
+                return json.loads(match.group(0))
+        except Exception as e:
+            print(f"[Gemini Error] Attempt {attempt}/{max_retries}: {e}")
+            if attempt < max_retries:
+                sleep_time = min(20, 2 ** attempt + random.random() * 2)
+                print(f"⏳ Retrying in {sleep_time:.1f}s...")
+                time.sleep(sleep_time)
+            else:
+                print("❌ All retries failed for this batch.")
+    return []
+
+def extract_cities_with_gemini(addresses):
+    """Batch through unique addresses, save progress to cache."""
+    city_cache = json.load(open(CITY_CACHE_FILE)) if os.path.exists(CITY_CACHE_FILE) else {}
+    new_addrs = [a for a in addresses if a not in city_cache and isinstance(a, str) and a.strip()]
+    print(f"🌍 {len(new_addrs)} new addresses to process...")
+
+    for i in tqdm(range(0, len(new_addrs), BATCH_SIZE), desc="Extracting Cities", ncols=100):
+        batch = new_addrs[i:i+BATCH_SIZE]
+        results = gemini_batch_city_extraction(batch)
+        for item in results:
+            try:
+                addr = batch[item["index"] - 1]
+                city = item.get("city", "").strip()
+                if city:
+                    city_cache[addr] = city
+            except Exception:
+                continue
+        json.dump(city_cache, open(CITY_CACHE_FILE, "w"), indent=2)
+        time.sleep(BATCH_DELAY)  # ✅ fixed 3s delay between every batch
+    return city_cache
 
 # ---------- Utility Functions ----------
 def parse_raw_json(x):
@@ -225,6 +295,7 @@ def recompute_matches(inv_norm, eway_norm, user_id, user_name):
             "invoice_weight_mt": invoice_weight_mt if invoice_weight_mt is not None else 0,
             "bill_from_company_name": best.get("bill_from_company_name"),
             "ship_to_company_name": e.get("ship_to_company_name"),
+            "bill_to_address": best.get("bill_to_address"),
             "plastic_type": plastic_type,
             "ship_to_country_code": (e.get("ship_to_country_code") or "").upper(),
             "vehicle_number": e.get("vehicle_number"),
@@ -264,6 +335,7 @@ def run_pipeline_to_single_csv(input_file, output_dir="."):
                 "vehicle_number": d.get("vehicle_number"),
                 "bill_from_company_name": d.get("bill_from_company_name"),
                 "bill_to_company_name": d.get("bill_to_company_name"),
+                "bill_to_address": d.get("bill_to_address"),
                 "plastic_type": d.get("plastic_type"),
                 "weight": d.get("weight"), "weight_kg": normalize_weight_decimal_rule(d.get("weight")),
             })
@@ -310,14 +382,20 @@ def run_pipeline_to_single_csv(input_file, output_dir="."):
 
     final_df = pd.concat(out_frames, ignore_index=True) if out_frames else pd.DataFrame(columns=[
         "user_id","user_name","invoice_file_url","ewaybill_file_url","invoice_weight_mt",
-        "bill_from_company_name","ship_to_company_name","plastic_type",
+        "bill_from_company_name","ship_to_company_name","bill_to_address","plastic_type",
         "ship_to_country_code","vehicle_number","generated_date","created_at",
-        "flagged","flag_reason","flagged_pair_value","in_compliance"
+        "flagged","flag_reason","flagged_pair_value","in_compliance","city"
     ])
 
+    # Extract cities from bill_to_address using Gemini API
+    if not final_df.empty:
+        unique_addresses = final_df["bill_to_address"].dropna().unique().tolist()
+        city_cache = extract_cities_with_gemini(unique_addresses)
+        final_df["city"] = final_df["bill_to_address"].map(city_cache).fillna("")
+
     col_order = ["user_id","user_name","invoice_file_url","ewaybill_file_url","invoice_weight_mt",
-        "bill_from_company_name","ship_to_company_name","plastic_type","ship_to_country_code","vehicle_number",
-        "generated_date","created_at","flagged","flag_reason","flagged_pair_value","in_compliance"]
+        "bill_from_company_name","ship_to_company_name","bill_to_address","plastic_type","ship_to_country_code","vehicle_number",
+        "generated_date","created_at","flagged","flag_reason","flagged_pair_value","in_compliance","city"]
     for c in col_order:
         if c not in final_df.columns: final_df[c] = ""
     final_df = final_df[col_order]
