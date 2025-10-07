@@ -17,8 +17,10 @@ interface PythonMatchedRecord {
   invoice_weight_mt?: number;
   bill_from_company_name?: string;
   ship_to_company_name?: string;
+  bill_to_address?: string;
   plastic_type?: string;
   ship_to_country_code?: string;
+  city?: string;
   vehicle_number?: string;
   invoice?: string;
   invoice_date?: string;
@@ -212,6 +214,7 @@ export async function POST(req: Request) {
             ship_to_company: record.ship_to_company_name, // ✅ Remove _name suffix
             plastic_type: record.plastic_type,
             country: record.ship_to_country_code,
+            city: record.city || null, // ✅ City from Gemini API
             invoice_file_url: record.invoice_file_url,
             eway_file_url: record.ewaybill_file_url,
             flagged: record.flagged === 'yes',

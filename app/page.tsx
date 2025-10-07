@@ -3297,6 +3297,14 @@ function HomeContent({ session }: HomeContentProps) {
                                         {doc.country || 'N/A'}
                                       </div>
                                     </div>
+                                    <div>
+                                      <div className='text-slate-500 text-xs font-medium mb-1'>
+                                        City
+                                      </div>
+                                      <div className='text-sm text-slate-700'>
+                                        {doc.city || 'N/A'}
+                                      </div>
+                                    </div>
                                   </div>
 
                                   {/* Document Links */}

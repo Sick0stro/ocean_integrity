@@ -363,6 +363,7 @@ export default function DashboardView({ session }: DashboardViewProps) {
                     <th className='text-left p-2 font-medium'>To Company</th>
                     <th className='text-left p-2 font-medium'>Plastic Type</th>
                     <th className='text-left p-2 font-medium'>Country</th>
+                    <th className='text-left p-2 font-medium'>City</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -399,6 +400,9 @@ export default function DashboardView({ session }: DashboardViewProps) {
                       </td>
                       <td className='p-2'>{record.plastic_type as string}</td>
                       <td className='p-2'>{record.country as string}</td>
+                      <td className='p-2'>
+                        {(record.city as string) || 'N/A'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -434,6 +438,7 @@ export default function DashboardView({ session }: DashboardViewProps) {
                     <th className='text-left p-2 font-medium'>Eway Bill</th>
                     <th className='text-left p-2 font-medium'>Weight (MT)</th>
                     <th className='text-left p-2 font-medium'>From Company</th>
+                    <th className='text-left p-2 font-medium'>City</th>
                     <th className='text-left p-2 font-medium'>Flag Reasons</th>
                     <th className='text-left p-2 font-medium'>Actions</th>
                   </tr>
@@ -466,6 +471,9 @@ export default function DashboardView({ session }: DashboardViewProps) {
                       </td>
                       <td className='p-2'>
                         {record.bill_from_company as string}
+                      </td>
+                      <td className='p-2'>
+                        {(record.city as string) || 'N/A'}
                       </td>
                       <td className='p-2'>
                         <span className='text-red-600 font-medium'>
