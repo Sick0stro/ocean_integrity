@@ -43,6 +43,7 @@ interface RecyclingDocument {
   eway_vehicle?: string;
   invoice_file_url?: string;
   eway_file_url?: string;
+  city?: string;
 }
 
 import {
@@ -751,7 +752,7 @@ function HomeContent({ session }: HomeContentProps) {
         const { data: recyclingDocs, error: recyclingError } = await supabase
           .from('recycling_docs')
           .select(
-            'invoice_number, plastiks_submitted_at, plastiks_collection_id, plastiks_collection_address, plastiks_metadata_hash'
+            'invoice_number, status, city, plastiks_submitted_at, plastiks_collection_id, plastiks_collection_address, plastiks_metadata_hash'
           )
           .eq('user_id', session.user.id);
 
@@ -771,6 +772,8 @@ function HomeContent({ session }: HomeContentProps) {
           {} as Record<
             string,
             {
+              status: string | null;
+              city: string | null;
               plastiks_submitted_at: string | null;
               plastiks_collection_id: string | null;
               plastiks_collection_address: string | null;
@@ -784,6 +787,10 @@ function HomeContent({ session }: HomeContentProps) {
           matchedRecords?.map((record) => ({
             ...record,
             // Add plastiks submission data if it exists
+            status: plastiksMap[record.invoice_number]?.status || null,
+            // Prioritize city from recycling_docs if available, fallback to matched_records
+            city:
+              plastiksMap[record.invoice_number]?.city || record.city || null,
             plastiks_submitted_at:
               plastiksMap[record.invoice_number]?.plastiks_submitted_at || null,
             plastiks_collection_id:
@@ -810,6 +817,9 @@ function HomeContent({ session }: HomeContentProps) {
           `✅ [BLOCKCHAIN] Loaded ${data?.length || 0} verified documents`
         );
 
+        // DEBUG: Log the raw data to see what we're getting
+        console.log('🔍 [BLOCKCHAIN_DEBUG] Raw data sample:', data?.[0]);
+
         if (data && data.length > 0) {
           // Convert to map format for easy access
           const verifiedMap = data.reduce(
@@ -827,6 +837,20 @@ function HomeContent({ session }: HomeContentProps) {
             }),
             {}
           );
+
+          // DEBUG: Log a sample to see if status field is present
+          const sampleKey = Object.keys(verifiedMap)[0];
+          if (sampleKey) {
+            console.log('🔍 [BLOCKCHAIN_DEBUG] Sample doc:', {
+              invoice: sampleKey,
+              status: verifiedMap[sampleKey].status,
+              plastiks_submitted_at:
+                verifiedMap[sampleKey].plastiks_submitted_at,
+              has_status_field: 'status' in verifiedMap[sampleKey],
+              CRITICAL_ISSUE:
+                sampleKey === '' ? '⚠️ INVOICE NUMBER IS EMPTY!' : null,
+            });
+          }
 
           setVerifiedDocs(verifiedMap);
           console.log(
@@ -875,6 +899,17 @@ function HomeContent({ session }: HomeContentProps) {
       console.log(`👤 [PLASTIKS_FLOW] User: ${session.user?.email}`);
       console.log(`⏰ [PLASTIKS_FLOW] Started at: ${new Date().toISOString()}`);
 
+      // Prevent submission if invoice number is empty
+      if (!invoice || invoice.trim() === '') {
+        console.error(
+          '❌ [PLASTIKS_FLOW] Cannot submit: Invoice number is empty!'
+        );
+        alert(
+          'Cannot submit to blockchain: This record has no invoice number. Please check the document matching.'
+        );
+        return;
+      }
+
       setIsPushingToPlastiks(true);
 
       try {
@@ -913,25 +948,75 @@ function HomeContent({ session }: HomeContentProps) {
             `📊 [PLASTIKS_FLOW] Processed ${result.processed} document(s)`
           );
 
-          // Immediately update local state to disable button
+          // Extract blockchain details from first result
+          const submittedData = result.results?.[0];
+          console.log(`📋 [PLASTIKS_FLOW] Blockchain details:`, submittedData);
+
+          // Immediately update local state with blockchain details
           console.log(`🔄 [PLASTIKS_FLOW] Step 3: Updating local state`);
-          setVerifiedDocs((prev) => ({
-            ...prev,
-            [invoice]: {
-              ...prev[invoice],
-              plastiks_submitted_at: new Date().toISOString(),
-            },
-          }));
+          setVerifiedDocs((prev) => {
+            const updated = {
+              ...prev,
+              [invoice]: {
+                ...prev[invoice],
+                status: 'submitted',
+                plastiks_submitted_at:
+                  submittedData?.plastiks_submitted_at ||
+                  new Date().toISOString(),
+                plastiks_collection_id:
+                  submittedData?.plastiks_collection_id ||
+                  prev[invoice].plastiks_collection_id,
+                plastiks_collection_address:
+                  submittedData?.plastiks_collection_address ||
+                  prev[invoice].plastiks_collection_address,
+                plastiks_metadata_hash:
+                  submittedData?.plastiks_metadata_hash ||
+                  prev[invoice].plastiks_metadata_hash,
+              },
+            };
+
+            // DEBUG: Log the updated state
+            console.log('🔍 [PLASTIKS_DEBUG] Updated doc state:', {
+              invoice,
+              status: updated[invoice].status,
+              plastiks_submitted_at: updated[invoice].plastiks_submitted_at,
+              button_should_hide: !!(
+                updated[invoice].plastiks_submitted_at ||
+                updated[invoice].status === 'submitted'
+              ),
+            });
+
+            return updated;
+          });
+
+          // Step 3: Add debug logging
+          console.log(
+            `🔍 [PLASTIKS_FLOW] Updated state for invoice '${invoice}':`,
+            {
+              plastiks_submitted_at: submittedData?.plastiks_submitted_at,
+              plastiks_collection_id: submittedData?.plastiks_collection_id,
+              plastiks_collection_address:
+                submittedData?.plastiks_collection_address,
+              plastiks_metadata_hash: submittedData?.plastiks_metadata_hash,
+            }
+          );
 
           console.log(
-            `✅ [PLASTIKS_FLOW] Step 4: Button state updated (disabled)`
+            `✅ [PLASTIKS_FLOW] Step 4: Button state and blockchain details updated`
           );
+
+          // Step 1: Force reload verified docs from database
+          console.log(
+            `🔄 [PLASTIKS_FLOW] Step 5: Triggering data reload from database`
+          );
+          setHasInitializedVerifiedDocs(false);
+
           console.log(
             `🎉 [PLASTIKS_FLOW] ===== PUSH TO PLASTIKS COMPLETED =====\n`
           );
 
           alert(
-            `✅ Successfully submitted to Plastiks blockchain!\n\nInvoice: ${invoice}\nProcessed: ${result.processed} document(s)`
+            `✅ Successfully submitted to Plastiks blockchain!\n\nInvoice: ${invoice}\nCollection ID: ${submittedData?.plastiks_collection_id}\nProcessed: ${result.processed} document(s)`
           );
         } else {
           console.error(`❌ [PLASTIKS_FLOW] Step 2: API call failed`);
@@ -3180,7 +3265,12 @@ function HomeContent({ session }: HomeContentProps) {
                             <div className='flex items-start justify-between gap-4'>
                               <div className='flex-1'>
                                 <div className='font-medium text-slate-800'>
-                                  Invoice: {invoiceKey}
+                                  Invoice:{' '}
+                                  {invoiceKey || (
+                                    <span className='text-red-600'>
+                                      [MISSING INVOICE NUMBER]
+                                    </span>
+                                  )}
                                 </div>
                                 <div className='text-xs text-slate-600'>
                                   Status:{' '}
@@ -3357,7 +3447,8 @@ function HomeContent({ session }: HomeContentProps) {
                                       </div>
                                       <div className='flex items-center gap-1 text-sm font-medium text-green-700'>
                                         <CheckCircle2 className='h-3 w-3' />
-                                        {doc.plastiks_submitted_at
+                                        {doc.plastiks_submitted_at ||
+                                        doc.status === 'submitted'
                                           ? 'Submitted to Blockchain'
                                           : 'Ready for Blockchain'}
                                       </div>
@@ -3365,42 +3456,48 @@ function HomeContent({ session }: HomeContentProps) {
                                   </div>
                                 </div>
 
-                                {/* Push to Plastiks Button */}
-                                <Button
-                                  size='sm'
-                                  disabled={
-                                    isPushingToPlastiks ||
-                                    !!doc.plastiks_submitted_at
-                                  }
-                                  onClick={() =>
-                                    handlePushToPlastiks(invoiceKey)
-                                  }
-                                  className={`w-full gap-2 mt-4 ${
-                                    doc.plastiks_submitted_at
-                                      ? 'bg-gray-400 hover:bg-gray-400 text-white cursor-not-allowed'
-                                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                  }`}
-                                >
-                                  {isPushingToPlastiks ? (
-                                    <span className='flex items-center gap-2'>
-                                      <Loader2 className='h-3 w-3 animate-spin' />
-                                      Pushing to Blockchain...
-                                    </span>
-                                  ) : doc.plastiks_submitted_at ? (
-                                    <span className='flex items-center gap-2'>
-                                      <CheckCircle2 className='h-3 w-3' />
-                                      Submitted to Blockchain
-                                    </span>
-                                  ) : (
-                                    <span className='flex items-center gap-2'>
-                                      <ArrowRight className='h-3 w-3' />
-                                      Push to Plastiks
-                                    </span>
+                                {/* Push to Plastiks Button - Only show if NOT submitted */}
+                                {(() => {
+                                  console.log('🔍 [BUTTON_DEBUG]', {
+                                    invoice: doc.invoice_number,
+                                    status: doc.status,
+                                    plastiks_submitted_at:
+                                      doc.plastiks_submitted_at,
+                                    condition1: !doc.plastiks_submitted_at,
+                                    condition2: doc.status !== 'submitted',
+                                    should_show_button:
+                                      !doc.plastiks_submitted_at &&
+                                      doc.status !== 'submitted',
+                                  });
+                                  return null;
+                                })()}
+                                {!doc.plastiks_submitted_at &&
+                                  doc.status !== 'submitted' && (
+                                    <Button
+                                      size='sm'
+                                      disabled={isPushingToPlastiks}
+                                      onClick={() =>
+                                        handlePushToPlastiks(invoiceKey)
+                                      }
+                                      className='w-full gap-2 mt-4 bg-blue-600 hover:bg-blue-700 text-white'
+                                    >
+                                      {isPushingToPlastiks ? (
+                                        <span className='flex items-center gap-2'>
+                                          <Loader2 className='h-3 w-3 animate-spin' />
+                                          Pushing to Blockchain...
+                                        </span>
+                                      ) : (
+                                        <span className='flex items-center gap-2'>
+                                          <ArrowRight className='h-3 w-3' />
+                                          Push to Plastiks
+                                        </span>
+                                      )}
+                                    </Button>
                                   )}
-                                </Button>
 
                                 {/* Blockchain Details if submitted */}
-                                {doc.plastiks_submitted_at && (
+                                {(doc.plastiks_submitted_at ||
+                                  doc.status === 'submitted') && (
                                   <div className='mt-4 p-4 bg-slate-50 rounded-lg border'>
                                     <h5 className='font-medium text-slate-800 mb-3'>
                                       Blockchain Details

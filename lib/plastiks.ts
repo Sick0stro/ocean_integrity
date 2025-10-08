@@ -168,6 +168,7 @@ export async function getBlockchainConfig(
 
 export async function createPrgCollection(
   client: ReturnType<typeof createPlastiksClient>,
+  config: PlastiksConfig,
   params: {
     // Essential fields only - as requested for production
     recycler_company: string;
@@ -191,23 +192,23 @@ export async function createPrgCollection(
 
   // Note: date_of_recycling removed from payload as per Samhita's format
 
-  // 🎯 EXACT PAYLOAD STRUCTURE as requested by Samhita (same order)
-  const body = {
+  // 🎯 EXACT PAYLOAD STRUCTURE matching working Streamlit version
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body: Record<string, any> = {
     name: `${params.recycler_company} - ${params.invoice_number}`,
     description: `Recycling collection for invoice ${params.invoice_number} from ${params.recycler_company}`,
-    plastik_type: params.plastic_type, // ✅ Changed from plastik_type to plastic_type
+    plastik_type: params.plastic_type,
     weight: params.weightKg,
-    guarantee_connected: null,
+    guarantee_connected: params.weightKg,
     city: params.city || '',
     country: params.country || params.origin || '',
-    use_autogen_image: true,
-    attachment:
-      params.invoice_url || params.ewaybill_url || params.eft_url || '',
+    use_autogen_image: 'true', // ✅ MUST BE STRING
     // ✅ Documents at top level (not nested in documents object)
     invoice: params.invoice_url || '',
     proof_invoice: params.eft_url || '',
     way_bill: params.ewaybill_url || '',
-    receipt: params.eft_url || '', // ✅ Added receipt field (empty for now)
+    receipt: params.eft_url || '',
+    user_address: config.userAddress, // ✅ CRITICAL: Must be in body, not just headers!
   };
 
   console.log(
@@ -262,6 +263,13 @@ export async function createPrgCollection(
     console.log('  - country:', body.country || 'MISSING');
     console.log('  - city:', body.city || 'MISSING');
     console.log('  - plastik_type:', body.plastik_type || 'MISSING');
+    console.log('  - user_address:', body.user_address || 'MISSING');
+    console.log(
+      '🔍 TYPE CHECK - use_autogen_image:',
+      typeof body.use_autogen_image,
+      '=',
+      body.use_autogen_image
+    );
 
     const resp = await client.post('/api/collections/prg', body);
 
@@ -561,7 +569,7 @@ export async function submitToPlastiks(document: RecyclingDocRow) {
     // recycler_postal_code: document.recycler_postal_code,
   };
 
-  const prg = await createPrgCollection(client, submissionPayload);
+  const prg = await createPrgCollection(client, cfg, submissionPayload);
 
   console.log('🔐 [PLASTIKS_SUBMIT] Starting blockchain signing process...');
   await signMetadataHash(client, chain, wallet, prg.address);

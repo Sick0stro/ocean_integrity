@@ -263,7 +263,6 @@ def recompute_matches(inv_norm, eway_norm, user_id, user_name):
         
         row = {
             "user_id": user_id, "user_name": user_name,
-            "invoice": best.get("invoice", ""),
             "invoice_file_url": invoice_file_url, "ewaybill_file_url": ewaybill_file_url,
             "invoice_weight_mt": invoice_weight_mt if invoice_weight_mt is not None else 0,
             "bill_from_company_name": best.get("bill_from_company_name"),

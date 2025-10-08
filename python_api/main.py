@@ -38,6 +38,7 @@ class ComputeMatchesRequest(BaseModel):
 class MatchedRecord(BaseModel):
     user_id: str
     user_name: str
+    invoice: Optional[str]  # ✅ ADD INVOICE FIELD
     invoice_file_url: Optional[str]
     ewaybill_file_url: Optional[str]
     invoice_weight_mt: int
@@ -171,7 +172,8 @@ async def compute_matches(request: ComputeMatchesRequest):
                     'eway_bill_no': raw_json.get('eway_bill_no'),
                     'plastic_type': raw_json.get('plastic_type'),
                     'weight': raw_json.get('weight'),
-                    'weight_kg': backend.normalize_weight_decimal_rule(raw_json.get('weight'))
+                    'weight_kg': backend.normalize_weight_decimal_rule(raw_json.get('weight')),
+                    'city': backend.normalize_city_name(raw_json.get('city'))
                 })
         
         print(f"📊 [matching-api] Invoices: {len(invoices)}, Eway bills: {len(ewaybills)}")
@@ -216,17 +218,8 @@ async def compute_matches(request: ComputeMatchesRequest):
         
         print(f"✅ [matching-api] Computed {len(matched_df)} matches")
         
-        # Extract cities from bill_to_address using Gemini API
-        if not matched_df.empty and 'bill_to_address' in matched_df.columns:
-            unique_addresses = matched_df['bill_to_address'].dropna().unique().tolist()
-            if unique_addresses:
-                print(f"🌍 [matching-api] Extracting cities for {len(unique_addresses)} addresses...")
-                city_cache = backend.extract_cities_with_gemini(unique_addresses)
-                matched_df['city'] = matched_df['bill_to_address'].map(city_cache).fillna('')
-                print(f"✅ [matching-api] City extraction completed")
-            else:
-                matched_df['city'] = ''
-        else:
+        # City is already extracted from e-way bill in the matching logic
+        if 'city' not in matched_df.columns:
             matched_df['city'] = ''
         
         # Convert to response format
@@ -235,6 +228,7 @@ async def compute_matches(request: ComputeMatchesRequest):
             records.append(MatchedRecord(
                 user_id=str(row['user_id']),
                 user_name=str(row['user_name']),
+                invoice=str(row.get('invoice', '')),  # ✅ ADD INVOICE FIELD
                 invoice_file_url=row.get('invoice_file_url'),
                 ewaybill_file_url=row.get('ewaybill_file_url'),
                 invoice_weight_mt=int(row['invoice_weight_mt']) if pd.notna(row['invoice_weight_mt']) else 0,

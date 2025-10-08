@@ -191,6 +191,22 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
+    // Also get city from matched_records if available
+    let matchedRecordCity: string | null = null;
+    const { data: matchedData } = await supa
+      .from('matched_records')
+      .select('city')
+      .eq('user_id', user_id)
+      .eq('invoice_number', invoice)
+      .single();
+
+    if (matchedData?.city) {
+      matchedRecordCity = matchedData.city;
+      console.log(
+        `🌍 [promote:${requestId}] Found city from matched_records: ${matchedRecordCity}`
+      );
+    }
+
     // Filter rows that match the invoice in raw_json (anchor_key or invoice or second/third invoice for EFT)
     type ParsedRow = {
       id: string;
@@ -409,8 +425,13 @@ export async function POST(req: Request) {
 
     // Use country already extracted
     const final_country = country;
-    // Get city from invoice or e-way bill, with fallback to empty string
-    const city = ((inv['city'] as string) || (ewb['city'] as string) || '')
+    // Get city from matched_records (Gemini extraction) if available, fallback to old AI extraction
+    const city = (
+      matchedRecordCity ||
+      (inv['city'] as string) ||
+      (ewb['city'] as string) ||
+      ''
+    )
       .toString()
       .trim();
 

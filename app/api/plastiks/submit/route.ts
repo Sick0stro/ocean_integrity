@@ -6,7 +6,10 @@ import { getSupabaseAdmin } from '@/utils/supabase';
 interface ProcessResult {
   invoice_number: string;
   status: string;
-  id?: number;
+  plastiks_collection_id?: number;
+  plastiks_collection_address?: string;
+  plastiks_metadata_hash?: string | null;
+  plastiks_submitted_at?: string;
   error?: string;
 }
 
@@ -674,7 +677,10 @@ export async function POST(req: Request) {
       results.push({
         invoice_number: row.invoice_number,
         status: 'submitted',
-        id: prg.id,
+        plastiks_collection_id: prg.id,
+        plastiks_collection_address: prg.address,
+        plastiks_metadata_hash: prg.metadata_hash || null,
+        plastiks_submitted_at: dbUpdateData.plastiks_submitted_at,
       });
     } catch (e) {
       const invoiceProcessTime = Date.now() - invoiceStartTime;
@@ -758,7 +764,7 @@ export async function POST(req: Request) {
         console.log(
           `   ${index + 1}. Invoice: '${
             result.invoice_number
-          }' → Collection ID: ${result.id}`
+          }' → Collection ID: ${result.plastiks_collection_id}`
         );
       });
   }
