@@ -1,12 +1,14 @@
-# Ocean Integrity — Credits Platform
+# Plastic Credits — Document Integrity Platform
 
-**Turning ocean-plastic cleanup into verifiable credits — 235,463 tonnes processed through the platform.**
+**Turning plastic recovery into verifiable credits — 235,463 tonnes processed through the platform.**
 
 ## Overview
 
-Ocean Integrity operates plastic-recycling credit programs across 58 countries. Field teams collect and document plastic recovery; corporations buy credits against that recovery. Between the two sits a hard data problem: every claim must trace back to source documents — invoices, EFT receipts, e-way bills — at volume, across languages and formats, without double-counting.
+A platform that processes plastic-recovery documentation into verifiable credits. Every claim must trace back to source documents — invoices, EFT receipts, e-way bills — at volume, across languages and formats, without double-counting.
 
 This platform is that trust layer.
+
+![Pipeline Architecture](./pipeline-architecture.jpeg)
 
 ## The Problem
 
@@ -25,7 +27,7 @@ A purpose-built document-integrity platform:
 
 1. **Ingestion** — multi-format document capture with AI-powered extraction (Google Gemini 2.0 Flash)
 2. **Smart Deduplication** — business-aware composite fingerprints (`invoice | weight | from | to | date | amount`) catch resubmissions even when formatting varies
-3. **Business Rules Engine** — country-specific document requirements with smart recycler detection (Indian recyclers: 2 docs; all others: 3)
+3. **Business Rules Engine** — country-specific document requirements with smart recycler detection (domestic recyclers: 2 docs; international: 3)
 4. **Human Verification** — flagged items route to reviewers with full context; every decision persisted
 5. **Blockchain Integration** — verified credits pushed to Plastiks for on-chain issuance
 
@@ -55,7 +57,7 @@ Next.js 15 · React 19 · TypeScript · Supabase (Postgres + Auth + Storage) · 
 ## Engineering Highlights
 
 - **Business-meaningful dedup keys** instead of naive content hashes — robust against formatting variance, timezone drift, and field reordering
-- **Smart recycler detection** — advanced algorithm identifies Indian domestic recyclers by company name, city, and business suffix to apply country-specific rules
+- **Smart recycler detection** — algorithm identifies domestic recyclers by company name, city, and business suffix to apply country-specific rules
 - **Verification-first architecture** — automation proposes, humans dispose, ledger remembers
 - **Postgres-side lifecycle tracking** with rollback migrations kept alongside forward ones
 
